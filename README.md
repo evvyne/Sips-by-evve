@@ -44,14 +44,24 @@ Hard-to-measure materials (glitter, etc.) don't need per-order tracking — just
 
 ## How data is stored
 
-Everything is saved in your browser's `localStorage` — no database, no account, nothing to configure. That means:
+The app now signs in against **Supabase** and syncs your data across devices — sign in on your phone and your computer with the same account and you'll see the same data on both, no manual export/import needed.
 
-- Your data lives only in the browser/device you used it in. It will not show up if you open the site on your phone or a different computer.
-- Clearing your browser's site data/cache will erase it.
-- Use the **Export** button any time to download a JSON backup, and **Import** to restore it (in the same browser or a new one).
-- Product photos are compressed and stored inline as part of the data (so they're included in Export/Import too), resized to a max of 900px so they still look sharp when you click to enlarge them. Browsers typically allow a few MB of `localStorage` per site, which is enough for a few dozen photos at this size, but if you ever hit a storage error, that's why — keep photos to the essentials (sticker designs) rather than every product.
+- **Sign in required.** Opening the app shows a sign in / sign up screen first. Your data is private to your account — Supabase's Row Level Security means no one else can read or write your row, even though the app's URL and its "anon" API key are publicly visible in the page source (that key is meant to be public; it can't do anything without a valid login).
+- **Still works offline.** Everything is also kept in this browser's `localStorage` as before, so you can keep using the app with no signal — changes save locally immediately and quietly sync up to your account once you're back online (there's a small "Synced / Syncing… / Offline" indicator in the header).
+- **How sync resolves conflicts:** whichever device you last **signed in** on pulls down the cloud copy and treats it as current. If you make changes offline on two devices before either reconnects, the one that reconnects/syncs second will overwrite the first's changes — for a one-person shop this is rarely an issue, just try not to add orders on two offline devices back-to-back before either gets signal again.
+- Use the **Export** button any time for an extra local JSON backup, independent of the cloud sync.
+- Product photos are compressed and stored inline as part of the data (so they sync too), resized to a max of 900px so they still look sharp when you click to enlarge them.
 
-If you later want your data synced across devices, that would mean adding a backend (e.g. Supabase) — happy to wire that up whenever you're ready.
+### One-time Supabase setup
+
+This only needs to be done once, by whoever owns the Supabase project:
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the Supabase dashboard, go to **SQL Editor → New query**, paste in the contents of `schema.sql` (included alongside this file), and run it. This creates the `app_state` table with Row Level Security so each account only ever sees its own data.
+3. Go to **Settings → API** and copy the **Project URL** and **anon public** key (never the `service_role` key — that one's secret and must never go in frontend code).
+4. In `index.html`, find the `SUPABASE_URL` and `SUPABASE_ANON_KEY` constants (search for `SUPABASE SYNC`) and make sure they match your project's values.
+5. Under **Authentication → Settings**, consider turning off "Confirm email" so you can sign up and use the app immediately without waiting on a confirmation email — fine for a single-person tool like this.
+6. Open the app, use the **Sign up** tab once to create your account, then **Sign in** from any other device with the same email/password.
 
 ## Run it locally
 

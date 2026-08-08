@@ -170,9 +170,49 @@
   .cal-order-chip { font-size: 10px; background: #eaf1fd; color: var(--blue); border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cal-note-input { font-size: 10px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; width: 100%; }
   footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }
+
+  .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .auth-card { width: 100%; max-width: 360px; }
+  .auth-card h1 { font-size: 18px; margin: 0 0 4px; text-align: center; }
+  .auth-card .muted-center { text-align: center; margin: 0 0 20px; }
+  .auth-tabs { display: flex; gap: 4px; margin-bottom: 16px; background: #f1f3f8; border-radius: 8px; padding: 3px; }
+  .auth-tabs button { flex: 1; background: none; border: none; padding: 7px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
+  .auth-tabs button.active { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .auth-field { margin-bottom: 12px; }
+  .auth-error { color: var(--red); font-size: 13px; margin: 8px 0; min-height: 1px; }
+  .sync-status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .sync-dot.offline { background: var(--muted); }
+  .sync-dot.syncing { background: #f59e0b; }
 </style>
 </head>
 <body>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+<div id="auth-screen" class="auth-screen">
+  <div class="card auth-card">
+    <h1>❄️ Sips by Evve</h1>
+    <p class="muted muted-center">Sign in to sync your data across devices</p>
+    <div class="auth-tabs">
+      <button type="button" id="auth-tab-signin" class="active">Sign in</button>
+      <button type="button" id="auth-tab-signup">Sign up</button>
+    </div>
+    <div class="auth-field">
+      <label class="field-label">Email</label>
+      <input type="email" id="auth-email" autocomplete="email">
+    </div>
+    <div class="auth-field">
+      <label class="field-label">Password</label>
+      <input type="password" id="auth-password" autocomplete="current-password">
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+    <button type="button" class="btn btn-primary" id="btn-auth-submit" style="width:100%;">Sign in</button>
+    <p class="muted" style="font-size:12px; margin-top:14px; text-align:center;">Your data is private to your account — only you can see it once signed in.</p>
+  </div>
+</div>
+
+<div id="app-shell" style="display:none;">
 
 <datalist id="platform-list">
   <option value="WeChat"></option>
@@ -201,9 +241,11 @@
       <button data-tab="calendar">Calendar</button>
     </nav>
     <div class="header-actions">
+      <div class="sync-status" id="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Synced</span></div>
       <button class="btn btn-secondary btn-small" id="btn-sample">Load sample data</button>
       <button class="btn btn-secondary btn-small" id="btn-export">Export</button>
       <button class="btn btn-secondary btn-small" id="btn-import">Import</button>
+      <button class="btn btn-secondary btn-small" id="btn-logout">Log out</button>
       <input type="file" id="import-file" accept="application/json" style="display:none;">
     </div>
   </div>
@@ -606,7 +648,9 @@
 
 </main>
 
-<footer>Data is stored locally in this browser (localStorage). Use Export to back it up.</footer>
+<footer>Data is stored locally in this browser (localStorage) and synced to your account. Use Export any time for an extra backup.</footer>
+
+</div><!-- /#app-shell -->
 
 <script>
 (function () {
@@ -628,6 +672,7 @@
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (typeof scheduleCloudPush === 'function') scheduleCloudPush();
   }
 
   function uid() {
@@ -2873,6 +2918,135 @@
   }
 
   renderAll();
+
+  // ================= SUPABASE SYNC (cross-device) =================
+  // The whole app state (products/costs/orders/blockedDates) is stored as a single
+  // JSON blob per signed-in user in the `app_state` table (see schema.sql). Row Level
+  // Security means each account can only ever see/touch its own row, so the anon key
+  // below is safe to have visible in this file — it's the "public" key, not a secret.
+  var SUPABASE_URL = 'https://thjdbvkvpjrdfcgtumsf.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoamRidmt2cGpyZGZjZ3R1bXNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMTAyODIsImV4cCI6MjEwMTc4NjI4Mn0.2hf1ucfJ9aKmG_YXsWUg6o1Q3-I66JbrwdUdzkq4x2w';
+
+  var sb = (typeof supabase !== 'undefined' && supabase.createClient)
+    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+
+  var cloudPushTimer = null;
+  var cloudSyncSuspended = true; // true until we've finished the initial pull, so save() calls during pull don't bounce right back up
+
+  function setSyncStatus(mode) {
+    var dot = document.getElementById('sync-dot');
+    var label = document.getElementById('sync-label');
+    if (!dot || !label) return;
+    dot.className = 'sync-dot' + (mode === 'offline' ? ' offline' : mode === 'syncing' ? ' syncing' : '');
+    label.textContent = mode === 'offline' ? 'Offline (saved locally)' : mode === 'syncing' ? 'Syncing…' : 'Synced';
+  }
+
+  function scheduleCloudPush() {
+    if (!sb || cloudSyncSuspended) return;
+    setSyncStatus('syncing');
+    clearTimeout(cloudPushTimer);
+    cloudPushTimer = setTimeout(pushStateToCloud, 800);
+  }
+
+  function pushStateToCloud() {
+    if (!sb) return;
+    sb.auth.getUser().then(function (res) {
+      var user = res.data && res.data.user;
+      if (!user) return;
+      sb.from('app_state').upsert({ user_id: user.id, data: state }).then(function (res2) {
+        setSyncStatus(res2.error ? 'offline' : 'synced');
+      });
+    }).catch(function () { setSyncStatus('offline'); });
+  }
+
+  function pullStateFromCloud(userId) {
+    return sb.from('app_state').select('data').eq('user_id', userId).maybeSingle().then(function (res) {
+      if (res.error) { setSyncStatus('offline'); return; }
+      if (res.data && res.data.data) {
+        // Cloud already has a state for this account — adopt it as the source of truth.
+        state = res.data.data;
+        if (!state.blockedDates) state.blockedDates = {};
+        if (!state.products) state.products = [];
+        if (!state.costs) state.costs = [];
+        if (!state.orders) state.orders = [];
+        save();
+        renderAll();
+      } else {
+        // First time syncing this account — seed the cloud with whatever's on this device already.
+        pushStateToCloud();
+      }
+      setSyncStatus('synced');
+    });
+  }
+
+  function showApp() {
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app-shell').style.display = 'block';
+  }
+  function showAuthScreen() {
+    document.getElementById('app-shell').style.display = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+  }
+
+  var authMode = 'signin';
+  function setAuthMode(mode) {
+    authMode = mode;
+    document.getElementById('auth-tab-signin').classList.toggle('active', mode === 'signin');
+    document.getElementById('auth-tab-signup').classList.toggle('active', mode === 'signup');
+    document.getElementById('btn-auth-submit').textContent = mode === 'signin' ? 'Sign in' : 'Sign up';
+    document.getElementById('auth-error').textContent = '';
+  }
+
+  if (sb) {
+    document.getElementById('auth-tab-signin').addEventListener('click', function () { setAuthMode('signin'); });
+    document.getElementById('auth-tab-signup').addEventListener('click', function () { setAuthMode('signup'); });
+
+    document.getElementById('btn-auth-submit').addEventListener('click', function () {
+      var email = document.getElementById('auth-email').value.trim();
+      var password = document.getElementById('auth-password').value;
+      var errorEl = document.getElementById('auth-error');
+      errorEl.textContent = '';
+      if (!email || !password) { errorEl.textContent = 'Enter both email and password.'; return; }
+      var submitBtn = document.getElementById('btn-auth-submit');
+      submitBtn.disabled = true;
+      var action = authMode === 'signin' ? sb.auth.signInWithPassword({ email: email, password: password }) : sb.auth.signUp({ email: email, password: password });
+      action.then(function (res) {
+        submitBtn.disabled = false;
+        if (res.error) { errorEl.textContent = res.error.message; return; }
+        if (!res.data.session) {
+          errorEl.textContent = 'Account created — check your email to confirm, then sign in.';
+          return;
+        }
+        // onAuthStateChange below handles the rest (pulling cloud state, showing the app).
+      });
+    });
+
+    document.getElementById('btn-logout').addEventListener('click', function () {
+      sb.auth.signOut().then(function () { location.reload(); });
+    });
+
+    window.addEventListener('online', function () { scheduleCloudPush(); });
+    window.addEventListener('offline', function () { setSyncStatus('offline'); });
+
+    sb.auth.onAuthStateChange(function (event, session) {
+      if (session && session.user) {
+        cloudSyncSuspended = true;
+        setSyncStatus('syncing');
+        pullStateFromCloud(session.user.id).catch(function () {
+          setSyncStatus('offline'); // couldn't reach Supabase — carry on with whatever's in localStorage
+        }).then(function () {
+          cloudSyncSuspended = false;
+          showApp();
+        });
+      } else {
+        showAuthScreen();
+      }
+    });
+  } else {
+    // Supabase script failed to load (e.g. offline on first-ever visit) — fall back to local-only.
+    showApp();
+  }
 })();
 </script>
 
