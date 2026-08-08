@@ -1,0 +1,2880 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>❄️ Sips by Evve</title>
+<style>
+  :root {
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --border: #e2e5ec;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --red: #dc2626;
+    --red-bg: #fee2e2;
+    --green: #059669;
+    --green-bg: #d1fae5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .header-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .brand { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button {
+    background: none;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  nav button.active { background: var(--blue); color: #fff; }
+  nav button:hover:not(.active) { background: #eef1f7; }
+  .header-actions { display: flex; gap: 8px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-dark); }
+  .btn-secondary { background: #f1f3f8; color: var(--text); }
+  .btn-secondary:hover { background: #e6e9f0; }
+  .btn-text { background: none; border: none; color: var(--blue); font-size: 13px; cursor: pointer; padding: 0; }
+  .btn-text.danger { color: var(--red); }
+  .row-actions-sep { color: var(--muted); margin: 0 6px; font-size: 12px; }
+  .btn-small { padding: 5px 10px; font-size: 13px; }
+  label.field-label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--text);
+  }
+  input[type="checkbox"] { width: auto; }
+  input[type="file"] { padding: 4px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .form-actions { display: flex; gap: 8px; }
+  .form-section-title { font-size: 13px; font-weight: 600; color: var(--text); margin: 4px 0 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .form-section-title:first-of-type { border-top: none; padding-top: 0; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; padding-top: 18px; }
+  .checkbox-row label { font-size: 14px; color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px; border-bottom: 1px solid #eef0f4; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .pill { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; display: inline-block; white-space: nowrap; }
+  .pill-red { background: var(--red-bg); color: var(--red); }
+  .pill-green { background: var(--green-bg); color: var(--green); }
+  .pill-gray { background: #eef0f4; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; padding: 10px 0; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .stat-label { font-size: 12px; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  .stat-value { font-size: 26px; font-weight: 600; margin-top: 4px; }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .row-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f2f3f7; }
+  .row-line:last-child { border-bottom: none; }
+  .order-items-row td { background: #fafbfd; }
+  .item-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .item-line select { flex: 1 1 140px; min-width: 120px; }
+  .item-line .di-qty { flex: 0 0 70px; width: 70px; }
+  .item-line .di-price { flex: 0 0 100px; width: 100px; }
+  .total-line { text-align: right; font-size: 14px; font-weight: 600; margin-top: 10px; }
+  .order-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .order-edit-grid .field-block { font-size: 13px; }
+  .thumb { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); flex-shrink: 0; cursor: zoom-in; }
+  .thumb-placeholder { width: 34px; height: 34px; border-radius: 6px; background: #eef0f4; color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+  .theme-toggle { display: flex; justify-content: space-between; align-items: center; width: 100%; background: none; border: none; cursor: pointer; font-weight: 600; font-size: 12px; color: var(--muted); padding: 8px 10px; text-align: left; }
+  .theme-toggle:hover { color: var(--text); }
+  .photo-preview { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: zoom-in; }
+  .lightbox-overlay { position: fixed; inset: 0; background: rgba(15,17,22,0.82); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .lightbox-content { position: relative; max-width: 90vw; max-height: 90vh; }
+  .lightbox-content img { max-width: 90vw; max-height: 90vh; display: block; border-radius: 8px; }
+  .lightbox-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; background: #fff; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .schedule-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .cal-header .cal-month-label { font-size: 17px; font-weight: 600; }
+  .cal-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .cal-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal-weekday { text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; padding-bottom: 4px; }
+  .cal-day { border: 1px solid var(--border); border-radius: 8px; min-height: 78px; padding: 6px; cursor: pointer; background: var(--card); display: flex; flex-direction: column; gap: 4px; }
+  .cal-day:hover { border-color: var(--blue); }
+  .cal-day.cal-empty { background: none; border: none; cursor: default; }
+  .cal-day.cal-blocked { background: #f3f2f7; }
+  .cal-day.cal-today { background: #eef4ff; }
+  .cal-day.cal-today .cal-daynum { color: var(--blue); }
+  .cal-day.cal-conflict { background: #fdecec; border-color: var(--red); }
+  .cal-day.cal-editing { border-color: var(--blue); border-width: 2px; box-shadow: 0 0 0 2px rgba(46,110,225,0.15); }
+  .cal-daynum { font-size: 12px; font-weight: 600; }
+  .cal-blocked-tag { font-size: 10px; color: var(--muted); background: #e4e1ec; border-radius: 4px; padding: 1px 5px; align-self: flex-start; }
+  .cal-order-chip { font-size: 10px; background: #eaf1fd; color: var(--blue); border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-note-input { font-size: 10px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; width: 100%; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }
+</style>
+</head>
+<body>
+
+<datalist id="platform-list">
+  <option value="WeChat"></option>
+  <option value="Taobao"></option>
+  <option value="Shopee"></option>
+  <option value="Lazada"></option>
+  <option value="Local supplier"></option>
+</datalist>
+
+<div id="photo-lightbox" class="lightbox-overlay" style="display:none;">
+  <div class="lightbox-content">
+    <img id="lightbox-img" src="" alt="">
+    <button type="button" id="lightbox-close" class="lightbox-close" aria-label="Close">×</button>
+  </div>
+</div>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">❄️ Sips by Evve</div>
+    <nav>
+      <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="inventory">Inventory</button>
+      <button data-tab="costs">Costs</button>
+      <button data-tab="orders">Orders</button>
+      <button data-tab="schedule">Schedule</button>
+      <button data-tab="calendar">Calendar</button>
+    </nav>
+    <div class="header-actions">
+      <button class="btn btn-secondary btn-small" id="btn-sample">Load sample data</button>
+      <button class="btn btn-secondary btn-small" id="btn-export">Export</button>
+      <button class="btn btn-secondary btn-small" id="btn-import">Import</button>
+      <input type="file" id="import-file" accept="application/json" style="display:none;">
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- DASHBOARD -->
+  <section class="page active" id="page-dashboard">
+    <div class="page-header"><h1>Dashboard</h1></div>
+    <div id="dashboard-content"></div>
+  </section>
+
+  <!-- INVENTORY -->
+  <section class="page" id="page-inventory">
+    <div class="page-header">
+      <h1>Inventory</h1>
+      <button class="btn btn-primary" id="btn-add-product">+ Add product</button>
+    </div>
+    <div class="card" id="product-form-wrap" style="display:none; margin-bottom:16px;">
+      <div class="form-grid">
+        <div>
+          <label class="field-label">Name</label>
+          <input id="pf-name" placeholder="e.g. Tumbler, Stitch Sticker, Kitchen towel">
+        </div>
+        <div>
+          <label class="field-label">Variant (color / size)</label>
+          <input id="pf-variant" placeholder="e.g. 700ml">
+        </div>
+        <div>
+          <label class="field-label">SKU / code</label>
+          <input id="pf-sku" placeholder="e.g. A001">
+        </div>
+        <div>
+          <label class="field-label">Type</label>
+          <select id="pf-type">
+            <option value="Tumbler">Tumbler</option>
+            <option value="Stickers">Stickers</option>
+            <option value="Others">Others</option>
+          </select>
+        </div>
+        <div id="pf-theme-wrap" style="display:none;">
+          <label class="field-label">Sticker theme (groups codes in the Orders dropdown)</label>
+          <select id="pf-theme-select">
+            <option value="">Select theme…</option>
+            <option value="__new__">+ Add new theme…</option>
+          </select>
+          <input id="pf-theme-new" placeholder="e.g. C - Elsa" style="display:none; margin-top:6px;">
+        </div>
+        <div>
+          <label class="field-label">Cost price (per unit, in RM)</label>
+          <input id="pf-cost" type="number" step="0.01" min="0">
+        </div>
+        <div>
+          <label class="field-label">Selling price (per unit, in RM)</label>
+          <input id="pf-price" type="number" step="0.01" min="0">
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <details>
+            <summary style="cursor:pointer; color:var(--blue); font-size:13px;">Paid in a different currency? Convert to RM</summary>
+            <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Foreign amount</label>
+                <input id="pf-fx-amount" type="number" step="0.01" min="0">
+              </div>
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Currency</label>
+                <select id="pf-fx-currency">
+                  <option value="CNY">CNY (¥)</option>
+                  <option value="MYR">MYR (RM)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Rate → RM</label>
+                <input id="pf-fx-rate" type="number" step="0.0001" min="0" placeholder="e.g. 0.62">
+              </div>
+              <button type="button" class="btn-secondary btn-small" id="pf-fx-apply">Use as Cost price</button>
+            </div>
+          </details>
+        </div>
+        <div>
+          <label class="field-label">Stock quantity</label>
+          <input id="pf-stock" type="number" min="0">
+        </div>
+        <div>
+          <label class="field-label">Low stock alert threshold</label>
+          <input id="pf-threshold" type="number" min="0" value="5">
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label class="field-label">Photo (optional — helps you recognize sticker designs at a glance)</label>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <input type="file" id="pf-photo-file" accept="image/*" style="max-width:260px;">
+            <img id="pf-photo-preview" class="photo-preview" style="display:none;">
+            <button type="button" class="btn-text danger" id="pf-photo-remove" style="display:none;">Remove photo</button>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Bought from (platform)</label>
+          <input id="pf-source-platform" list="platform-list" placeholder="e.g. WeChat, Taobao, Shopee">
+        </div>
+        <div>
+          <label class="field-label">Seller / contact / link</label>
+          <input id="pf-source-link" placeholder="e.g. xiaomei_supplies or https://...">
+        </div>
+      </div>
+      <div class="checkbox-row" id="pf-also-cost-wrap" style="padding-top:0; margin-bottom:14px;">
+        <input type="checkbox" id="pf-also-cost">
+        <label for="pf-also-cost">Also log this as a Cost entry (materials, cost × stock, dated today) — for the batch you just bought to start this stock</label>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-product">Save</button>
+        <button class="btn btn-secondary" id="btn-cancel-product">Cancel</button>
+      </div>
+    </div>
+    <div id="inventory-content"></div>
+  </section>
+
+  <!-- COSTS -->
+  <section class="page" id="page-costs">
+    <div class="page-header">
+      <h1>Costs</h1>
+      <button class="btn btn-primary" id="btn-add-cost">+ Add cost</button>
+    </div>
+    <div class="card" id="cost-form-wrap" style="display:none; margin-bottom:16px;">
+      <div class="form-grid">
+        <div>
+          <label class="field-label">Category</label>
+          <select id="cf-category">
+            <option value="materials">materials</option>
+            <option value="packaging">packaging</option>
+            <option value="shipping">shipping</option>
+            <option value="ads">ads</option>
+            <option value="tiktok_fee">tiktok fee</option>
+            <option value="wastage">wastage / loss</option>
+            <option value="other">other</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Date</label>
+          <input id="cf-date" type="date">
+        </div>
+        <div>
+          <label class="field-label" id="cf-amount-label">Amount (in RM)</label>
+          <input id="cf-amount" type="number" step="0.01" min="0">
+        </div>
+        <div class="checkbox-row" style="grid-column: 1 / -1;">
+          <input type="checkbox" id="cf-multi-toggle">
+          <label for="cf-multi-toggle">This purchase covers multiple products (e.g. glitter + tumblers + liquids in one payment)</label>
+        </div>
+        <div id="cf-single-wrap" style="display:contents;">
+          <div>
+            <label class="field-label">Related product (optional)</label>
+            <select id="cf-product"><option value="">— none —</option></select>
+          </div>
+          <div id="cf-qty-wrap" style="display:none;">
+            <label class="field-label">Quantity purchased (adds to stock)</label>
+            <input id="cf-qty" type="number" min="0" step="1" placeholder="e.g. 20">
+          </div>
+          <div id="cf-updatecost-wrap" class="checkbox-row" style="display:none; padding-top:18px; grid-column: 1 / -1;">
+            <input type="checkbox" id="cf-updatecost" checked>
+            <label for="cf-updatecost">Update this product's cost price to Amount ÷ Quantity</label>
+          </div>
+          <div id="cf-newproduct-wrap" style="display:none; grid-column: 1 / -1; border-top:1px solid var(--border); padding-top:12px;">
+            <div style="font-weight:500; font-size:13px; margin-bottom:8px;">New product details</div>
+            <div class="form-grid" style="margin-bottom:0;">
+              <div>
+                <label class="field-label">Product name</label>
+                <input id="cf-newp-name" placeholder="e.g. 700ml Tumbler">
+              </div>
+              <div>
+                <label class="field-label">Type</label>
+                <select id="cf-newp-type">
+                  <option value="Tumbler">Tumbler</option>
+                  <option value="Stickers">Stickers</option>
+                  <option value="Others">Others</option>
+                </select>
+              </div>
+              <div id="cf-newp-theme-wrap" style="display:none;">
+                <label class="field-label">Theme</label>
+                <select id="cf-newp-theme-select"></select>
+                <input id="cf-newp-theme-new" placeholder="New theme name" style="display:none; margin-top:6px;">
+              </div>
+              <div>
+                <label class="field-label">Variant (optional)</label>
+                <input id="cf-newp-variant" placeholder="e.g. Blue lid">
+              </div>
+              <div>
+                <label class="field-label">SKU (optional)</label>
+                <input id="cf-newp-sku" placeholder="e.g. B003">
+              </div>
+              <div>
+                <label class="field-label">Selling price (RM, optional)</label>
+                <input id="cf-newp-price" type="number" step="0.01" min="0">
+              </div>
+              <div>
+                <label class="field-label">Low-stock threshold</label>
+                <input id="cf-newp-threshold" type="number" min="0" value="5">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="cf-multi-wrap" style="display:none; grid-column: 1 / -1;">
+          <div id="cost-items"></div>
+          <button type="button" class="btn btn-secondary btn-small" id="btn-add-cost-item" style="margin:6px 0 10px;">+ Add product line</button>
+          <div class="checkbox-row" style="padding-top:0;">
+            <input type="checkbox" id="cf-multi-updatecost" checked>
+            <label for="cf-multi-updatecost">Update each product's cost price to its landed cost (unit cost + its share of SST/fees)</label>
+          </div>
+          <div class="muted" style="font-size:12px; margin-top:4px;">Amount above is calculated automatically from these lines plus any SST/service fee below — split proportionally across products so you don't have to work it out by hand.</div>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label class="field-label">Description</label>
+          <input id="cf-description" placeholder="e.g. Glitter refill batch, box of tumbler blanks, China→Malaysia freight">
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <details>
+            <summary style="cursor:pointer; color:var(--blue); font-size:13px;">Paid in a different currency? Convert to RM</summary>
+            <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Foreign amount</label>
+                <input id="cf-fx-amount" type="number" step="0.01" min="0">
+              </div>
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Currency</label>
+                <select id="cf-fx-currency">
+                  <option value="CNY">CNY (¥)</option>
+                  <option value="MYR">MYR (RM)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Rate → RM</label>
+                <input id="cf-fx-rate" type="number" step="0.0001" min="0" placeholder="e.g. 0.62">
+              </div>
+              <button type="button" class="btn-secondary btn-small" id="cf-fx-apply">Use as Amount</button>
+            </div>
+          </details>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <details>
+            <summary style="cursor:pointer; color:var(--blue); font-size:13px;">Add SST / payment service fee? (only if this batch had one)</summary>
+            <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Goods cost (RM)</label>
+                <input id="cf-extra-goods" type="number" step="0.01" min="0">
+              </div>
+              <div style="flex:1 1 100px;">
+                <label class="field-label">SST (RM)</label>
+                <input id="cf-extra-sst" type="number" step="0.01" min="0" placeholder="0.00">
+              </div>
+              <div style="flex:1 1 100px;">
+                <label class="field-label">Payment service fee (RM)</label>
+                <input id="cf-extra-fee" type="number" step="0.01" min="0" placeholder="0.00">
+              </div>
+              <button type="button" class="btn-secondary btn-small" id="cf-extra-apply">Add to Amount</button>
+            </div>
+            <div class="muted" style="font-size:12px; margin-top:6px;">Convert to RM first if needed, then use this to add SST/fees on top — only fill this in for batches that actually had one. It replaces the Amount above with the total, and the breakdown is kept as a note so you can still see what was tax/fee vs. goods.</div>
+          </details>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-cost">Save</button>
+        <button class="btn btn-secondary" id="btn-cancel-cost">Cancel</button>
+      </div>
+    </div>
+    <div class="card" style="overflow-x:auto;">
+      <table id="cost-table">
+        <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Product</th><th>Amount</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="cost-empty" style="display:none;">No cost entries yet.</div>
+      <div class="total-line" id="cost-total"></div>
+    </div>
+  </section>
+
+  <!-- ORDERS -->
+  <section class="page" id="page-orders">
+    <div class="page-header">
+      <h1>Orders</h1>
+      <button class="btn btn-primary" id="btn-add-order">+ New order</button>
+    </div>
+    <div class="card" id="order-form-wrap" style="display:none; margin-bottom:16px;">
+      <h2 id="order-form-title" style="font-size:15px; font-weight:600; margin:0 0 14px;">New order</h2>
+
+      <div class="form-grid">
+        <div>
+          <label class="field-label">Buyer name</label>
+          <input id="of-buyer-name">
+        </div>
+        <div>
+          <label class="field-label">TikTok handle</label>
+          <input id="of-buyer-handle" placeholder="@username">
+        </div>
+        <div>
+          <label class="field-label">Telegram name</label>
+          <input id="of-buyer-telegram" placeholder="@username">
+        </div>
+        <div>
+          <label class="field-label">Order date</label>
+          <input id="of-date" type="date">
+        </div>
+        <div>
+          <label class="field-label">Status</label>
+          <select id="of-status">
+            <option value="pending">pending</option>
+            <option value="shipped">shipped</option>
+            <option value="delivered">delivered</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Rough target date <span class="muted">(optional, internal only — see Scheduling)</span></label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input id="of-estimated-date" type="date" style="flex:1;">
+            <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section-title">Shipping 运费与物流</div>
+      <div class="form-grid">
+        <div style="grid-column: 1 / -1;">
+          <label class="field-label">Ship to <span class="muted">(customer's delivery address)</span></label>
+          <textarea id="of-ship-to" rows="2" placeholder="e.g. 12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor" style="resize:vertical;"></textarea>
+        </div>
+        <div>
+          <label class="field-label">Postcode</label>
+          <input id="of-postcode" placeholder="e.g. 43000">
+        </div>
+        <div>
+          <label class="field-label">Shipping zone</label>
+          <select id="of-shipping-zone">
+            <option value="west_malaysia">西马 West Malaysia</option>
+            <option value="east_malaysia">东马 East Malaysia (Sabah/Sarawak)</option>
+            <option value="singapore">新加坡 Singapore</option>
+            <option value="other">Other / custom</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Package weight (kg) <span class="muted">(for 东马/新加坡)</span></label>
+          <input id="of-shipping-weight" type="number" step="0.1" min="0" placeholder="e.g. 1.5">
+        </div>
+        <div>
+          <label class="field-label">Shipping fee charged to customer</label>
+          <input id="of-shipping" type="number" step="0.01" min="0" value="0">
+        </div>
+        <div>
+          <label class="field-label">Shipping cost you paid (courier)</label>
+          <input id="of-shipping-cost" type="number" step="0.01" min="0" value="0">
+        </div>
+        <div>
+          <label class="field-label">Tracking number</label>
+          <input id="of-tracking">
+        </div>
+        <div>
+          <label class="field-label">Discount</label>
+          <input id="of-discount" type="number" step="0.01" min="0" value="0">
+        </div>
+      </div>
+      <div id="shipping-suggestion-wrap" style="margin: -6px 0 14px; font-size:12px;"></div>
+
+      <div class="form-section-title">Items</div>
+      <div id="order-items"></div>
+      <button class="btn btn-secondary btn-small" id="btn-add-item" style="margin-bottom:14px;">+ Add item</button>
+
+      <div>
+        <label class="field-label">Notes</label>
+        <input id="of-notes">
+      </div>
+      <div class="total-line" id="order-draft-total" style="text-align:left; margin: 10px 0;"></div>
+      <p class="muted" style="margin: 0 0 10px;">Payment info (paid, reference number, bank name) is recorded after you save this order — tick "Paid" in the table, or open an order and click "Edit details".</p>
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-order">Save order</button>
+        <button class="btn btn-secondary" id="btn-cancel-order">Cancel</button>
+      </div>
+    </div>
+    <div class="card" style="overflow-x:auto;">
+      <table id="order-table">
+        <thead><tr><th>Date</th><th>Buyer</th><th>TikTok</th><th>Ship to</th><th>Items</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="order-empty" style="display:none;">No orders yet.</div>
+    </div>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section class="page" id="page-schedule">
+    <div class="page-header"><h1>Schedule 排单</h1></div>
+    <p class="muted" style="margin-top:-8px;">Assign a make/ship date to each order (usually once payment comes in) so you know what to prepare for each livestream day.</p>
+    <div id="schedule-content"></div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section class="page" id="page-calendar">
+    <div class="page-header"><h1>Calendar</h1></div>
+    <p class="muted" style="margin-top:-8px;">See scheduled orders and your own personal days at a glance. Click any day to mark it as personal time (unavailable for customer slots).</p>
+    <div id="calendar-content"></div>
+  </section>
+
+</main>
+
+<footer>Data is stored locally in this browser (localStorage). Use Export to back it up.</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'snowglobeTrackerData';
+  var PRODUCT_TYPES = ['Tumbler', 'Stickers', 'Others'];
+
+  function loadState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { products: [], costs: [], orders: [] };
+  }
+
+  var state = loadState();
+  if (!state.blockedDates) state.blockedDates = {};
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function money(n) {
+    var v = Number(n) || 0;
+    return v.toLocaleString('en-MY', { style: 'currency', currency: 'MYR' });
+  }
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function formatDate(d) {
+    if (!d) return '';
+    var dt = new Date(d + 'T00:00:00');
+    return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function formatDateLong(d) {
+    if (!d) return '';
+    var dt = new Date(d + 'T00:00:00');
+    return dt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // ---------- Navigation ----------
+  document.querySelectorAll('nav button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('nav button').forEach(function (b) { b.classList.remove('active'); });
+      document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('page-' + btn.dataset.tab).classList.add('active');
+      renderAll();
+    });
+  });
+
+  // ---------- Product / theme helpers ----------
+  function productThemes(type) {
+    var set = {};
+    state.products.forEach(function (p) { if (p.type === type && p.theme) set[p.theme] = true; });
+    return Object.keys(set).sort();
+  }
+
+  function themeOptionsHtml(selected) {
+    var themes = productThemes('Stickers');
+    if (selected && selected !== '__new__' && themes.indexOf(selected) === -1) themes = themes.concat([selected]).sort();
+    return '<option value="">Select theme…</option>' +
+      themes.map(function (t) {
+        return '<option value="' + escapeHtml(t) + '"' + (t === selected ? ' selected' : '') + '>' + escapeHtml(t) + '</option>';
+      }).join('') +
+      '<option value="__new__"' + (selected === '__new__' ? ' selected' : '') + '>+ Add new theme…</option>';
+  }
+
+  function populateThemeOptions(selectEl, selected) {
+    selectEl.innerHTML = themeOptionsHtml(selected);
+  }
+
+  function refreshThemeSelect(selected) {
+    populateThemeOptions(document.getElementById('pf-theme-select'), selected);
+  }
+
+  function productLabel(p) {
+    return (p.sku ? p.sku + ' — ' : '') + p.name + (p.variant ? ' (' + p.variant + ')' : '') + ' · stock ' + p.stock;
+  }
+
+  function productOptionsHtml(selected, includeNewOption) {
+    return state.products.map(function (p) {
+      return '<option value="' + p.id + '"' + (p.id === selected ? ' selected' : '') + '>' + (p.type ? '[' + escapeHtml(p.type) + '] ' : '') + escapeHtml(p.name) + (p.variant ? ' — ' + escapeHtml(p.variant) : '') + '</option>';
+    }).join('') + (includeNewOption ? '<option value="__new__"' + (selected === '__new__' ? ' selected' : '') + '>+ Add new product…</option>' : '');
+  }
+
+  function refreshProductDropdowns() {
+    var costSel = document.getElementById('cf-product');
+    var current = costSel.value;
+    costSel.innerHTML = '<option value="">— none —</option>' + productOptionsHtml(current, true);
+    costSel.value = current;
+  }
+
+  // ================= LIGHTBOX =================
+  function openLightbox(src) {
+    if (!src) return;
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('photo-lightbox').style.display = 'flex';
+  }
+  function closeLightbox() {
+    document.getElementById('photo-lightbox').style.display = 'none';
+    document.getElementById('lightbox-img').src = '';
+  }
+  document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+  document.getElementById('photo-lightbox').addEventListener('click', function (e) {
+    if (e.target.id === 'photo-lightbox') closeLightbox();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeLightbox();
+  });
+
+  // ================= INVENTORY =================
+  var editingProductId = null;
+  var pfPhotoData = '';
+  var expandedThemes = {};
+  var adjustingStockProductId = null;
+  var STOCK_ADJUST_REASONS = {
+    wastage: 'Wastage / spillage',
+    damaged: 'Damaged',
+    recount: 'Recount correction',
+    other: 'Other'
+  };
+
+  function showPhotoPreview(dataUrl) {
+    var img = document.getElementById('pf-photo-preview');
+    img.src = dataUrl;
+    img.style.display = 'block';
+    document.getElementById('pf-photo-remove').style.display = 'inline-flex';
+  }
+  function hidePhotoPreview() {
+    var img = document.getElementById('pf-photo-preview');
+    img.style.display = 'none';
+    img.src = '';
+    document.getElementById('pf-photo-remove').style.display = 'none';
+  }
+
+  document.getElementById('pf-type').addEventListener('change', function () {
+    var isStickers = this.value === 'Stickers';
+    document.getElementById('pf-theme-wrap').style.display = isStickers ? 'block' : 'none';
+    if (isStickers) refreshThemeSelect(document.getElementById('pf-theme-select').value);
+  });
+
+  document.getElementById('pf-theme-select').addEventListener('change', function () {
+    var newInput = document.getElementById('pf-theme-new');
+    if (this.value === '__new__') {
+      newInput.style.display = 'block';
+      newInput.focus();
+    } else {
+      newInput.style.display = 'none';
+      newInput.value = '';
+    }
+  });
+
+  document.getElementById('pf-photo-file').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var maxDim = 900;
+        var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        pfPhotoData = canvas.toDataURL('image/jpeg', 0.85);
+        showPhotoPreview(pfPhotoData);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById('pf-photo-remove').addEventListener('click', function () {
+    pfPhotoData = '';
+    document.getElementById('pf-photo-file').value = '';
+    hidePhotoPreview();
+  });
+
+  document.getElementById('pf-photo-preview').addEventListener('click', function () {
+    openLightbox(pfPhotoData);
+  });
+
+  document.getElementById('pf-fx-apply').addEventListener('click', function () {
+    var amt = Number(document.getElementById('pf-fx-amount').value) || 0;
+    var rate = Number(document.getElementById('pf-fx-rate').value) || 0;
+    if (!amt || !rate) { alert('Enter the foreign amount and exchange rate first.'); return; }
+    document.getElementById('pf-cost').value = (amt * rate).toFixed(2);
+  });
+
+  document.getElementById('btn-add-product').addEventListener('click', function () {
+    editingProductId = null;
+    clearProductForm();
+    document.getElementById('pf-also-cost-wrap').style.display = 'flex';
+    document.getElementById('product-form-wrap').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-product').addEventListener('click', function () {
+    document.getElementById('product-form-wrap').style.display = 'none';
+  });
+
+  function clearProductForm() {
+    document.getElementById('pf-name').value = '';
+    document.getElementById('pf-variant').value = '';
+    document.getElementById('pf-sku').value = '';
+    document.getElementById('pf-type').value = 'Tumbler';
+    document.getElementById('pf-theme-wrap').style.display = 'none';
+    refreshThemeSelect('');
+    document.getElementById('pf-theme-new').style.display = 'none';
+    document.getElementById('pf-theme-new').value = '';
+    document.getElementById('pf-cost').value = '';
+    document.getElementById('pf-price').value = '';
+    document.getElementById('pf-stock').value = '';
+    document.getElementById('pf-threshold').value = 5;
+    document.getElementById('pf-photo-file').value = '';
+    pfPhotoData = '';
+    hidePhotoPreview();
+    document.getElementById('pf-also-cost').checked = false;
+    document.getElementById('pf-fx-amount').value = '';
+    document.getElementById('pf-fx-currency').value = 'CNY';
+    document.getElementById('pf-fx-rate').value = '';
+    document.getElementById('pf-source-platform').value = '';
+    document.getElementById('pf-source-link').value = '';
+  }
+
+  function currentThemeValue() {
+    var sel = document.getElementById('pf-theme-select').value;
+    return sel === '__new__' ? document.getElementById('pf-theme-new').value.trim() : sel;
+  }
+
+  document.getElementById('btn-save-product').addEventListener('click', function () {
+    var name = document.getElementById('pf-name').value.trim();
+    if (!name) { alert('Product name is required.'); return; }
+    var type = document.getElementById('pf-type').value;
+    var theme = type === 'Stickers' ? currentThemeValue() : '';
+    var cost = Number(document.getElementById('pf-cost').value) || 0;
+    var stock = Number(document.getElementById('pf-stock').value) || 0;
+    var data = {
+      name: name,
+      variant: document.getElementById('pf-variant').value.trim(),
+      sku: document.getElementById('pf-sku').value.trim(),
+      type: type,
+      theme: theme,
+      image: pfPhotoData,
+      cost: cost,
+      price: Number(document.getElementById('pf-price').value) || 0,
+      stock: stock,
+      threshold: Number(document.getElementById('pf-threshold').value) || 0,
+      sourcePlatform: document.getElementById('pf-source-platform').value.trim(),
+      sourceLink: document.getElementById('pf-source-link').value.trim()
+    };
+    var newProductId = null;
+    if (editingProductId) {
+      var p = state.products.find(function (x) { return x.id === editingProductId; });
+      Object.assign(p, data);
+    } else {
+      data.id = uid();
+      newProductId = data.id;
+      state.products.push(data);
+    }
+    if (newProductId && document.getElementById('pf-also-cost').checked && cost > 0 && stock > 0) {
+      state.costs.push({
+        id: uid(),
+        category: 'materials',
+        date: todayISO(),
+        amount: cost * stock,
+        productId: newProductId,
+        description: 'Initial stock for ' + name + (data.variant ? ' — ' + data.variant : '') + ' (' + stock + ' × ' + money(cost) + ')'
+      });
+    }
+    save();
+    document.getElementById('product-form-wrap').style.display = 'none';
+    renderAll();
+  });
+
+  function editProduct(id) {
+    var p = state.products.find(function (x) { return x.id === id; });
+    if (!p) return;
+    editingProductId = id;
+    document.getElementById('pf-name').value = p.name;
+    document.getElementById('pf-variant').value = p.variant || '';
+    document.getElementById('pf-sku').value = p.sku || '';
+    document.getElementById('pf-type').value = p.type || 'Tumbler';
+    document.getElementById('pf-theme-wrap').style.display = (p.type === 'Stickers') ? 'block' : 'none';
+    refreshThemeSelect(p.theme || '');
+    document.getElementById('pf-theme-new').style.display = 'none';
+    document.getElementById('pf-theme-new').value = '';
+    document.getElementById('pf-cost').value = p.cost;
+    document.getElementById('pf-price').value = p.price;
+    document.getElementById('pf-stock').value = p.stock;
+    document.getElementById('pf-threshold').value = p.threshold;
+    pfPhotoData = p.image || '';
+    if (pfPhotoData) showPhotoPreview(pfPhotoData); else hidePhotoPreview();
+    document.getElementById('pf-also-cost-wrap').style.display = 'none';
+    document.getElementById('pf-source-platform').value = p.sourcePlatform || '';
+    document.getElementById('pf-source-link').value = p.sourceLink || '';
+    document.getElementById('product-form-wrap').style.display = 'block';
+  }
+
+  function deleteProduct(id) {
+    if (!confirm('Delete this product? This cannot be undone.')) return;
+    state.products = state.products.filter(function (p) { return p.id !== id; });
+    save();
+    renderAll();
+  }
+
+  function isUrl(str) {
+    return /^https?:\/\//i.test((str || '').trim());
+  }
+
+  function sourceLineHtml(p) {
+    if (!p.sourcePlatform && !p.sourceLink) return '';
+    var parts = [];
+    if (p.sourcePlatform) parts.push(escapeHtml(p.sourcePlatform));
+    if (p.sourceLink) {
+      parts.push(isUrl(p.sourceLink)
+        ? '<a href="' + escapeHtml(p.sourceLink) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(p.sourceLink) + '</a>'
+        : escapeHtml(p.sourceLink));
+    }
+    return '<div class="muted" style="font-size:12px;">🛒 ' + parts.join(' — ') + '</div>';
+  }
+
+  function productRowHtml(p) {
+    var low = p.stock <= p.threshold;
+    var margin = p.price - p.cost;
+    var thumb = p.image
+      ? '<img class="thumb" src="' + p.image + '">'
+      : '<div class="thumb-placeholder">' + escapeHtml((p.name || '?').charAt(0).toUpperCase()) + '</div>';
+    var row = '<tr>' +
+      '<td><div style="display:flex; align-items:center; gap:8px;">' + thumb +
+      '<div><div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' + (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '') + sourceLineHtml(p) + '</div></div></td>' +
+      '<td class="muted">' + (escapeHtml(p.sku) || '—') + '</td>' +
+      '<td>' + money(p.cost) + '</td>' +
+      '<td>' + money(p.price) + '</td>' +
+      '<td style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + money(margin) + '</td>' +
+      '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '">' + p.stock + (low ? ' ⚠ low' : '') + '</span></td>' +
+      '<td style="text-align:right; white-space:nowrap;">' +
+      '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
+      '<span class="row-actions-sep">·</span>' +
+      '<button class="btn-text" data-edit-product="' + p.id + '">Edit</button>' +
+      '<span class="row-actions-sep">·</span>' +
+      '<button class="btn-text danger" data-delete-product="' + p.id + '">Delete</button>' +
+      '</td></tr>';
+    if (adjustingStockProductId === p.id) {
+      row += '<tr><td colspan="7" style="background:#fafbfd;">' + renderStockAdjustPanel(p) + '</td></tr>';
+    }
+    return row;
+  }
+
+  function renderStockAdjustPanel(p) {
+    var reasonOptions = Object.keys(STOCK_ADJUST_REASONS).map(function (key) {
+      return '<option value="' + key + '">' + STOCK_ADJUST_REASONS[key] + '</option>';
+    }).join('');
+    return '<div class="order-edit-grid" style="border-top:none; padding-top:2px; margin-top:0;">' +
+        '<div class="field-block"><div class="field-label" style="margin-bottom:2px;">Current stock</div><div style="font-size:13px;">' + p.stock + '</div></div>' +
+        '<div class="field-block"><label class="field-label">New stock quantity</label><input type="number" min="0" id="sa-newstock-' + p.id + '" data-product-id="' + p.id + '" class="sa-newstock-input" value="' + p.stock + '"></div>' +
+        '<div class="field-block"><label class="field-label">Reason</label><select id="sa-reason-' + p.id + '">' + reasonOptions + '</select></div>' +
+        '<div class="field-block checkbox-row" id="sa-logcost-wrap-' + p.id + '" style="padding-top:18px; display:none;"><input type="checkbox" id="sa-logcost-' + p.id + '" checked><label for="sa-logcost-' + p.id + '">Log the lost value as a Cost entry</label></div>' +
+      '</div>' +
+      '<div id="sa-restock-hint-' + p.id + '" class="muted" style="font-size:12px; display:none; margin:-4px 0 4px;">Restocking with a purchase? Log it from the Costs tab instead — pick this product and enter the quantity, and stock updates automatically.</div>' +
+      '<div class="form-actions" style="margin-top:10px;">' +
+        '<button class="btn btn-primary btn-small" data-save-stock-adjust="' + p.id + '">Save</button> ' +
+        '<button class="btn btn-secondary btn-small" data-cancel-stock-adjust="' + p.id + '">Cancel</button>' +
+      '</div>';
+  }
+
+  function updateStockAdjustBlocks(id) {
+    var p = state.products.find(function (x) { return x.id === id; });
+    var input = document.getElementById('sa-newstock-' + id);
+    var logCostWrap = document.getElementById('sa-logcost-wrap-' + id);
+    var hint = document.getElementById('sa-restock-hint-' + id);
+    if (!p || !input || !logCostWrap || !hint) return;
+    var newVal = Number(input.value);
+    if (isNaN(newVal) || newVal === p.stock) {
+      logCostWrap.style.display = 'none';
+      hint.style.display = 'none';
+      return;
+    }
+    if (newVal > p.stock) {
+      logCostWrap.style.display = 'none';
+      hint.style.display = 'block';
+    } else {
+      logCostWrap.style.display = 'flex';
+      hint.style.display = 'none';
+    }
+  }
+
+  document.getElementById('inventory-content').addEventListener('input', function (e) {
+    if (e.target.classList.contains('sa-newstock-input')) {
+      updateStockAdjustBlocks(e.target.getAttribute('data-product-id'));
+    }
+  });
+
+  function saveStockAdjustment(id) {
+    var p = state.products.find(function (x) { return x.id === id; });
+    if (!p) return;
+    var newStock = Number(document.getElementById('sa-newstock-' + id).value);
+    if (isNaN(newStock) || newStock < 0) { alert('Enter a valid stock quantity.'); return; }
+    var oldStock = p.stock;
+    var diff = newStock - oldStock;
+    var reason = document.getElementById('sa-reason-' + id).value;
+    p.stock = newStock;
+    if (diff < 0) {
+      var lost = -diff;
+      var logCostEl = document.getElementById('sa-logcost-' + id);
+      var logCost = logCostEl && logCostEl.checked;
+      if (logCost) {
+        state.costs.push({
+          id: uid(),
+          category: 'wastage',
+          date: todayISO(),
+          amount: lost * p.cost,
+          productId: p.id,
+          description: (STOCK_ADJUST_REASONS[reason] || reason) + ' — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + lost + ' units)'
+        });
+      }
+    }
+    adjustingStockProductId = null;
+    save();
+    renderAll();
+  }
+
+  function renderInventoryTable(title, items, groupByTheme) {
+    if (items.length === 0) {
+      return '<div class="card" style="margin-bottom:14px;">' +
+        '<div style="font-weight:600; margin-bottom:6px;">' + escapeHtml(title) + ' (0)</div>' +
+        '<div class="empty">No ' + escapeHtml(title.toLowerCase()) + ' yet.</div></div>';
+    }
+    var sorted = items.slice().sort(function (a, b) {
+      var tha = a.theme || '', thb = b.theme || '';
+      if (groupByTheme && tha !== thb) return tha.localeCompare(thb);
+      return a.name.localeCompare(b.name);
+    });
+    var rowsHtml = '';
+    if (groupByTheme) {
+      var groups = [];
+      var groupIndex = {};
+      sorted.forEach(function (p) {
+        var key = p.theme || '';
+        if (!(key in groupIndex)) {
+          groupIndex[key] = groups.length;
+          groups.push({ theme: key, items: [] });
+        }
+        groups[groupIndex[key]].items.push(p);
+      });
+      groups.forEach(function (g) {
+        var isOpen = !!expandedThemes[g.theme];
+        rowsHtml += '<tr><td colspan="7" style="background:#fafbfd; padding:0;">' +
+          '<button type="button" class="theme-toggle" data-toggle-theme="' + escapeHtml(g.theme) + '">' +
+          '<span>' + (isOpen ? '▾' : '▸') + ' ' + escapeHtml(g.theme || 'No theme set') + '</span>' +
+          '<span class="muted">' + g.items.length + '</span>' +
+          '</button></td></tr>';
+        if (isOpen) {
+          g.items.forEach(function (p) { rowsHtml += productRowHtml(p); });
+        }
+      });
+    } else {
+      sorted.forEach(function (p) { rowsHtml += productRowHtml(p); });
+    }
+    return '<div class="card" style="margin-bottom:14px; overflow-x:auto;">' +
+      '<div style="font-weight:600; margin-bottom:10px;">' + escapeHtml(title) + ' (' + items.length + ')</div>' +
+      '<table><thead><tr><th>Product</th><th>SKU</th><th>Cost</th><th>Price</th><th>Margin</th><th>Stock</th><th></th></tr></thead>' +
+      '<tbody>' + rowsHtml + '</tbody></table></div>';
+  }
+
+  function renderInventory() {
+    var container = document.getElementById('inventory-content');
+    if (state.products.length === 0) {
+      container.innerHTML = '<div class="card"><div class="empty">No products yet. Add your tumbler, each sticker code, and any other supplies above.</div></div>';
+      return;
+    }
+    var known = {};
+    PRODUCT_TYPES.forEach(function (t) { known[t] = true; });
+    var html = PRODUCT_TYPES.map(function (type) {
+      var items = state.products.filter(function (p) { return p.type === type; });
+      return renderInventoryTable(type, items, type === 'Stickers');
+    }).join('');
+    var stray = state.products.filter(function (p) { return !known[p.type]; });
+    if (stray.length > 0) {
+      html += renderInventoryTable('Uncategorized — edit these and pick a Type', stray, false);
+    }
+    container.innerHTML = html;
+  }
+
+  document.getElementById('inventory-content').addEventListener('click', function (e) {
+    if (e.target.classList.contains('thumb')) {
+      openLightbox(e.target.getAttribute('src'));
+      return;
+    }
+    var editId = e.target.getAttribute('data-edit-product');
+    var delId = e.target.getAttribute('data-delete-product');
+    var adjustId = e.target.getAttribute('data-adjust-stock');
+    var saveAdjustId = e.target.getAttribute('data-save-stock-adjust');
+    var cancelAdjustId = e.target.getAttribute('data-cancel-stock-adjust');
+    var toggleBtn = e.target.closest ? e.target.closest('[data-toggle-theme]') : null;
+    if (editId) editProduct(editId);
+    if (delId) deleteProduct(delId);
+    if (adjustId) {
+      adjustingStockProductId = (adjustingStockProductId === adjustId) ? null : adjustId;
+      renderInventory();
+    }
+    if (saveAdjustId) saveStockAdjustment(saveAdjustId);
+    if (cancelAdjustId) {
+      adjustingStockProductId = null;
+      renderInventory();
+    }
+    if (toggleBtn) {
+      var theme = toggleBtn.getAttribute('data-toggle-theme');
+      expandedThemes[theme] = !expandedThemes[theme];
+      renderInventory();
+    }
+  });
+
+  // ================= COSTS =================
+  var editingCostId = null;
+  var draftCostItems = [];
+
+  document.getElementById('btn-add-cost').addEventListener('click', function () {
+    editingCostId = null;
+    clearCostForm();
+    refreshProductDropdowns();
+    updateCostQtyVisibility();
+    document.getElementById('cost-form-wrap').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-cost').addEventListener('click', function () {
+    document.getElementById('cost-form-wrap').style.display = 'none';
+  });
+
+  function clearCostForm() {
+    document.getElementById('cf-category').value = 'materials';
+    document.getElementById('cf-date').value = todayISO();
+    document.getElementById('cf-amount').value = '';
+    document.getElementById('cf-amount').readOnly = false;
+    document.getElementById('cf-amount-label').textContent = 'Amount (in RM)';
+    document.getElementById('cf-product').value = '';
+    document.getElementById('cf-description').value = '';
+    document.getElementById('cf-fx-amount').value = '';
+    document.getElementById('cf-fx-currency').value = 'CNY';
+    document.getElementById('cf-fx-rate').value = '';
+    document.getElementById('cf-qty').value = '';
+    document.getElementById('cf-updatecost').checked = true;
+    document.getElementById('cf-newp-name').value = '';
+    document.getElementById('cf-newp-type').value = 'Tumbler';
+    document.getElementById('cf-newp-theme-wrap').style.display = 'none';
+    document.getElementById('cf-newp-theme-new').style.display = 'none';
+    document.getElementById('cf-newp-theme-new').value = '';
+    document.getElementById('cf-newp-variant').value = '';
+    document.getElementById('cf-newp-sku').value = '';
+    document.getElementById('cf-newp-price').value = '';
+    document.getElementById('cf-newp-threshold').value = 5;
+    document.getElementById('cf-extra-goods').value = '';
+    document.getElementById('cf-extra-sst').value = '';
+    document.getElementById('cf-extra-fee').value = '';
+    document.getElementById('cf-multi-toggle').checked = false;
+    document.getElementById('cf-multi-updatecost').checked = true;
+    document.getElementById('cf-single-wrap').style.display = 'contents';
+    document.getElementById('cf-multi-wrap').style.display = 'none';
+    draftCostItems = [];
+    document.getElementById('cost-items').innerHTML = '';
+  }
+
+  // Quantity/cost-update/new-product fields only make sense when creating a NEW cost entry
+  // tied to a product — editing an existing entry never re-touches stock, so we don't show
+  // them then (avoids silently double-adjusting stock if someone edits an old cost's amount later).
+  function updateCostQtyVisibility() {
+    var val = document.getElementById('cf-product').value;
+    var isNewProduct = val === '__new__';
+    var showQty = !!val && !editingCostId;
+    document.getElementById('cf-qty-wrap').style.display = showQty ? 'block' : 'none';
+    document.getElementById('cf-updatecost-wrap').style.display = showQty ? 'flex' : 'none';
+    document.getElementById('cf-newproduct-wrap').style.display = (isNewProduct && !editingCostId) ? 'block' : 'none';
+    if (isNewProduct && !editingCostId) populateThemeOptions(document.getElementById('cf-newp-theme-select'), '');
+  }
+  document.getElementById('cf-product').addEventListener('change', updateCostQtyVisibility);
+
+  document.getElementById('cf-newp-type').addEventListener('change', function () {
+    var isStickers = this.value === 'Stickers';
+    document.getElementById('cf-newp-theme-wrap').style.display = isStickers ? 'block' : 'none';
+    if (isStickers) populateThemeOptions(document.getElementById('cf-newp-theme-select'), '');
+  });
+
+  document.getElementById('cf-newp-theme-select').addEventListener('change', function () {
+    var newInput = document.getElementById('cf-newp-theme-new');
+    if (this.value === '__new__') {
+      newInput.style.display = 'block';
+      newInput.focus();
+    } else {
+      newInput.style.display = 'none';
+      newInput.value = '';
+    }
+  });
+
+  document.getElementById('cf-fx-apply').addEventListener('click', function () {
+    var amt = Number(document.getElementById('cf-fx-amount').value) || 0;
+    var rate = Number(document.getElementById('cf-fx-rate').value) || 0;
+    if (!amt || !rate) { alert('Enter the foreign amount and exchange rate first.'); return; }
+    document.getElementById('cf-amount').value = (amt * rate).toFixed(2);
+  });
+
+  document.getElementById('cf-extra-apply').addEventListener('click', function () {
+    var goods = Number(document.getElementById('cf-extra-goods').value) || 0;
+    var sst = Number(document.getElementById('cf-extra-sst').value) || 0;
+    var fee = Number(document.getElementById('cf-extra-fee').value) || 0;
+    if (!goods && !sst && !fee) { alert('Enter at least the goods cost, SST, or service fee.'); return; }
+    document.getElementById('cf-amount').value = (goods + sst + fee).toFixed(2);
+  });
+
+  // ---------- Multi-product batch items (a single payment covering several products) ----------
+  function recalcMultiAmount() {
+    if (!document.getElementById('cf-multi-toggle').checked) return;
+    var subtotal = draftCostItems.reduce(function (sum, item) {
+      return sum + (Number(item.qty) || 0) * (Number(item.unitCost) || 0);
+    }, 0);
+    var sst = Number(document.getElementById('cf-extra-sst').value) || 0;
+    var fee = Number(document.getElementById('cf-extra-fee').value) || 0;
+    document.getElementById('cf-amount').value = (subtotal + sst + fee).toFixed(2);
+  }
+  document.getElementById('cf-extra-sst').addEventListener('input', recalcMultiAmount);
+  document.getElementById('cf-extra-fee').addEventListener('input', recalcMultiAmount);
+
+  function updateCostItemSubtotal(idx) {
+    var row = document.querySelector('.cost-item-row[data-idx="' + idx + '"]');
+    var item = draftCostItems[idx];
+    if (!row || !item) return;
+    var subtotalEl = row.querySelector('.ci-subtotal');
+    if (subtotalEl) subtotalEl.textContent = 'Subtotal: ' + money((Number(item.qty) || 0) * (Number(item.unitCost) || 0));
+  }
+
+  function renderCostItems() {
+    var container = document.getElementById('cost-items');
+    container.innerHTML = draftCostItems.map(function (item, idx) {
+      var options = '<option value="">Select product…</option>' + productOptionsHtml(item.productId, !editingCostId);
+      var productSelect = '<select class="ci-product" data-idx="' + idx + '">' + options + '</select>';
+      var qtyInput = '<input class="ci-qty" type="number" min="0" step="1" value="' + escapeHtml(String(item.qty)) + '" data-idx="' + idx + '" placeholder="Qty">';
+      var costInput = '<input class="ci-unitcost" type="number" min="0" step="0.01" value="' + escapeHtml(String(item.unitCost)) + '" data-idx="' + idx + '" placeholder="Unit cost RM">';
+      var subtotal = (Number(item.qty) || 0) * (Number(item.unitCost) || 0);
+      var removeBtn = '<button type="button" class="btn-text danger" data-remove-cost-item="' + idx + '">Remove</button>';
+
+      var newProductBlock = '';
+      if (item.productId === '__new__' && item.newProduct) {
+        var np = item.newProduct;
+        newProductBlock = '<div style="grid-column: 1 / -1; margin-top:8px; padding:10px; background:#fafbfd; border-radius:6px;">' +
+          '<div class="form-grid" style="margin-bottom:0;">' +
+            '<div><label class="field-label">Product name</label><input class="ci-newp-name" data-idx="' + idx + '" value="' + escapeHtml(np.name) + '" placeholder="e.g. 700ml Tumbler"></div>' +
+            '<div><label class="field-label">Type</label><select class="ci-newp-type" data-idx="' + idx + '">' +
+              PRODUCT_TYPES.map(function (t) { return '<option value="' + t + '"' + (t === np.type ? ' selected' : '') + '>' + t + '</option>'; }).join('') +
+            '</select></div>' +
+            (np.type === 'Stickers' ? ('<div><label class="field-label">Theme</label><select class="ci-newp-theme" data-idx="' + idx + '">' + themeOptionsHtml(np.theme) + '</select>' +
+              (np.theme === '__new__' ? '<input class="ci-newp-theme-new" data-idx="' + idx + '" value="' + escapeHtml(np.themeNew || '') + '" placeholder="New theme name" style="margin-top:6px;">' : '') +
+            '</div>') : '') +
+            '<div><label class="field-label">Variant (optional)</label><input class="ci-newp-variant" data-idx="' + idx + '" value="' + escapeHtml(np.variant) + '" placeholder="e.g. Blue lid"></div>' +
+            '<div><label class="field-label">SKU (optional)</label><input class="ci-newp-sku" data-idx="' + idx + '" value="' + escapeHtml(np.sku) + '" placeholder="e.g. B003"></div>' +
+            '<div><label class="field-label">Selling price (RM, optional)</label><input class="ci-newp-price" type="number" step="0.01" min="0" data-idx="' + idx + '" value="' + escapeHtml(String(np.price)) + '"></div>' +
+            '<div><label class="field-label">Low-stock threshold</label><input class="ci-newp-threshold" type="number" min="0" data-idx="' + idx + '" value="' + escapeHtml(String(np.threshold)) + '"></div>' +
+          '</div>' +
+        '</div>';
+      }
+
+      return '<div class="cost-item-row" data-idx="' + idx + '" style="border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:8px;">' +
+        '<div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">' +
+          '<div style="flex:2 1 180px;">' + productSelect + '</div>' +
+          '<div style="flex:1 1 80px;">' + qtyInput + '</div>' +
+          '<div style="flex:1 1 110px;">' + costInput + '</div>' +
+          '<div class="muted ci-subtotal" style="flex:1 1 110px; font-size:12px;">Subtotal: ' + money(subtotal) + '</div>' +
+          removeBtn +
+        '</div>' +
+        newProductBlock +
+      '</div>';
+    }).join('');
+    recalcMultiAmount();
+  }
+
+  document.getElementById('btn-add-cost-item').addEventListener('click', function () {
+    draftCostItems.push({ productId: '', qty: '', unitCost: '', newProduct: null });
+    renderCostItems();
+  });
+
+  document.getElementById('cf-multi-toggle').addEventListener('change', function () {
+    var isMulti = this.checked;
+    document.getElementById('cf-single-wrap').style.display = isMulti ? 'none' : 'contents';
+    document.getElementById('cf-multi-wrap').style.display = isMulti ? 'block' : 'none';
+    document.getElementById('cf-amount').readOnly = isMulti;
+    document.getElementById('cf-amount-label').textContent = isMulti ? 'Amount (in RM) — auto-calculated' : 'Amount (in RM)';
+    if (isMulti) {
+      document.getElementById('cf-product').value = '';
+      updateCostQtyVisibility();
+      if (draftCostItems.length === 0) draftCostItems = [{ productId: '', qty: '', unitCost: '', newProduct: null }];
+      renderCostItems();
+    }
+  });
+
+  document.getElementById('cost-items').addEventListener('click', function (e) {
+    var idx = e.target.getAttribute('data-remove-cost-item');
+    if (idx !== null) {
+      draftCostItems.splice(Number(idx), 1);
+      renderCostItems();
+    }
+  });
+
+  document.getElementById('cost-items').addEventListener('change', function (e) {
+    var idx = e.target.getAttribute('data-idx');
+    if (idx === null) return;
+    idx = Number(idx);
+    var item = draftCostItems[idx];
+    if (!item) return;
+    if (e.target.classList.contains('ci-product')) {
+      item.productId = e.target.value;
+      if (item.productId === '__new__') {
+        item.newProduct = { name: '', type: 'Tumbler', theme: '', themeNew: '', variant: '', sku: '', price: '', threshold: 5 };
+      } else {
+        item.newProduct = null;
+        if (item.productId) {
+          var p = state.products.find(function (x) { return x.id === item.productId; });
+          if (p && !item.unitCost) item.unitCost = p.cost || '';
+        }
+      }
+      renderCostItems();
+    } else if (e.target.classList.contains('ci-newp-type')) {
+      item.newProduct.type = e.target.value;
+      if (item.newProduct.type !== 'Stickers') { item.newProduct.theme = ''; item.newProduct.themeNew = ''; }
+      renderCostItems();
+    } else if (e.target.classList.contains('ci-newp-theme')) {
+      item.newProduct.theme = e.target.value;
+      if (e.target.value !== '__new__') item.newProduct.themeNew = '';
+      renderCostItems();
+    }
+  });
+
+  document.getElementById('cost-items').addEventListener('input', function (e) {
+    var idx = e.target.getAttribute('data-idx');
+    if (idx === null) return;
+    idx = Number(idx);
+    var item = draftCostItems[idx];
+    if (!item) return;
+    if (e.target.classList.contains('ci-qty')) { item.qty = e.target.value; updateCostItemSubtotal(idx); recalcMultiAmount(); }
+    else if (e.target.classList.contains('ci-unitcost')) { item.unitCost = e.target.value; updateCostItemSubtotal(idx); recalcMultiAmount(); }
+    else if (e.target.classList.contains('ci-newp-name')) item.newProduct.name = e.target.value;
+    else if (e.target.classList.contains('ci-newp-theme-new')) item.newProduct.themeNew = e.target.value;
+    else if (e.target.classList.contains('ci-newp-variant')) item.newProduct.variant = e.target.value;
+    else if (e.target.classList.contains('ci-newp-sku')) item.newProduct.sku = e.target.value;
+    else if (e.target.classList.contains('ci-newp-price')) item.newProduct.price = e.target.value;
+    else if (e.target.classList.contains('ci-newp-threshold')) item.newProduct.threshold = e.target.value;
+  });
+
+  document.getElementById('btn-save-cost').addEventListener('click', function () {
+    var date = document.getElementById('cf-date').value || todayISO();
+    var fxAmount = Number(document.getElementById('cf-fx-amount').value) || 0;
+    var fxCurrency = document.getElementById('cf-fx-currency').value;
+    var fxRate = Number(document.getElementById('cf-fx-rate').value) || 0;
+    var sstAmount = Number(document.getElementById('cf-extra-sst').value) || 0;
+    var serviceFeeAmount = Number(document.getElementById('cf-extra-fee').value) || 0;
+    var isNewEntry = !editingCostId;
+    var isMulti = document.getElementById('cf-multi-toggle').checked;
+
+    var amount, dataItems = null, linkedProductId = null;
+
+    if (isMulti) {
+      var resolvedItems = [];
+      for (var i = 0; i < draftCostItems.length; i++) {
+        var item = draftCostItems[i];
+        var qty = Number(item.qty) || 0;
+        var unitCost = Number(item.unitCost) || 0;
+        if (!item.productId || qty <= 0) continue;
+        var resolvedId = item.productId;
+        if (item.productId === '__new__') {
+          if (!isNewEntry) continue;
+          var np = item.newProduct;
+          var name = (np.name || '').trim();
+          if (!name) { alert('Enter a name for the new product in line ' + (i + 1) + '.'); return; }
+          var theme = '';
+          if (np.type === 'Stickers') theme = np.theme === '__new__' ? (np.themeNew || '').trim() : np.theme;
+          var newProd = {
+            id: uid(), name: name, variant: (np.variant || '').trim(), sku: (np.sku || '').trim(),
+            type: np.type, theme: theme, image: '', cost: 0,
+            price: Number(np.price) || 0, stock: 0, threshold: Number(np.threshold) || 5,
+            sourcePlatform: '', sourceLink: ''
+          };
+          state.products.push(newProd);
+          resolvedId = newProd.id;
+        }
+        resolvedItems.push({ productId: resolvedId, qty: qty, unitCost: unitCost });
+      }
+      if (resolvedItems.length === 0) { alert('Add at least one product line with a product and quantity.'); return; }
+      var itemsSubtotal = resolvedItems.reduce(function (s, it) { return s + it.qty * it.unitCost; }, 0);
+      amount = itemsSubtotal + sstAmount + serviceFeeAmount;
+      dataItems = resolvedItems;
+
+      if (isNewEntry) {
+        var updateCosts = document.getElementById('cf-multi-updatecost').checked;
+        resolvedItems.forEach(function (it) {
+          var p = state.products.find(function (x) { return x.id === it.productId; });
+          if (!p) return;
+          p.stock += it.qty;
+          if (updateCosts) {
+            var lineSubtotal = it.qty * it.unitCost;
+            var share = itemsSubtotal > 0 ? (lineSubtotal / itemsSubtotal) * (sstAmount + serviceFeeAmount) : 0;
+            p.cost = Math.round(((lineSubtotal + share) / it.qty) * 100) / 100;
+          }
+        });
+      }
+    } else {
+      amount = Number(document.getElementById('cf-amount').value) || 0;
+      var selectedProductVal = document.getElementById('cf-product').value;
+      var newlyCreatedProduct = null;
+
+      if (isNewEntry && selectedProductVal === '__new__') {
+        var newName = document.getElementById('cf-newp-name').value.trim();
+        if (!newName) { alert('Enter a name for the new product.'); return; }
+        var newType = document.getElementById('cf-newp-type').value;
+        var newTheme = '';
+        if (newType === 'Stickers') {
+          var themeSel = document.getElementById('cf-newp-theme-select').value;
+          newTheme = themeSel === '__new__' ? document.getElementById('cf-newp-theme-new').value.trim() : themeSel;
+        }
+        newlyCreatedProduct = {
+          id: uid(),
+          name: newName,
+          variant: document.getElementById('cf-newp-variant').value.trim(),
+          sku: document.getElementById('cf-newp-sku').value.trim(),
+          type: newType,
+          theme: newTheme,
+          image: '',
+          cost: 0,
+          price: Number(document.getElementById('cf-newp-price').value) || 0,
+          stock: 0,
+          threshold: Number(document.getElementById('cf-newp-threshold').value) || 5,
+          sourcePlatform: '',
+          sourceLink: ''
+        };
+        state.products.push(newlyCreatedProduct);
+      }
+
+      linkedProductId = newlyCreatedProduct
+        ? newlyCreatedProduct.id
+        : (selectedProductVal && selectedProductVal !== '__new__' ? selectedProductVal : null);
+    }
+
+    var data = {
+      category: document.getElementById('cf-category').value,
+      date: date,
+      amount: amount,
+      productId: isMulti ? null : linkedProductId,
+      items: dataItems,
+      description: document.getElementById('cf-description').value.trim(),
+      originalAmount: fxAmount || null,
+      originalCurrency: fxAmount ? fxCurrency : null,
+      exchangeRate: fxAmount ? fxRate : null,
+      sstAmount: sstAmount || null,
+      serviceFeeAmount: serviceFeeAmount || null
+    };
+    if (editingCostId) {
+      var c = state.costs.find(function (x) { return x.id === editingCostId; });
+      Object.assign(c, data);
+    } else {
+      data.id = uid();
+      state.costs.push(data);
+    }
+    // Restocking (single-product mode): a new cost entry linked to a product (existing or just
+    // created above), with a quantity, bumps that product's stock automatically — so restocking
+    // never needs a second step in Inventory. (Multi-product mode does its own stock update above.)
+    if (isNewEntry && !isMulti && linkedProductId) {
+      var qty2 = Number(document.getElementById('cf-qty').value) || 0;
+      if (qty2 > 0) {
+        var linkedProduct = state.products.find(function (x) { return x.id === linkedProductId; });
+        if (linkedProduct) {
+          linkedProduct.stock += qty2;
+          if (document.getElementById('cf-updatecost').checked && amount > 0) {
+            linkedProduct.cost = Math.round((amount / qty2) * 100) / 100;
+          }
+        }
+      }
+    }
+    save();
+    document.getElementById('cost-form-wrap').style.display = 'none';
+    renderAll();
+  });
+
+  function editCost(id) {
+    var c = state.costs.find(function (x) { return x.id === id; });
+    if (!c) return;
+    editingCostId = id;
+    refreshProductDropdowns();
+    document.getElementById('cf-category').value = c.category;
+    document.getElementById('cf-date').value = c.date;
+    document.getElementById('cf-amount').value = c.amount;
+    document.getElementById('cf-description').value = c.description || '';
+    document.getElementById('cf-fx-amount').value = c.originalAmount || '';
+    document.getElementById('cf-fx-currency').value = c.originalCurrency || 'CNY';
+    document.getElementById('cf-fx-rate').value = c.exchangeRate || '';
+    document.getElementById('cf-extra-goods').value = '';
+    document.getElementById('cf-extra-sst').value = c.sstAmount || '';
+    document.getElementById('cf-extra-fee').value = c.serviceFeeAmount || '';
+
+    if (c.items && c.items.length) {
+      document.getElementById('cf-multi-toggle').checked = true;
+      document.getElementById('cf-single-wrap').style.display = 'none';
+      document.getElementById('cf-multi-wrap').style.display = 'block';
+      document.getElementById('cf-amount').readOnly = true;
+      document.getElementById('cf-amount-label').textContent = 'Amount (in RM) — auto-calculated';
+      document.getElementById('cf-product').value = '';
+      draftCostItems = c.items.map(function (it) {
+        return { productId: it.productId, qty: it.qty, unitCost: it.unitCost, newProduct: null };
+      });
+      renderCostItems();
+      document.getElementById('cf-amount').value = c.amount;
+    } else {
+      document.getElementById('cf-multi-toggle').checked = false;
+      document.getElementById('cf-single-wrap').style.display = 'contents';
+      document.getElementById('cf-multi-wrap').style.display = 'none';
+      document.getElementById('cf-amount').readOnly = false;
+      document.getElementById('cf-amount-label').textContent = 'Amount (in RM)';
+      document.getElementById('cf-product').value = c.productId || '';
+      draftCostItems = [];
+    }
+    updateCostQtyVisibility();
+    document.getElementById('cost-form-wrap').style.display = 'block';
+  }
+
+  function deleteCost(id) {
+    if (!confirm('Delete this cost entry?')) return;
+    state.costs = state.costs.filter(function (c) { return c.id !== id; });
+    save();
+    renderAll();
+  }
+
+  function renderCosts() {
+    var tbody = document.querySelector('#cost-table tbody');
+    var empty = document.getElementById('cost-empty');
+    var totalEl = document.getElementById('cost-total');
+    if (state.costs.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      totalEl.textContent = '';
+      return;
+    }
+    empty.style.display = 'none';
+    var sorted = state.costs.slice().sort(function (a, b) {
+      var dateCmp = b.date.localeCompare(a.date);
+      if (dateCmp !== 0) return dateCmp;
+      // Same day — break ties by when the entry was actually created (id starts with a timestamp),
+      // so the most recently added entry (including ones logged from Inventory restock/adjust) shows first.
+      return (b.id || '').localeCompare(a.id || '');
+    });
+    tbody.innerHTML = sorted.map(function (c) {
+      var productCell;
+      if (c.items && c.items.length) {
+        var names = c.items.map(function (it) {
+          var p = state.products.find(function (x) { return x.id === it.productId; });
+          return escapeHtml(p ? p.name : '?');
+        });
+        productCell = (names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) + ' more' : names.join(', ')) +
+          '<div class="muted" style="font-size:11px;">' + names.length + ' products</div>';
+      } else {
+        var product = state.products.find(function (p) { return p.id === c.productId; });
+        productCell = product ? escapeHtml(product.name) : '—';
+      }
+      return '<tr>' +
+        '<td style="white-space:nowrap;">' + formatDate(c.date) + '</td>' +
+        '<td style="text-transform:capitalize;">' + escapeHtml(c.category.replace('_', ' ')) + '</td>' +
+        '<td class="muted">' + (escapeHtml(c.description) || '—') + '</td>' +
+        '<td class="muted">' + productCell + '</td>' +
+        '<td>' + money(c.amount) +
+          (c.originalAmount ? '<div class="muted" style="font-size:11px;">' + escapeHtml(c.originalCurrency) + ' ' + Number(c.originalAmount).toFixed(2) + ' @ ' + c.exchangeRate + '</div>' : '') +
+          ((c.sstAmount || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">incl. ' + [c.sstAmount ? 'SST ' + money(c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + '</div>' : '') +
+        '</td>' +
+        '<td style="text-align:right; white-space:nowrap;">' +
+        '<button class="btn-text" data-edit-cost="' + c.id + '">Edit</button> ' +
+        '<button class="btn-text danger" data-delete-cost="' + c.id + '">Delete</button>' +
+        '</td></tr>';
+    }).join('');
+    var total = state.costs.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+    totalEl.textContent = 'Total: ' + money(total);
+  }
+
+  document.querySelector('#cost-table tbody').addEventListener('click', function (e) {
+    var editId = e.target.getAttribute('data-edit-cost');
+    var delId = e.target.getAttribute('data-delete-cost');
+    if (editId) editCost(editId);
+    if (delId) deleteCost(delId);
+  });
+
+  // ================= ORDERS =================
+  var draftItems = [];
+  var editingOrderId = null;
+
+  document.getElementById('btn-add-order').addEventListener('click', function () {
+    editingOrderId = null;
+    clearOrderForm();
+    document.getElementById('order-form-title').textContent = 'New order';
+    document.getElementById('order-form-wrap').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-order').addEventListener('click', function () {
+    editingOrderId = null;
+    document.getElementById('order-form-wrap').style.display = 'none';
+  });
+  document.getElementById('of-estimated-date-clear').addEventListener('click', function () {
+    document.getElementById('of-estimated-date').value = '';
+  });
+
+  function clearOrderForm() {
+    document.getElementById('of-buyer-name').value = '';
+    document.getElementById('of-buyer-handle').value = '';
+    document.getElementById('of-buyer-telegram').value = '';
+    document.getElementById('of-date').value = todayISO();
+    document.getElementById('of-status').value = 'pending';
+    document.getElementById('of-estimated-date').value = '';
+    document.getElementById('of-ship-to').value = '';
+    document.getElementById('of-postcode').value = '';
+    document.getElementById('of-shipping-zone').value = 'west_malaysia';
+    document.getElementById('of-shipping-weight').value = '';
+    document.getElementById('of-shipping').value = 0;
+    document.getElementById('of-shipping-cost').value = 0;
+    document.getElementById('of-tracking').value = '';
+    document.getElementById('of-discount').value = 0;
+    document.getElementById('of-notes').value = '';
+    draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
+    renderDraftItems();
+  }
+
+  function renderDraftItems() {
+    var container = document.getElementById('order-items');
+    container.innerHTML = draftItems.map(function (line, idx) {
+      var typeOptions = PRODUCT_TYPES.map(function (t) {
+        return '<option value="' + t + '"' + (t === line.type ? ' selected' : '') + '>' + t + '</option>';
+      }).join('');
+      var typeSelect = '<select class="di-type" data-idx="' + idx + '"><option value="">Type…</option>' + typeOptions + '</select>';
+
+      var themeSelect = '';
+      if (line.type === 'Stickers') {
+        var themes = productThemes('Stickers');
+        var themeOptions = themes.map(function (th) {
+          return '<option value="' + escapeHtml(th) + '"' + (th === line.theme ? ' selected' : '') + '>' + escapeHtml(th) + '</option>';
+        }).join('');
+        themeSelect = '<select class="di-theme" data-idx="' + idx + '"><option value="">Sticker theme…</option>' + themeOptions + '</select>';
+      }
+
+      var readyForProduct = line.type && (line.type !== 'Stickers' || line.theme);
+      var productSelectHtml;
+      if (readyForProduct) {
+        var opts = state.products.filter(function (p) {
+          if (p.type !== line.type) return false;
+          if (line.type === 'Stickers' && p.theme !== line.theme) return false;
+          return true;
+        }).map(function (p) {
+          return '<option value="' + p.id + '"' + (p.id === line.productId ? ' selected' : '') + '>' + escapeHtml(productLabel(p)) + '</option>';
+        }).join('');
+        productSelectHtml = '<select class="di-product" data-idx="' + idx + '"><option value="">Select item…</option>' + opts + '</select>';
+      } else {
+        productSelectHtml = '<select class="di-product" data-idx="' + idx + '" disabled><option value="">' + (line.type ? 'Select theme first' : 'Select type first') + '</option></select>';
+      }
+
+      return '<div class="item-line" data-idx="' + idx + '">' +
+        typeSelect + themeSelect + productSelectHtml +
+        '<input class="di-qty" type="number" min="1" value="' + line.qty + '" data-idx="' + idx + '" placeholder="Qty">' +
+        '<input class="di-price" type="number" step="0.01" min="0" value="' + line.unitPrice + '" data-idx="' + idx + '" placeholder="Unit RM">' +
+        '<button class="btn-text danger" data-remove-line="' + idx + '">Remove</button>' +
+        '</div>';
+    }).join('');
+    updateDraftTotal();
+  }
+
+  document.getElementById('btn-add-item').addEventListener('click', function () {
+    draftItems.push({ type: '', theme: '', productId: '', qty: 1, unitPrice: '' });
+    renderDraftItems();
+  });
+
+  document.getElementById('order-items').addEventListener('click', function (e) {
+    var idx = e.target.getAttribute('data-remove-line');
+    if (idx !== null) {
+      draftItems.splice(Number(idx), 1);
+      renderDraftItems();
+    }
+  });
+
+  document.getElementById('order-items').addEventListener('change', function (e) {
+    var idx = e.target.getAttribute('data-idx');
+    if (idx === null) return;
+    idx = Number(idx);
+    if (e.target.classList.contains('di-type')) {
+      draftItems[idx].type = e.target.value;
+      draftItems[idx].theme = '';
+      draftItems[idx].productId = '';
+      renderDraftItems();
+    } else if (e.target.classList.contains('di-theme')) {
+      draftItems[idx].theme = e.target.value;
+      draftItems[idx].productId = '';
+      renderDraftItems();
+    } else if (e.target.classList.contains('di-product')) {
+      draftItems[idx].productId = e.target.value;
+      var p = state.products.find(function (x) { return x.id === e.target.value; });
+      if (p && !draftItems[idx].unitPrice) draftItems[idx].unitPrice = p.price;
+      renderDraftItems();
+    } else if (e.target.classList.contains('di-qty')) {
+      draftItems[idx].qty = e.target.value;
+      updateDraftTotal();
+    } else if (e.target.classList.contains('di-price')) {
+      draftItems[idx].unitPrice = e.target.value;
+      updateDraftTotal();
+    }
+  });
+
+  document.getElementById('order-items').addEventListener('input', function (e) {
+    var idx = e.target.getAttribute('data-idx');
+    if (idx === null) return;
+    idx = Number(idx);
+    if (e.target.classList.contains('di-qty')) draftItems[idx].qty = e.target.value;
+    if (e.target.classList.contains('di-price')) draftItems[idx].unitPrice = e.target.value;
+    updateDraftTotal();
+  });
+
+  function updateDraftTotal() {
+    var itemsTotal = draftItems.reduce(function (s, l) { return s + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0); }, 0);
+    var shipping = Number(document.getElementById('of-shipping').value) || 0;
+    var discount = Number(document.getElementById('of-discount').value) || 0;
+    document.getElementById('order-draft-total').textContent =
+      'Items total: ' + money(itemsTotal) + ' + shipping ' + money(shipping) + ' − discount ' + money(discount) + ' = ' + money(itemsTotal + shipping - discount);
+    renderShippingSuggestion();
+  }
+
+  // ---- Shipping zone rules ----
+  // 西马 (West Malaysia): always free to the customer; RM7 courier cost absorbed as your cost, no weight surcharge.
+  // 东马 (East Malaysia): free once order subtotal hits RM100; below that, charge the customer the actual
+  //   weight-based courier rate (pass-through, no markup) — same table used for your own cost either way.
+  // 新加坡 (Singapore): never free; always the weight-based courier rate in SGD, converted to RM (pass-through).
+  var EAST_MY_WEIGHT_TIERS = [
+    { maxKg: 1, rm: 13.70 },
+    { maxKg: 2, rm: 20.60 },
+    { maxKg: 3, rm: 37.90 }
+  ];
+  var SGP_WEIGHT_TIERS_SGD = [
+    { maxKg: 1, sgd: 22.80 },
+    { maxKg: 2, sgd: 30.05 },
+    { maxKg: 3, sgd: 36.20 }
+  ];
+  var DEFAULT_SGD_RATE = 3.4;
+
+  function lookupWeightTier(tiers, weightKg) {
+    if (!weightKg || weightKg <= 0) return null;
+    for (var i = 0; i < tiers.length; i++) {
+      if (weightKg <= tiers[i].maxKg) return tiers[i];
+    }
+    return null; // over the heaviest tier on file
+  }
+
+  function computeShippingSuggestion(zone, weightKg, subtotal, sgdRate) {
+    if (zone === 'west_malaysia') {
+      return { ok: true, fee: 0, cost: 7, note: 'Always free for the customer — RM7.00 courier cost is absorbed as your cost.' };
+    }
+    if (zone === 'east_malaysia') {
+      var tier = lookupWeightTier(EAST_MY_WEIGHT_TIERS, weightKg);
+      if (!tier) {
+        return { ok: false, note: (weightKg > 3) ? 'Over 3kg — no rate on file, enter shipping fee/cost manually.' : 'Enter package weight to calculate.' };
+      }
+      if (subtotal >= 100) {
+        return { ok: true, fee: 0, cost: tier.rm, note: 'Order ≥ RM100 — free for customer; RM' + tier.rm.toFixed(2) + ' absorbed as your cost.' };
+      }
+      return { ok: true, fee: tier.rm, cost: tier.rm, note: 'Order < RM100 — charge customer RM' + tier.rm.toFixed(2) + ' (pass-through, no markup).' };
+    }
+    if (zone === 'singapore') {
+      var tier2 = lookupWeightTier(SGP_WEIGHT_TIERS_SGD, weightKg);
+      if (!tier2) {
+        return { ok: false, note: (weightKg > 3) ? 'Over 3kg — no rate on file, enter shipping fee/cost manually.' : 'Enter package weight to calculate.' };
+      }
+      var rate = sgdRate || DEFAULT_SGD_RATE;
+      var rm = tier2.sgd * rate;
+      return { ok: true, fee: rm, cost: rm, note: 'S$' + tier2.sgd.toFixed(2) + ' × ' + rate + ' = RM' + rm.toFixed(2) + ' (pass-through, no markup).' };
+    }
+    return { ok: false, note: 'Custom/other zone — enter shipping fee/cost manually.' };
+  }
+
+  function currentDraftSubtotal() {
+    var itemsTotal = draftItems.reduce(function (s, l) { return s + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0); }, 0);
+    var discount = Number(document.getElementById('of-discount').value) || 0;
+    return itemsTotal - discount;
+  }
+
+  function renderShippingSuggestion() {
+    var wrap = document.getElementById('shipping-suggestion-wrap');
+    if (!wrap) return;
+    var zoneEl = document.getElementById('of-shipping-zone');
+    var weightEl = document.getElementById('of-shipping-weight');
+    if (!zoneEl || !weightEl) return;
+    var zone = zoneEl.value;
+    var weightKg = Number(weightEl.value) || 0;
+    var subtotal = currentDraftSubtotal();
+    var rateInput = document.getElementById('of-shipping-sgd-rate');
+    var sgdRate = rateInput ? (Number(rateInput.value) || DEFAULT_SGD_RATE) : DEFAULT_SGD_RATE;
+
+    var suggestion = computeShippingSuggestion(zone, weightKg, subtotal, sgdRate);
+    var rateFieldHtml = (zone === 'singapore')
+      ? ' <label style="margin-left:8px;">SGD→RM rate: <input type="number" step="0.01" min="0" id="of-shipping-sgd-rate" value="' + sgdRate + '" style="width:60px; display:inline-block;"></label>'
+      : '';
+    var textHtml = suggestion.ok
+      ? '<span class="muted">Suggested: fee RM' + suggestion.fee.toFixed(2) + ', cost RM' + suggestion.cost.toFixed(2) + ' — ' + escapeHtml(suggestion.note) + '</span> <button type="button" class="btn btn-secondary btn-small" id="btn-apply-shipping">Apply</button>'
+      : '<span class="muted">' + escapeHtml(suggestion.note) + '</span>';
+    wrap.innerHTML = textHtml + rateFieldHtml;
+  }
+
+  document.getElementById('shipping-suggestion-wrap').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-apply-shipping') {
+      var zone = document.getElementById('of-shipping-zone').value;
+      var weightKg = Number(document.getElementById('of-shipping-weight').value) || 0;
+      var subtotal = currentDraftSubtotal();
+      var rateInput = document.getElementById('of-shipping-sgd-rate');
+      var sgdRate = rateInput ? (Number(rateInput.value) || DEFAULT_SGD_RATE) : DEFAULT_SGD_RATE;
+      var suggestion = computeShippingSuggestion(zone, weightKg, subtotal, sgdRate);
+      if (suggestion.ok) {
+        document.getElementById('of-shipping').value = suggestion.fee.toFixed(2);
+        document.getElementById('of-shipping-cost').value = suggestion.cost.toFixed(2);
+        updateDraftTotal();
+      }
+    }
+  });
+  document.getElementById('shipping-suggestion-wrap').addEventListener('input', function (e) {
+    if (e.target.id === 'of-shipping-sgd-rate') renderShippingSuggestion();
+  });
+  document.getElementById('of-shipping-zone').addEventListener('change', renderShippingSuggestion);
+  document.getElementById('of-shipping-weight').addEventListener('input', renderShippingSuggestion);
+
+  document.getElementById('of-shipping').addEventListener('input', updateDraftTotal);
+  document.getElementById('of-discount').addEventListener('input', updateDraftTotal);
+
+  document.getElementById('btn-save-order').addEventListener('click', function () {
+    var validLines = draftItems.filter(function (l) { return l.productId && Number(l.qty) > 0; });
+    if (validLines.length === 0) { alert('Add at least one line item.'); return; }
+
+    var status = document.getElementById('of-status').value;
+    var buyerName = document.getElementById('of-buyer-name').value.trim();
+    var buyerHandle = document.getElementById('of-buyer-handle').value.trim();
+    var buyerTelegram = document.getElementById('of-buyer-telegram').value.trim();
+    var date = document.getElementById('of-date').value || todayISO();
+    var estimatedDate = document.getElementById('of-estimated-date').value;
+    if (!editingOrderId && !estimatedDate) {
+      if (!confirm("You haven't set a rough target date for this order — it helps you keep track of scheduling later. Save without one anyway?")) {
+        return;
+      }
+    }
+    var shipTo = document.getElementById('of-ship-to').value.trim();
+    var postcode = document.getElementById('of-postcode').value.trim();
+    var shippingZone = document.getElementById('of-shipping-zone').value;
+    var shippingWeight = Number(document.getElementById('of-shipping-weight').value) || 0;
+    var shippingFee = Number(document.getElementById('of-shipping').value) || 0;
+    var shippingCostActual = Number(document.getElementById('of-shipping-cost').value) || 0;
+    var trackingNumber = document.getElementById('of-tracking').value.trim();
+    var discount = Number(document.getElementById('of-discount').value) || 0;
+    var notes = document.getElementById('of-notes').value.trim();
+    var newItems = validLines.map(function (l) {
+      var p = state.products.find(function (x) { return x.id === l.productId; });
+      return {
+        productId: l.productId,
+        productName: p ? p.name + (p.variant ? ' — ' + p.variant : '') : 'Deleted product',
+        qty: Number(l.qty),
+        unitPrice: Number(l.unitPrice) || 0,
+        unitCost: p ? p.cost : 0
+      };
+    });
+
+    if (editingOrderId) {
+      var order = state.orders.find(function (o) { return o.id === editingOrderId; });
+      if (order) {
+        if (order.status !== 'cancelled') restoreStock(order);
+        order.buyerName = buyerName;
+        order.buyerHandle = buyerHandle;
+        order.buyerTelegram = buyerTelegram;
+        order.date = date;
+        order.status = status;
+        order.shipTo = shipTo;
+        order.postcode = postcode;
+        order.shippingZone = shippingZone;
+        order.shippingWeight = shippingWeight;
+        order.shippingFee = shippingFee;
+        order.shippingCostActual = shippingCostActual;
+        order.trackingNumber = trackingNumber;
+        order.discount = discount;
+        order.notes = notes;
+        order.items = newItems;
+        if (order.estimatedDate !== estimatedDate) order.customerNotified = false;
+        order.estimatedDate = estimatedDate;
+        if (status !== 'cancelled') deductStock(order);
+      }
+      editingOrderId = null;
+    } else {
+      var newOrder = {
+        id: uid(),
+        buyerName: buyerName,
+        buyerHandle: buyerHandle,
+        buyerTelegram: buyerTelegram,
+        date: date,
+        status: status,
+        paid: false,
+        paymentDate: '',
+        paymentRef: '',
+        paymentBankName: '',
+        shipTo: shipTo,
+        postcode: postcode,
+        shippingZone: shippingZone,
+        shippingWeight: shippingWeight,
+        shippingFee: shippingFee,
+        shippingCostActual: shippingCostActual,
+        trackingNumber: trackingNumber,
+        estimatedDate: estimatedDate,
+        customerNotified: false,
+        scheduledDate: '',
+        productionDone: false,
+        discount: discount,
+        notes: notes,
+        items: newItems,
+        addOns: []
+      };
+      if (status !== 'cancelled') deductStock(newOrder);
+      state.orders.push(newOrder);
+    }
+
+    save();
+    document.getElementById('order-form-wrap').style.display = 'none';
+    renderAll();
+  });
+
+  function restoreStock(order) {
+    order.items.forEach(function (item) {
+      var p = state.products.find(function (x) { return x.id === item.productId; });
+      if (p) p.stock += item.qty;
+    });
+    (order.addOns || []).forEach(function (a) {
+      var p = state.products.find(function (x) { return x.id === a.productId; });
+      if (p) p.stock += a.qty;
+    });
+  }
+  function deductStock(order) {
+    order.items.forEach(function (item) {
+      var p = state.products.find(function (x) { return x.id === item.productId; });
+      if (p) p.stock = Math.max(0, p.stock - item.qty);
+    });
+    (order.addOns || []).forEach(function (a) {
+      var p = state.products.find(function (x) { return x.id === a.productId; });
+      if (p) p.stock = Math.max(0, p.stock - a.qty);
+    });
+  }
+
+  function changeOrderStatus(id, newStatus) {
+    var order = state.orders.find(function (o) { return o.id === id; });
+    if (!order) return;
+    var wasCancelled = order.status === 'cancelled';
+    var willBeCancelled = newStatus === 'cancelled';
+    if (!wasCancelled && willBeCancelled) restoreStock(order);
+    else if (wasCancelled && !willBeCancelled) deductStock(order);
+    order.status = newStatus;
+    save();
+    renderAll();
+  }
+
+  function deleteOrder(id) {
+    var order = state.orders.find(function (o) { return o.id === id; });
+    if (!order) return;
+    if (!confirm('Delete this order? Stock will be restored if it was not already cancelled.')) return;
+    if (order.status !== 'cancelled') restoreStock(order);
+    state.orders = state.orders.filter(function (o) { return o.id !== id; });
+    save();
+    renderAll();
+  }
+
+  function orderTotal(o) {
+    var itemsTotal = o.items.reduce(function (s, i) { return s + i.qty * i.unitPrice; }, 0);
+    var addOnsTotal = (o.addOns || []).reduce(function (s, a) { return s + a.qty * a.unitPrice; }, 0);
+    return itemsTotal + addOnsTotal + Number(o.shippingFee || 0) - Number(o.discount || 0);
+  }
+
+  // Fully paid = the original order payment AND every add-on's separate payment are all in —
+  // this is what "safe to ship" should be gated on, since add-ons are paid separately later.
+  function orderFullyPaid(o) {
+    return !!o.paid && (o.addOns || []).every(function (a) { return a.paid; });
+  }
+
+  function unpaidAmountFor(o) {
+    if (!o.paid) return orderTotal(o);
+    return (o.addOns || []).filter(function (a) { return !a.paid; }).reduce(function (s, a) { return s + a.qty * a.unitPrice; }, 0);
+  }
+
+  var expandedOrderId = null;
+  var editingDetailsOrderId = null;
+  var addOnDraftFor = null;
+  var addOnDraft = { productId: '', qty: 1, unitPrice: '' };
+
+  // Jump to the Orders tab with a specific order expanded — used by Calendar order chips and
+  // the Dashboard's "Confirm dates soon" reminder so you can act on a nudge with one click.
+  function goToOrder(orderId) {
+    document.querySelectorAll('nav button').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
+    document.querySelector('nav button[data-tab="orders"]').classList.add('active');
+    document.getElementById('page-orders').classList.add('active');
+    expandedOrderId = orderId;
+    renderAll();
+  }
+
+  // ---------- Add-ons: items the customer decides on after the order/payment already exists
+  // (e.g. an extra sticker requested live). Each has its own separate Paid toggle, since it's
+  // a second payment, and "fully paid" (orderFullyPaid) gates whether it's safe to ship.
+  function renderAddOnsSection(o) {
+    var isCancelled = o.status === 'cancelled';
+    var addOns = o.addOns || [];
+    var rowsHtml = addOns.map(function (a) {
+      return '<div class="row-line" style="align-items:center;">' +
+        '<span>' + escapeHtml(a.productName) + ' × ' + a.qty + ' — ' + money(a.qty * a.unitPrice) + (!a.paid ? ' <span style="color:var(--red);">· unpaid</span>' : '') + '</span>' +
+        '<span style="display:flex; align-items:center; gap:10px;">' +
+        (isCancelled ? '<span class="muted" style="font-size:12px;">—</span>' :
+          '<label style="font-size:12px; display:flex; align-items:center; gap:4px;"><input type="checkbox" class="addon-paid-checkbox" data-order-id="' + o.id + '" data-addon-id="' + a.id + '"' + (a.paid ? ' checked' : '') + '> Paid</label>') +
+        '<button class="btn-text danger" data-remove-addon="' + a.id + '" data-order-id="' + o.id + '">Remove</button>' +
+        '</span></div>';
+    }).join('');
+
+    var formOrButton;
+    if (isCancelled) {
+      formOrButton = '';
+    } else if (addOnDraftFor === o.id) {
+      var options = '<option value="">Select item…</option>' + productOptionsHtml(addOnDraft.productId, false);
+      formOrButton = '<div class="item-line">' +
+        '<select id="ao-product">' + options + '</select>' +
+        '<input class="di-qty" id="ao-qty" type="number" min="1" value="' + addOnDraft.qty + '" placeholder="Qty">' +
+        '<input class="di-price" id="ao-price" type="number" step="0.01" min="0" value="' + addOnDraft.unitPrice + '" placeholder="Unit RM">' +
+        '<button class="btn btn-primary btn-small" data-save-addon="' + o.id + '">Add</button> ' +
+        '<button class="btn btn-secondary btn-small" data-cancel-addon="1">Cancel</button>' +
+        '</div>';
+    } else {
+      formOrButton = '<button class="btn-text" data-start-addon="' + o.id + '">+ Add add-on</button>';
+    }
+
+    return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' +
+      '<div style="font-weight:600; font-size:13px; margin-bottom:4px;">Add-ons <span class="muted" style="font-weight:400;">(decided after the order was placed — paid separately)</span></div>' +
+      (addOns.length === 0 ? '<div class="muted" style="font-size:13px;">None yet.</div>' : rowsHtml) +
+      '<div style="margin-top:6px;">' + formOrButton + '</div>' +
+      '</div>';
+  }
+
+  function startAddOn(orderId) {
+    addOnDraftFor = orderId;
+    addOnDraft = { productId: '', qty: 1, unitPrice: '' };
+    renderOrders();
+  }
+
+  function saveAddOn(orderId) {
+    var order = state.orders.find(function (o) { return o.id === orderId; });
+    if (!order) return;
+    var productId = document.getElementById('ao-product').value;
+    var qty = Number(document.getElementById('ao-qty').value) || 0;
+    var unitPrice = Number(document.getElementById('ao-price').value) || 0;
+    if (!productId || qty <= 0) { alert('Pick an item and a quantity for the add-on.'); return; }
+    var p = state.products.find(function (x) { return x.id === productId; });
+    var addOn = {
+      id: uid(),
+      productId: productId,
+      productName: p ? p.name + (p.variant ? ' — ' + p.variant : '') : 'Deleted product',
+      qty: qty,
+      unitPrice: unitPrice,
+      unitCost: p ? p.cost : 0,
+      paid: false,
+      paymentDate: '',
+      date: todayISO()
+    };
+    if (!order.addOns) order.addOns = [];
+    order.addOns.push(addOn);
+    if (order.status !== 'cancelled' && p) {
+      p.stock = Math.max(0, p.stock - qty);
+    }
+    addOnDraftFor = null;
+    save();
+    renderAll();
+  }
+
+  function removeAddOn(orderId, addOnId) {
+    var order = state.orders.find(function (o) { return o.id === orderId; });
+    if (!order) return;
+    var addOn = (order.addOns || []).find(function (a) { return a.id === addOnId; });
+    if (!addOn) return;
+    if (!confirm('Remove this add-on? Stock will be restored if the order is not cancelled.')) return;
+    if (order.status !== 'cancelled') {
+      var p = state.products.find(function (x) { return x.id === addOn.productId; });
+      if (p) p.stock += addOn.qty;
+    }
+    order.addOns = order.addOns.filter(function (a) { return a.id !== addOnId; });
+    save();
+    renderAll();
+  }
+
+  // ---------- Scheduling: rough target date -> notify customer -> confirmed date. Kept as its
+  // own quick-save section (like Add-ons) rather than buried in the big Edit/Save details grid,
+  // so the "give a range, confirm later" workflow is a clear 3-step flow instead of just two
+  // date fields mixed in with payment/shipping stuff.
+  function renderSchedulingSection(o) {
+    var isCancelled = o.status === 'cancelled';
+    var todayD = new Date(todayISO() + 'T00:00:00');
+    var dueSoon = false;
+    if (o.estimatedDate && !o.scheduledDate) {
+      var est = new Date(o.estimatedDate + 'T00:00:00');
+      var diffDays = Math.round((est - todayD) / 86400000);
+      dueSoon = diffDays <= 5;
+    }
+    var showWarning = !isCancelled && dueSoon && !o.customerNotified;
+    var warningHtml = showWarning
+      ? '<div style="color:var(--red); font-size:13px; margin:8px 0;">⚠ Let ' + (escapeHtml(o.buyerName) || 'the customer') + ' know it\'s time to confirm the exact date.</div>'
+      : '';
+    var notifiedHint = (!isCancelled && o.customerNotified && !o.scheduledDate)
+      ? '<div class="muted" style="font-size:12px; margin:8px 0;">✓ Customer notified — waiting on their confirmed date.</div>'
+      : '';
+
+    return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' +
+      '<div style="font-weight:600; font-size:13px; margin-bottom:6px;">Scheduling</div>' +
+      '<div class="order-edit-grid" style="border-top:none; padding-top:0; margin-top:0;">' +
+        '<div class="field-block"><label class="field-label">1. Rough target date <span class="muted">(internal only)</span></label>' +
+          '<div style="display:flex; gap:6px; align-items:center;">' +
+          '<input type="date" class="sched-estimated-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.estimatedDate || '') + '" style="flex:1;"' + (isCancelled ? ' disabled' : '') + '>' +
+          (!isCancelled && o.estimatedDate ? '<button type="button" class="btn btn-secondary btn-small" data-clear-estimated="' + o.id + '">Clear</button>' : '') +
+          '</div></div>' +
+        '<div class="field-block"><label class="field-label">3. Confirmed date <span class="muted">(shown on Calendar)</span></label>' +
+          '<div style="display:flex; gap:6px; align-items:center;">' +
+          '<input type="date" class="sched-confirmed-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '" style="flex:1;"' + (isCancelled ? ' disabled' : '') + '>' +
+          (!isCancelled && o.scheduledDate ? '<button type="button" class="btn btn-secondary btn-small" data-clear-scheduled="' + o.id + '">Clear</button>' : '') +
+          '</div></div>' +
+      '</div>' +
+      warningHtml + notifiedHint +
+      (isCancelled ? '' :
+        '<div class="checkbox-row" style="padding-top:8px;">' +
+          '<input type="checkbox" class="sched-notified-checkbox" data-order-id="' + o.id + '"' + (o.customerNotified ? ' checked' : '') + '>' +
+          '<label>2. Notified customer to confirm the exact date</label>' +
+        '</div>') +
+      '</div>';
+  }
+
+  function detailRow(label, value) {
+    return '<div class="field-block"><div class="field-label" style="margin-bottom:2px;">' + escapeHtml(label) + '</div><div style="font-size:13px;">' + escapeHtml(value) + '</div></div>';
+  }
+
+  function renderOrderDetailsBlock(o) {
+    var isCancelled = o.status === 'cancelled';
+    if (editingDetailsOrderId === o.id) {
+      return '<div class="order-edit-grid">' +
+          '<div class="field-block checkbox-row" style="padding-top:0;">' +
+            (isCancelled
+              ? '<span title="Cancelled — payment not applicable">⛔</span><label style="color:var(--muted);">Payment not applicable (order cancelled)</label>'
+              : '<input type="checkbox" id="def-paid-' + o.id + '"' + (o.paid ? ' checked' : '') + '><label for="def-paid-' + o.id + '">已汇款 / Payment received</label>') +
+          '</div>' +
+          '<div class="field-block"><label class="field-label">Payment date</label><input type="date" id="def-paymentDate-' + o.id + '" value="' + escapeHtml(o.paymentDate || '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">汇款编号 / Reference no.</label><input id="def-paymentRef-' + o.id + '" value="' + escapeHtml(o.paymentRef || '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">汇款人户口名称</label><input id="def-paymentBankName-' + o.id + '" value="' + escapeHtml(o.paymentBankName || '') + '"></div>' +
+          '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Ship to (address)</label><textarea id="def-shipTo-' + o.id + '" rows="2" style="resize:vertical;">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
+          '<div class="field-block"><label class="field-label">Postcode</label><input id="def-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostActual || 0) + '"></div>' +
+          '<div class="field-block"><label class="field-label">Tracking number</label><input id="def-trackingNumber-' + o.id + '" value="' + escapeHtml(o.trackingNumber || '') + '"></div>' +
+        '</div>' +
+        '<div class="form-actions" style="margin-top:10px;">' +
+          '<button class="btn btn-primary btn-small" data-save-details="' + o.id + '">Save</button> ' +
+          '<button class="btn btn-secondary btn-small" data-cancel-details="' + o.id + '">Cancel</button>' +
+        '</div>';
+    }
+    return '<div class="order-edit-grid">' +
+        detailRow('Paid', isCancelled ? '⛔ Not applicable (cancelled)' : (o.paid ? 'Yes' : 'No')) +
+        detailRow('Payment date', o.paymentDate || '—') +
+        detailRow('汇款编号', o.paymentRef || '—') +
+        detailRow('汇款人户口名称', o.paymentBankName || '—') +
+        detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
+        detailRow('Shipping cost paid', money(o.shippingCostActual || 0)) +
+        detailRow('Tracking number', o.trackingNumber || '—') +
+      '</div>' +
+      '<div style="margin-top:10px;"><button class="btn btn-secondary btn-small" data-edit-details="' + o.id + '">Edit details</button></div>';
+  }
+
+  function saveOrderDetails(id) {
+    var order = state.orders.find(function (o) { return o.id === id; });
+    if (!order) return;
+    var paidCheckbox = document.getElementById('def-paid-' + id);
+    if (paidCheckbox) order.paid = paidCheckbox.checked;
+    order.paymentDate = document.getElementById('def-paymentDate-' + id).value;
+    order.paymentRef = document.getElementById('def-paymentRef-' + id).value.trim();
+    order.paymentBankName = document.getElementById('def-paymentBankName-' + id).value.trim();
+    order.shipTo = document.getElementById('def-shipTo-' + id).value.trim();
+    order.postcode = document.getElementById('def-postcode-' + id).value.trim();
+    order.shippingCostActual = Number(document.getElementById('def-shippingCostActual-' + id).value) || 0;
+    order.trackingNumber = document.getElementById('def-trackingNumber-' + id).value.trim();
+    save();
+    editingDetailsOrderId = null;
+    renderAll();
+  }
+
+  function renderOrders() {
+    var tbody = document.querySelector('#order-table tbody');
+    var empty = document.getElementById('order-empty');
+    if (state.orders.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    var sorted = state.orders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
+    var statuses = ['pending', 'shipped', 'delivered', 'cancelled'];
+    tbody.innerHTML = sorted.map(function (o) {
+      var statusOptions = statuses.map(function (s) {
+        return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+      var rows = '<tr>' +
+        '<td style="white-space:nowrap;">' + formatDate(o.date) + '</td>' +
+        '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + '</div>' + (o.buyerTelegram ? '<div class="muted">TG: ' + escapeHtml(o.buyerTelegram) + '</div>' : '') + '</td>' +
+        '<td class="muted">' + (escapeHtml(o.buyerHandle) || '—') + '</td>' +
+        '<td class="muted">' + (escapeHtml(o.shipTo) || '—') + (o.postcode ? '<div>' + escapeHtml(o.postcode) + '</div>' : '') + '</td>' +
+        '<td><button class="btn-text" data-toggle-order="' + o.id + '">' + o.items.length + ' item' + (o.items.length !== 1 ? 's' : '') + '</button></td>' +
+        '<td style="font-weight:500;">' + money(orderTotal(o)) + '</td>' +
+        '<td style="text-align:center;">' + (o.status === 'cancelled'
+          ? '<span title="Cancelled — payment not applicable">⛔</span>'
+          : '<input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '>' +
+            (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : '')) + '</td>' +
+        '<td><select class="order-status-select" data-order-id="' + o.id + '" style="padding:5px 8px; font-size:13px;">' + statusOptions + '</select></td>' +
+        '<td style="text-align:right; white-space:nowrap;">' +
+        '<button class="btn-text" data-edit-order="' + o.id + '">Edit</button> ' +
+        '<button class="btn-text danger" data-delete-order="' + o.id + '">Delete</button>' +
+        '</td>' +
+        '</tr>';
+      if (expandedOrderId === o.id) {
+        rows += '<tr class="order-items-row"><td colspan="9">' +
+          o.items.map(function (i) {
+            return '<div class="row-line"><span>' + escapeHtml(i.productName) + ' × ' + i.qty + '</span><span>' + money(i.qty * i.unitPrice) + '</span></div>';
+          }).join('') +
+          (o.notes ? '<div class="muted" style="padding-top:6px;">Note: ' + escapeHtml(o.notes) + '</div>' : '') +
+          renderOrderDetailsBlock(o) +
+          renderSchedulingSection(o) +
+          renderAddOnsSection(o) +
+          '</td></tr>';
+      }
+      return rows;
+    }).join('');
+  }
+
+  function editOrder(id) {
+    var order = state.orders.find(function (o) { return o.id === id; });
+    if (!order) return;
+    editingOrderId = id;
+    document.getElementById('of-buyer-name').value = order.buyerName || '';
+    document.getElementById('of-buyer-handle').value = order.buyerHandle || '';
+    document.getElementById('of-buyer-telegram').value = order.buyerTelegram || '';
+    document.getElementById('of-date').value = order.date || todayISO();
+    document.getElementById('of-status').value = order.status;
+    document.getElementById('of-estimated-date').value = order.estimatedDate || '';
+    document.getElementById('of-ship-to').value = order.shipTo || '';
+    document.getElementById('of-postcode').value = order.postcode || '';
+    document.getElementById('of-shipping-zone').value = order.shippingZone || 'west_malaysia';
+    document.getElementById('of-shipping-weight').value = order.shippingWeight || '';
+    document.getElementById('of-shipping').value = order.shippingFee || 0;
+    document.getElementById('of-shipping-cost').value = order.shippingCostActual || 0;
+    document.getElementById('of-tracking').value = order.trackingNumber || '';
+    document.getElementById('of-discount').value = order.discount || 0;
+    document.getElementById('of-notes').value = order.notes || '';
+    draftItems = order.items.map(function (item) {
+      var p = state.products.find(function (x) { return x.id === item.productId; });
+      if (!p) return null;
+      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice };
+    }).filter(function (l) { return l; });
+    if (draftItems.length === 0) draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
+    renderDraftItems();
+    document.getElementById('order-form-title').textContent = 'Edit order';
+    var wrap = document.getElementById('order-form-wrap');
+    wrap.style.display = 'block';
+    if (typeof wrap.scrollIntoView === 'function') {
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  document.querySelector('#order-table tbody').addEventListener('click', function (e) {
+    var toggleId = e.target.getAttribute('data-toggle-order');
+    var delId = e.target.getAttribute('data-delete-order');
+    var editOrderId = e.target.getAttribute('data-edit-order');
+    var editDetailsId = e.target.getAttribute('data-edit-details');
+    var cancelDetailsId = e.target.getAttribute('data-cancel-details');
+    var saveDetailsId = e.target.getAttribute('data-save-details');
+    var startAddOnId = e.target.getAttribute('data-start-addon');
+    var cancelAddOnFlag = e.target.getAttribute('data-cancel-addon');
+    var saveAddOnId = e.target.getAttribute('data-save-addon');
+    var removeAddOnId = e.target.getAttribute('data-remove-addon');
+    var clearEstimatedId = e.target.getAttribute('data-clear-estimated');
+    var clearScheduledId = e.target.getAttribute('data-clear-scheduled');
+    if (toggleId) {
+      expandedOrderId = (expandedOrderId === toggleId) ? null : toggleId;
+      editingDetailsOrderId = null;
+      addOnDraftFor = null;
+      renderOrders();
+    }
+    if (delId) deleteOrder(delId);
+    if (editOrderId) editOrder(editOrderId);
+    if (editDetailsId) {
+      editingDetailsOrderId = editDetailsId;
+      renderOrders();
+    }
+    if (cancelDetailsId) {
+      editingDetailsOrderId = null;
+      renderOrders();
+    }
+    if (saveDetailsId) {
+      saveOrderDetails(saveDetailsId);
+    }
+    if (startAddOnId) startAddOn(startAddOnId);
+    if (cancelAddOnFlag) {
+      addOnDraftFor = null;
+      renderOrders();
+    }
+    if (saveAddOnId) saveAddOn(saveAddOnId);
+    if (removeAddOnId) removeAddOn(e.target.getAttribute('data-order-id'), removeAddOnId);
+    if (clearEstimatedId) {
+      var ordCE = state.orders.find(function (o) { return o.id === clearEstimatedId; });
+      if (ordCE) {
+        ordCE.estimatedDate = '';
+        ordCE.customerNotified = false;
+        save();
+        renderOrders();
+        renderDashboard();
+        renderSchedule();
+      }
+    }
+    if (clearScheduledId) {
+      var ordCS = state.orders.find(function (o) { return o.id === clearScheduledId; });
+      if (ordCS) {
+        ordCS.scheduledDate = '';
+        save();
+        renderOrders();
+        renderDashboard();
+        renderSchedule();
+        renderCalendar();
+      }
+    }
+  });
+
+  document.querySelector('#order-table tbody').addEventListener('change', function (e) {
+    if (e.target.classList.contains('order-status-select')) {
+      var orderId = e.target.getAttribute('data-order-id');
+      var newStatus = e.target.value;
+      var order = state.orders.find(function (o) { return o.id === orderId; });
+      if (order && (newStatus === 'shipped' || newStatus === 'delivered') && !orderFullyPaid(order)) {
+        var msg = !order.paid
+          ? 'This order has not been marked as paid yet. Mark as ' + newStatus + ' anyway?'
+          : 'This order still has an unpaid add-on (' + money(unpaidAmountFor(order)) + '). Mark as ' + newStatus + ' anyway?';
+        if (!confirm(msg)) {
+          e.target.value = order.status;
+          return;
+        }
+      }
+      changeOrderStatus(orderId, newStatus);
+      return;
+    }
+    if (e.target.classList.contains('order-paid-checkbox')) {
+      var id1 = e.target.getAttribute('data-order-id');
+      var order1 = state.orders.find(function (o) { return o.id === id1; });
+      if (order1) {
+        order1.paid = e.target.checked;
+        save();
+        renderOrders();
+        renderDashboard();
+        renderSchedule();
+      }
+    }
+    if (e.target.classList.contains('addon-paid-checkbox')) {
+      var oid = e.target.getAttribute('data-order-id');
+      var aid = e.target.getAttribute('data-addon-id');
+      var ord = state.orders.find(function (o) { return o.id === oid; });
+      var addOn = ord ? (ord.addOns || []).find(function (a) { return a.id === aid; }) : null;
+      if (addOn) {
+        addOn.paid = e.target.checked;
+        addOn.paymentDate = addOn.paid ? todayISO() : '';
+        save();
+        renderOrders();
+        renderDashboard();
+        renderSchedule();
+      }
+    }
+    if (e.target.classList.contains('sched-estimated-input')) {
+      var oid2 = e.target.getAttribute('data-order-id');
+      var order2 = state.orders.find(function (o) { return o.id === oid2; });
+      if (order2) {
+        order2.estimatedDate = e.target.value;
+        order2.customerNotified = false; // target moved — you'll need to notify again
+        save();
+        renderOrders();
+        renderDashboard();
+        renderSchedule();
+      }
+    }
+    if (e.target.classList.contains('sched-confirmed-input')) {
+      var oid3 = e.target.getAttribute('data-order-id');
+      var order3 = state.orders.find(function (o) { return o.id === oid3; });
+      if (order3) {
+        order3.scheduledDate = e.target.value;
+        save();
+        renderOrders();
+        renderDashboard();
+        renderSchedule();
+        renderCalendar();
+      }
+    }
+    if (e.target.classList.contains('sched-notified-checkbox')) {
+      var oid4 = e.target.getAttribute('data-order-id');
+      var order4 = state.orders.find(function (o) { return o.id === oid4; });
+      if (order4) {
+        order4.customerNotified = e.target.checked;
+        save();
+        renderOrders();
+        renderDashboard();
+      }
+    }
+  });
+
+  // ================= DASHBOARD =================
+  // Orders with a rough internal target date that's due soon (within 5 days, or already past)
+  // but still no confirmed Scheduled date — these are the ones to message the customer about
+  // to lock in an exact day, matching a "give a range, confirm closer to the time" workflow.
+  function ordersNeedingDateConfirmation() {
+    var todayD = new Date(todayISO() + 'T00:00:00');
+    return state.orders.filter(function (o) {
+      if (o.status === 'cancelled' || o.scheduledDate || !o.estimatedDate) return false;
+      var est = new Date(o.estimatedDate + 'T00:00:00');
+      var diffDays = Math.round((est - todayD) / 86400000);
+      return diffDays <= 5;
+    }).sort(function (a, b) { return a.estimatedDate.localeCompare(b.estimatedDate); });
+  }
+
+  function renderDashboard() {
+    var active = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
+    var revenue = active.reduce(function (s, o) { return s + orderTotal(o); }, 0);
+    var cogs = active.reduce(function (s, o) {
+      var itemsCogs = o.items.reduce(function (ss, i) { return ss + i.qty * i.unitCost; }, 0);
+      var addOnsCogs = (o.addOns || []).reduce(function (ss, a) { return ss + a.qty * a.unitCost; }, 0);
+      return s + itemsCogs + addOnsCogs;
+    }, 0);
+    var otherCosts = state.costs.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+    var shippingCostsPaid = active.reduce(function (s, o) { return s + Number(o.shippingCostActual || 0); }, 0);
+    var totalCosts = cogs + otherCosts + shippingCostsPaid;
+    var profit = revenue - totalCosts;
+    var invValue = state.products.reduce(function (s, p) { return s + p.stock * p.cost; }, 0);
+    var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
+    var lowStock = state.products.filter(function (p) { return p.stock <= p.threshold; });
+    var pendingCount = state.orders.filter(function (o) { return o.status === 'pending'; }).length;
+    var recent = state.orders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 6);
+    var unpaid = active.filter(function (o) { return !orderFullyPaid(o); });
+    var unpaidTotal = unpaid.reduce(function (s, o) { return s + unpaidAmountFor(o); }, 0);
+    var needsDateConfirm = ordersNeedingDateConfirmation();
+
+    var html = '<div class="stat-grid">' +
+      statCard('Revenue', money(revenue), active.length + ' orders (excl. cancelled)') +
+      statCard('Total costs', money(totalCosts), 'COGS ' + money(cogs) + ' + other ' + money(otherCosts) + ' + shipping ' + money(shippingCostsPaid)) +
+      statCard('Profit', money(profit), revenue > 0 ? ((profit / revenue) * 100).toFixed(1) + '% margin' : '', profit >= 0 ? 'var(--green)' : 'var(--red)') +
+      statCard('Inventory value', money(invValue), unitsInStock + ' units in stock') +
+      statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
+      '</div>' +
+      '<div class="panel-grid">' +
+      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Low stock alerts</div>' +
+      (lowStock.length === 0 ? '<div class="empty">All stocked up.</div>' :
+        lowStock.map(function (p) {
+          return '<div class="row-line"><span>' + escapeHtml(p.name) + (p.variant ? ' <span class="muted">— ' + escapeHtml(p.variant) + '</span>' : '') + '</span><span style="color:var(--red); font-weight:500;">' + p.stock + ' left</span></div>';
+        }).join('')) +
+      '</div>' +
+      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Awaiting payment</div>' +
+      (unpaid.length === 0 ? '<div class="empty">All paid up.</div>' :
+        unpaid.slice(0, 8).map(function (o) {
+          return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.paid ? ' <span class="muted">(add-on)</span>' : '') + '</span><span style="color:var(--red); font-weight:500;">' + money(unpaidAmountFor(o)) + '</span></div>';
+        }).join('')) +
+      '</div>' +
+      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">🔔 Confirm dates soon</div>' +
+      (needsDateConfirm.length === 0 ? '<div class="empty">Nothing due for confirmation.</div>' :
+        needsDateConfirm.slice(0, 8).map(function (o) {
+          var todayD = new Date(todayISO() + 'T00:00:00');
+          var est = new Date(o.estimatedDate + 'T00:00:00');
+          var diffDays = Math.round((est - todayD) / 86400000);
+          var whenLabel = diffDays < 0 ? Math.abs(diffDays) + 'd overdue' : (diffDays === 0 ? 'today' : 'in ' + diffDays + 'd');
+          var statusTag = o.customerNotified
+            ? '<span class="muted">✓ notified</span>'
+            : '<span style="color:var(--red);">⚠ notify</span>';
+          return '<div class="row-line" data-dash-order="' + o.id + '" style="cursor:pointer;"><span>' + (escapeHtml(o.buyerName) || 'Unknown buyer') + ' <span class="muted">— target ' + escapeHtml(formatDate(o.estimatedDate)) + '</span></span><span style="display:flex; align-items:center; gap:8px; font-weight:500;">' + statusTag + '<span style="color:' + (diffDays < 0 ? 'var(--red)' : 'var(--muted)') + ';">' + whenLabel + '</span></span></div>';
+        }).join('')) +
+      '</div>' +
+      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' pending)</div>' +
+      (recent.length === 0 ? '<div class="empty">No orders yet.</div>' :
+        recent.map(function (o) {
+          var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : 'pill-gray');
+          return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + '</span>' +
+            '<span style="display:flex; align-items:center; gap:8px;"><span class="pill ' + cls + '">' + o.status + '</span><span style="font-weight:500;">' + money(orderTotal(o)) + '</span></span></div>';
+        }).join('')) +
+      '</div></div>';
+
+    document.getElementById('dashboard-content').innerHTML = html;
+  }
+
+  document.getElementById('dashboard-content').addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-dash-order]') : null;
+    if (el) goToOrder(el.getAttribute('data-dash-order'));
+  });
+
+  function statCard(label, value, sub, color) {
+    return '<div class="stat-card"><div class="stat-label">' + label + '</div>' +
+      '<div class="stat-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' + value + '</div>' +
+      (sub ? '<div class="stat-sub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  // ================= SCHEDULE =================
+  var showCompletedSchedule = false;
+
+  function renderSchedule() {
+    var notCancelled = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
+    var active = notCancelled.filter(function (o) { return !o.productionDone; });
+    var done = notCancelled.filter(function (o) { return o.productionDone; });
+    // Queue order = first-come-first-served by when the order was actually created (id starts
+    // with a timestamp) — lets you tell a customer "you're #4 in line" without locking a date.
+    var unscheduled = active.filter(function (o) { return !o.scheduledDate; })
+      .slice().sort(function (a, b) { return (a.id || '').localeCompare(b.id || ''); });
+    var scheduled = active.filter(function (o) { return o.scheduledDate; });
+
+    var byDate = {};
+    scheduled.forEach(function (o) {
+      if (!byDate[o.scheduledDate]) byDate[o.scheduledDate] = [];
+      byDate[o.scheduledDate].push(o);
+    });
+    var dates = Object.keys(byDate).sort();
+
+    function orderRow(o, isDone, queuePos) {
+      var itemsSummary = o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ');
+      var paidPill = '<span class="pill ' + (o.paid ? 'pill-green' : 'pill-red') + '">' + (o.paid ? 'Paid' : 'Unpaid') + '</span>';
+      var queuePill = queuePos ? '<span class="pill pill-gray">#' + queuePos + ' in queue</span>' : '';
+      var estimateNote = (queuePos && o.estimatedDate) ? '<div class="muted" style="font-size:11px; margin-top:2px;">Rough target: ' + escapeHtml(formatDate(o.estimatedDate)) + ' (internal only)</div>' : '';
+      return '<div class="card" style="margin-bottom:8px; padding:12px 14px;' + (isDone ? ' opacity:0.6;' : '') + '">' +
+        '<div class="schedule-row">' +
+          '<div><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.buyerHandle ? ' <span class="muted">' + escapeHtml(o.buyerHandle) + '</span>' : '') + (o.buyerTelegram ? ' <span class="muted">TG: ' + escapeHtml(o.buyerTelegram) + '</span>' : '') + '</div>' +
+          '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' + estimateNote + '</div>' +
+          '<div style="display:flex; align-items:center; gap:10px;">' + queuePill + paidPill +
+            (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '" style="width:150px;">') +
+            '<label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); white-space:nowrap;">' +
+              '<input type="checkbox" class="schedule-done-checkbox" data-order-id="' + o.id + '"' + (isDone ? ' checked' : '') + '> Done' +
+            '</label>' +
+          '</div>' +
+        '</div></div>';
+    }
+
+    var html = '';
+    if (unscheduled.length > 0) {
+      html += '<div class="form-section-title" style="border-top:none; padding-top:0;">Unscheduled (' + unscheduled.length + ')</div>' +
+        unscheduled.map(function (o, idx) { return orderRow(o, false, idx + 1); }).join('');
+    }
+    if (dates.length === 0 && unscheduled.length === 0 && done.length === 0) {
+      html += '<div class="empty">No active orders yet.</div>';
+    }
+    dates.forEach(function (d) {
+      html += '<div class="form-section-title">' + formatDateLong(d) + ' (' + byDate[d].length + ')</div>' +
+        byDate[d].map(function (o) { return orderRow(o, false); }).join('');
+    });
+
+    if (done.length > 0) {
+      html += '<div class="form-section-title">' +
+        '<button type="button" class="btn-text" id="btn-toggle-completed-schedule" style="font-size:13px; font-weight:600;">' +
+        (showCompletedSchedule ? '▾' : '▸') + ' Completed (' + done.length + ')' +
+        '</button></div>';
+      if (showCompletedSchedule) {
+        html += done.map(function (o) { return orderRow(o, true); }).join('');
+      }
+    }
+
+    document.getElementById('schedule-content').innerHTML = html;
+    var toggleBtn = document.getElementById('btn-toggle-completed-schedule');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        showCompletedSchedule = !showCompletedSchedule;
+        renderSchedule();
+      });
+    }
+  }
+
+  document.getElementById('schedule-content').addEventListener('change', function (e) {
+    if (e.target.classList.contains('schedule-date-input')) {
+      var id = e.target.getAttribute('data-order-id');
+      var order = state.orders.find(function (o) { return o.id === id; });
+      if (order) {
+        order.scheduledDate = e.target.value;
+        save();
+        renderSchedule();
+      }
+    }
+    if (e.target.classList.contains('schedule-done-checkbox')) {
+      var id2 = e.target.getAttribute('data-order-id');
+      var order2 = state.orders.find(function (o) { return o.id === id2; });
+      if (order2) {
+        order2.productionDone = e.target.checked;
+        save();
+        renderSchedule();
+      }
+    }
+  });
+
+  // ================= EXPORT / IMPORT =================
+  document.getElementById('btn-export').addEventListener('click', function () {
+    var blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'sips-by-evve-backup-' + todayISO() + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('btn-import').addEventListener('click', function () {
+    document.getElementById('import-file').click();
+  });
+  document.getElementById('import-file').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(reader.result);
+        if (!data.products || !data.costs || !data.orders) throw new Error('Invalid file');
+        if (!confirm('Import will replace all current data. Continue?')) return;
+        state = data;
+        save();
+        renderAll();
+      } catch (err) {
+        alert('Could not read that file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // ================= SAMPLE DATA =================
+  document.getElementById('btn-sample').addEventListener('click', function () {
+    if (state.products.length || state.costs.length || state.orders.length) {
+      if (!confirm('This will add sample products, costs and orders on top of your current data. Continue?')) return;
+    }
+    var tumbler = { id: uid(), name: 'Tumbler', variant: '700ml', sku: 'TUM-700', type: 'Tumbler', theme: '', image: '', cost: 20, price: 35, stock: 20, threshold: 5 };
+    var a001 = { id: uid(), name: 'Stitch Sticker', variant: '', sku: 'A001', type: 'Stickers', theme: 'A - Stitch', image: '', cost: 2, price: 0, stock: 15, threshold: 5 };
+    var a002 = { id: uid(), name: 'Stitch Sticker (v2)', variant: '', sku: 'A002', type: 'Stickers', theme: 'A - Stitch', image: '', cost: 2, price: 0, stock: 10, threshold: 5 };
+    var b001 = { id: uid(), name: 'Winnie the Pooh Sticker', variant: '', sku: 'B001', type: 'Stickers', theme: 'B - Winnie the Pooh', image: '', cost: 2, price: 0, stock: 12, threshold: 5 };
+    var b002 = { id: uid(), name: 'Winnie the Pooh Sticker (v2)', variant: '', sku: 'B002', type: 'Stickers', theme: 'B - Winnie the Pooh', image: '', cost: 2, price: 0, stock: 9, threshold: 5 };
+    var b003 = { id: uid(), name: 'Winnie the Pooh Sticker (v3)', variant: '', sku: 'B003', type: 'Stickers', theme: 'B - Winnie the Pooh', image: '', cost: 2, price: 0, stock: 8, threshold: 5 };
+    var towel = { id: uid(), name: 'Kitchen towel', variant: '', sku: 'SUP-TOWEL', type: 'Others', theme: '', image: '', cost: 3, price: 0, stock: 25, threshold: 5 };
+    var syringe = { id: uid(), name: 'Syringe', variant: '10ml', sku: 'SUP-SYR-10', type: 'Others', theme: '', image: '', cost: 1.5, price: 0, stock: 40, threshold: 10 };
+    state.products.push(tumbler, a001, a002, b001, b002, b003, towel, syringe);
+
+    state.costs.push(
+      { id: uid(), category: 'materials', date: '2026-07-28', amount: 180, productId: null, description: '40x tumbler blanks from supplier' },
+      { id: uid(), category: 'materials', date: '2026-07-29', amount: 50, productId: null, description: 'Glitter refill batch (hard to track per bottle, logged as a batch cost)' },
+      { id: uid(), category: 'packaging', date: '2026-07-29', amount: 35, productId: null, description: 'Bubble mailers x100' },
+      { id: uid(), category: 'shipping', date: '2026-07-30', amount: 40, productId: null, description: 'Courier account top-up (bulk)' },
+      { id: uid(), category: 'ads', date: '2026-08-01', amount: 25, productId: null, description: 'TikTok promo boost' }
+    );
+
+    state.orders.push(
+      { id: uid(), buyerName: 'Xin', buyerHandle: '@xin_tt', buyerTelegram: '@xin_telegram', date: '2026-08-03', status: 'pending',
+        paid: false, paymentDate: '', paymentRef: '', paymentBankName: '',
+        shipTo: '12 Jalan Bunga, Kajang, Selangor', postcode: '43000', shippingFee: 8, shippingCostActual: 6, trackingNumber: '', scheduledDate: '',
+        discount: 0, notes: '',
+        items: [
+          { productId: tumbler.id, productName: tumbler.name + ' — ' + tumbler.variant, qty: 1, unitPrice: 35, unitCost: 20 },
+          { productId: b003.id, productName: b003.name, qty: 1, unitPrice: 0, unitCost: 2 }
+        ] },
+      { id: uid(), buyerName: 'Mei', buyerHandle: '@mei_glow', date: '2026-08-01', status: 'shipped',
+        paid: true, paymentDate: '2026-08-01', paymentRef: 'TXN20260801', paymentBankName: 'MEI XIAO LING',
+        shipTo: 'Blk 123 Ang Mo Kio Ave 3, #05-45, Singapore', postcode: '560123', shippingFee: 10, shippingCostActual: 9, trackingNumber: 'SGSP1234567', scheduledDate: '2026-08-04',
+        discount: 0, notes: '',
+        items: [
+          { productId: tumbler.id, productName: tumbler.name + ' — ' + tumbler.variant, qty: 2, unitPrice: 35, unitCost: 20 },
+          { productId: a001.id, productName: a001.name, qty: 2, unitPrice: 0, unitCost: 2 }
+        ] },
+      { id: uid(), buyerName: 'Jess', buyerHandle: '@craftyjess', date: '2026-07-31', status: 'delivered',
+        paid: true, paymentDate: '2026-07-31', paymentRef: 'TXN20260731', paymentBankName: 'JESSICA TAN',
+        shipTo: '88 Jalan Petaling, Kuala Lumpur', postcode: '50000', shippingFee: 8, shippingCostActual: 6, trackingNumber: 'MYPL7654321', scheduledDate: '2026-08-04',
+        discount: 5, notes: '',
+        items: [
+          { productId: tumbler.id, productName: tumbler.name + ' — ' + tumbler.variant, qty: 3, unitPrice: 35, unitCost: 20 },
+          { productId: b001.id, productName: b001.name, qty: 3, unitPrice: 0, unitCost: 2 }
+        ] },
+      { id: uid(), buyerName: 'Priya', buyerHandle: '@pinkmoontok', date: '2026-07-30', status: 'cancelled',
+        paid: false, paymentDate: '', paymentRef: '', paymentBankName: '',
+        shipTo: '9 Orchard Rd, #12-01, Singapore', postcode: '238888', shippingFee: 8, shippingCostActual: 0, trackingNumber: '', scheduledDate: '',
+        discount: 0, notes: 'Customer cancelled before payment',
+        items: [
+          { productId: tumbler.id, productName: tumbler.name + ' — ' + tumbler.variant, qty: 1, unitPrice: 35, unitCost: 20 },
+          { productId: a002.id, productName: a002.name, qty: 1, unitPrice: 0, unitCost: 2 }
+        ] }
+    );
+
+    save();
+    renderAll();
+    alert('Sample data loaded. Explore the tabs, then click Export any time to back up your real data.');
+  });
+
+  // ================= CALENDAR =================
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  // calYear/calMonth are set from "today" once when the script loads (e.g. each time you open
+  // or refresh the page) — so the Calendar tab will show the current month whenever you visit
+  // it. It won't silently jump forward on its own if you leave the tab open across midnight
+  // into a new month without reloading; hit "Today" any time to snap back to now.
+  var calYear = (new Date()).getFullYear();
+  var calMonth = (new Date()).getMonth();
+  var calEditingDate = null; // day currently open in the edit panel — nothing is saved until "Save"
+
+  function renderCalendar() {
+    var container = document.getElementById('calendar-content');
+    var firstOfMonth = new Date(calYear, calMonth, 1);
+    var daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    var startWeekday = firstOfMonth.getDay();
+    var monthLabel = firstOfMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    var todayStr = todayISO();
+
+    var ordersByDate = {};
+    state.orders.forEach(function (o) {
+      if (o.status === 'cancelled' || !o.scheduledDate) return;
+      if (!ordersByDate[o.scheduledDate]) ordersByDate[o.scheduledDate] = [];
+      ordersByDate[o.scheduledDate].push(o);
+    });
+
+    var weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var cellsHtml = weekdayLabels.map(function (w) { return '<div class="cal-weekday">' + w + '</div>'; }).join('');
+
+    for (var i = 0; i < startWeekday; i++) {
+      cellsHtml += '<div class="cal-day cal-empty"></div>';
+    }
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateStr = calYear + '-' + pad2(calMonth + 1) + '-' + pad2(d);
+      var isBlocked = state.blockedDates.hasOwnProperty(dateStr);
+      var dayOrders = ordersByDate[dateStr] || [];
+      var isConflict = isBlocked && dayOrders.length > 0;
+      var isToday = dateStr === todayStr;
+      var isEditing = dateStr === calEditingDate;
+      var classes = 'cal-day' + (isBlocked ? ' cal-blocked' : '') + (isConflict ? ' cal-conflict' : '') + (isToday ? ' cal-today' : '') + (isEditing ? ' cal-editing' : '');
+      var chipsHtml = dayOrders.slice(0, 2).map(function (o) {
+        return '<div class="cal-order-chip" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + '">' + escapeHtml(o.buyerName || 'Order') + '</div>';
+      }).join('') + (dayOrders.length > 2 ? '<div class="muted" style="font-size:10px;">+' + (dayOrders.length - 2) + ' more</div>' : '');
+      var blockedTag = isBlocked ? '<span class="cal-blocked-tag">Personal</span>' : '';
+      var noteText = (isBlocked && state.blockedDates[dateStr]) ? '<div class="muted" style="font-size:10px;">' + escapeHtml(state.blockedDates[dateStr]) + '</div>' : '';
+      cellsHtml += '<div class="' + classes + '" data-cal-day="' + dateStr + '">' +
+        '<div class="cal-daynum">' + d + '</div>' +
+        blockedTag +
+        noteText +
+        chipsHtml +
+        '</div>';
+    }
+
+    var conflictCount = 0;
+    Object.keys(state.blockedDates).forEach(function (k) {
+      if (ordersByDate[k] && ordersByDate[k].length > 0) conflictCount++;
+    });
+
+    var editPanelHtml = '';
+    if (calEditingDate) {
+      var editIsBlocked = state.blockedDates.hasOwnProperty(calEditingDate);
+      var editNote = editIsBlocked ? (state.blockedDates[calEditingDate] || '') : '';
+      editPanelHtml = '<div class="order-edit-grid" style="margin-top:14px;">' +
+          '<div style="grid-column: 1 / -1; font-weight:600; font-size:13px;">Editing ' + escapeHtml(formatDateLong(calEditingDate)) + '</div>' +
+          '<div class="field-block checkbox-row" style="padding-top:0;">' +
+            '<input type="checkbox" id="cal-edit-blocked"' + (editIsBlocked ? ' checked' : '') + '>' +
+            '<label for="cal-edit-blocked">Mark as personal day (unavailable for customer slots)</label>' +
+          '</div>' +
+          '<div class="field-block"><label class="field-label">Note (optional)</label><input id="cal-edit-note" value="' + escapeHtml(editNote) + '" placeholder="e.g. Family gathering"></div>' +
+        '</div>' +
+        '<div class="form-actions" style="margin-top:10px;">' +
+          '<button class="btn btn-primary btn-small" data-cal-save="1">Save</button> ' +
+          '<button class="btn btn-secondary btn-small" data-cal-cancel="1">Cancel</button>' +
+          (editIsBlocked ? ' <button class="btn btn-secondary btn-small" data-cal-clear="1">Clear</button>' : '') +
+        '</div>';
+    }
+
+    container.innerHTML =
+      '<div class="card">' +
+        '<div class="cal-header">' +
+          '<button class="btn btn-secondary btn-small" data-cal-prev="1">‹ Prev</button>' +
+          '<div class="cal-month-label">' + monthLabel + '</div>' +
+          '<div style="display:flex; gap:8px;">' +
+            '<button class="btn btn-secondary btn-small" data-cal-today="1">Today</button>' +
+            '<button class="btn btn-secondary btn-small" data-cal-next="1">Next ›</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="cal-legend">' +
+          '<span><span class="cal-dot" style="background:var(--blue);"></span> Scheduled order</span>' +
+          '<span><span class="cal-dot" style="background:#c9c2dd;"></span> Personal day (click a day to edit)</span>' +
+          '<span><span class="cal-dot" style="background:var(--red);"></span> Conflict — order scheduled on a personal day</span>' +
+        '</div>' +
+        (conflictCount > 0 ? '<div style="color:var(--red); font-size:13px; margin-bottom:10px;">⚠ ' + conflictCount + ' day' + (conflictCount !== 1 ? 's' : '') + ' with a scheduling conflict — reschedule the order or unblock the day.</div>' : '') +
+        '<div class="cal-grid">' + cellsHtml + '</div>' +
+        editPanelHtml +
+      '</div>';
+  }
+
+  function saveCalendarEdit() {
+    if (!calEditingDate) return;
+    var blocked = document.getElementById('cal-edit-blocked').checked;
+    var note = document.getElementById('cal-edit-note').value.trim();
+    if (blocked) {
+      state.blockedDates[calEditingDate] = note;
+    } else {
+      delete state.blockedDates[calEditingDate];
+    }
+    calEditingDate = null;
+    save();
+    renderCalendar();
+  }
+
+  document.getElementById('calendar-content').addEventListener('click', function (e) {
+    if (e.target.getAttribute('data-cal-prev')) {
+      calMonth--;
+      if (calMonth < 0) { calMonth = 11; calYear--; }
+      calEditingDate = null;
+      renderCalendar();
+      return;
+    }
+    if (e.target.getAttribute('data-cal-next')) {
+      calMonth++;
+      if (calMonth > 11) { calMonth = 0; calYear++; }
+      calEditingDate = null;
+      renderCalendar();
+      return;
+    }
+    if (e.target.getAttribute('data-cal-today')) {
+      var now = new Date();
+      calYear = now.getFullYear();
+      calMonth = now.getMonth();
+      calEditingDate = null;
+      renderCalendar();
+      return;
+    }
+    if (e.target.getAttribute('data-cal-save')) { saveCalendarEdit(); return; }
+    if (e.target.getAttribute('data-cal-cancel')) { calEditingDate = null; renderCalendar(); return; }
+    if (e.target.getAttribute('data-cal-clear')) {
+      if (confirm('Clear the personal-day info for ' + formatDateLong(calEditingDate) + '? This will unmark it and remove the note.')) {
+        delete state.blockedDates[calEditingDate];
+        calEditingDate = null;
+        save();
+        renderCalendar();
+      }
+      return;
+    }
+    var orderId = e.target.getAttribute('data-cal-order');
+    if (orderId) { goToOrder(orderId); return; }
+    var dayEl = e.target.closest ? e.target.closest('.cal-day[data-cal-day]') : null;
+    if (dayEl) {
+      calEditingDate = dayEl.getAttribute('data-cal-day');
+      renderCalendar();
+    }
+  });
+
+  // ================= RENDER ALL =================
+  function renderAll() {
+    refreshProductDropdowns();
+    renderDashboard();
+    renderInventory();
+    renderCosts();
+    renderOrders();
+    renderSchedule();
+    renderCalendar();
+  }
+
+  renderAll();
+})();
+</script>
+
+</body>
+</html>
