@@ -90,4 +90,4 @@ Any time you `git push`, Netlify automatically redeploys.
 
 - Currency is MYR (RM) by default — search for `currency: 'MYR'` in `index.html` to change it. Everything (cost, price, revenue, profit) is meant to be in this one currency; use the "Paid in a different currency?" helper in Inventory/Costs to convert foreign purchases before they're saved.
 - Selling a sticker as a paid add-on: set that sticker's own **Selling price** in Inventory to the add-on amount you charge (e.g. RM8) — this is what auto-fills when you add it as an order line. When it's the sticker *included* with a tumbler, just edit that line's price down to 0 in the order form so you don't double-count revenue.
-- To reset everything, open your browser's dev tools console and run `localStorage.removeItem('snowglobeTrackerData')`, then refresh.
+- To wipe everything and start fresh (e.g. after trying out sample/test data), click **Reset all data** in the header — it asks you to confirm twice since it's permanent, then clears products, costs, orders and calendar data both locally and in your synced account.

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>❄️ Sips by Evve</title>
 <style>
   :root {
@@ -31,11 +31,14 @@
     position: sticky;
     top: 0;
     z-index: 10;
+    padding-top: env(safe-area-inset-top);
   }
   .header-inner {
     max-width: 1100px;
     margin: 0 auto;
     padding: 12px 20px;
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -43,6 +46,7 @@
     gap: 10px;
   }
   .brand { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
   nav button {
     background: none;
@@ -56,7 +60,9 @@
   }
   nav button.active { background: var(--blue); color: #fff; }
   nav button:hover:not(.active) { background: #eef1f7; }
-  .header-actions { display: flex; gap: 8px; }
+  .header-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+  .header-actions-left { display: flex; align-items: center; gap: 8px; }
+  .action-divider { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
   .page { display: none; }
   .page.active { display: block; }
@@ -127,7 +133,7 @@
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
   .stat-label { font-size: 12px; text-transform: uppercase; color: var(--muted); font-weight: 500; }
-  .stat-value { font-size: 26px; font-weight: 600; margin-top: 4px; }
+  .stat-value { font-size: 26px; font-weight: 600; margin-top: 4px; white-space: nowrap; }
   .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
   .row-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f2f3f7; }
@@ -150,6 +156,8 @@
   .lightbox-content img { max-width: 90vw; max-height: 90vh; display: block; border-radius: 8px; }
   .lightbox-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; background: #fff; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
   .schedule-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .schedule-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .schedule-date-input { width: 150px; }
   .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .cal-header .cal-month-label { font-size: 17px; font-weight: 600; }
   .cal-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
@@ -157,7 +165,7 @@
   .cal-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
   .cal-weekday { text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; padding-bottom: 4px; }
-  .cal-day { border: 1px solid var(--border); border-radius: 8px; min-height: 78px; padding: 6px; cursor: pointer; background: var(--card); display: flex; flex-direction: column; gap: 4px; }
+  .cal-day { border: 1px solid var(--border); border-radius: 8px; min-height: 78px; padding: 6px; cursor: pointer; background: var(--card); display: flex; flex-direction: column; gap: 3px; }
   .cal-day:hover { border-color: var(--blue); }
   .cal-day.cal-empty { background: none; border: none; cursor: default; }
   .cal-day.cal-blocked { background: #f3f2f7; }
@@ -167,11 +175,15 @@
   .cal-day.cal-editing { border-color: var(--blue); border-width: 2px; box-shadow: 0 0 0 2px rgba(46,110,225,0.15); }
   .cal-daynum { font-size: 12px; font-weight: 600; }
   .cal-blocked-tag { font-size: 10px; color: var(--muted); background: #e4e1ec; border-radius: 4px; padding: 1px 5px; align-self: flex-start; }
-  .cal-order-chip { font-size: 10px; background: #eaf1fd; color: var(--blue); border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-chip-row { display: flex; flex-wrap: wrap; gap: 3px; }
+  .cal-order-chip { font-size: 10px; background: #eaf1fd; color: var(--blue); border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .cal-order-chip-lg { font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer; white-space: normal; overflow: visible; text-overflow: unset; }
+  .cal-order-chip-lg:hover { background: #d9e8fc; }
   .cal-note-input { font-size: 10px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; width: 100%; }
-  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  .footer-actions { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; }
 
-  .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(20px, env(safe-area-inset-bottom)); }
   .auth-card { width: 100%; max-width: 360px; }
   .auth-card h1 { font-size: 18px; margin: 0 0 4px; text-align: center; }
   .auth-card .muted-center { text-align: center; margin: 0 0 20px; }
@@ -184,6 +196,27 @@
   .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
   .sync-dot.offline { background: var(--muted); }
   .sync-dot.syncing { background: #f59e0b; }
+
+  /* iOS Safari auto-zooms the page when you focus a form field smaller than 16px —
+     bump form fields up to 16px only on small screens so phones stop jumping the zoom in. */
+  @media (max-width: 640px) {
+    input, select, textarea, .cal-note-input { font-size: 16px; }
+    .stat-value { font-size: 20px; }
+    table { font-size: 13px; }
+    nav {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      width: 100%;
+      justify-content: flex-start;
+    }
+    nav::-webkit-scrollbar { display: none; }
+    nav button { flex: 0 0 auto; }
+    .header-inner { gap: 14px; padding-top: 16px; padding-bottom: 16px; }
+    .brand-row, nav, .header-actions { padding: 2px 0; }
+    .schedule-date-input { width: 118px; }
+  }
 </style>
 </head>
 <body>
@@ -204,7 +237,14 @@
     </div>
     <div class="auth-field">
       <label class="field-label">Password</label>
-      <input type="password" id="auth-password" autocomplete="current-password">
+      <div style="position:relative;">
+        <input type="password" id="auth-password" autocomplete="current-password" style="width:100%; padding-right:38px; box-sizing:border-box;">
+        <button type="button" id="auth-toggle-password" aria-label="Show password" style="position:absolute; right:4px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:6px; line-height:1; color:var(--muted); display:flex; align-items:center;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+      </div>
+    </div>
+    <div class="auth-field" style="display:flex; align-items:center; gap:6px;">
+      <input type="checkbox" id="auth-stay-signed-in" checked style="width:auto;">
+      <label for="auth-stay-signed-in" style="font-size:13px; margin:0; cursor:pointer;">Stay signed in on this device</label>
     </div>
     <div class="auth-error" id="auth-error"></div>
     <button type="button" class="btn btn-primary" id="btn-auth-submit" style="width:100%;">Sign in</button>
@@ -231,7 +271,10 @@
 
 <header>
   <div class="header-inner">
-    <div class="brand">❄️ Sips by Evve</div>
+    <div class="brand-row">
+      <div class="brand">❄️ Sips by Evve</div>
+      <button class="btn-text" id="btn-reset-data" style="color:var(--red);">Reset all data</button>
+    </div>
     <nav>
       <button data-tab="dashboard" class="active">Dashboard</button>
       <button data-tab="inventory">Inventory</button>
@@ -241,10 +284,11 @@
       <button data-tab="calendar">Calendar</button>
     </nav>
     <div class="header-actions">
-      <div class="sync-status" id="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Synced</span></div>
-      <button class="btn btn-secondary btn-small" id="btn-sample">Load sample data</button>
-      <button class="btn btn-secondary btn-small" id="btn-export">Export</button>
-      <button class="btn btn-secondary btn-small" id="btn-import">Import</button>
+      <div class="header-actions-left">
+        <div class="sync-status" id="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Synced</span></div>
+        <button class="btn btn-secondary btn-small" id="btn-export">Export</button>
+        <button class="btn btn-secondary btn-small" id="btn-import">Import</button>
+      </div>
       <button class="btn btn-secondary btn-small" id="btn-logout">Log out</button>
       <input type="file" id="import-file" accept="application/json" style="display:none;">
     </div>
@@ -342,6 +386,7 @@
             <img id="pf-photo-preview" class="photo-preview" style="display:none;">
             <button type="button" class="btn-text danger" id="pf-photo-remove" style="display:none;">Remove photo</button>
           </div>
+          <div class="muted" style="font-size:12px; margin-top:4px;">Tip: you can also just paste an image (Ctrl+V / Cmd+V) anywhere on this form.</div>
         </div>
         <div>
           <label class="field-label">Bought from (platform)</label>
@@ -354,14 +399,14 @@
       </div>
       <div class="checkbox-row" id="pf-also-cost-wrap" style="padding-top:0; margin-bottom:14px;">
         <input type="checkbox" id="pf-also-cost">
-        <label for="pf-also-cost">Also log this as a Cost entry (materials, cost × stock, dated today) — for the batch you just bought to start this stock</label>
+        <label for="pf-also-cost">Also log this as a Cost entry (restock, cost × stock, dated today) — for the batch you just bought to start this stock</label>
       </div>
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-product">Save</button>
         <button class="btn btn-secondary" id="btn-cancel-product">Cancel</button>
       </div>
     </div>
-    <div id="inventory-content"></div>
+    <div id="inventory-content" style="overflow-x:auto; -webkit-overflow-scrolling:touch;"></div>
   </section>
 
   <!-- COSTS -->
@@ -375,7 +420,7 @@
         <div>
           <label class="field-label">Category</label>
           <select id="cf-category">
-            <option value="materials">materials</option>
+            <option value="restock">restock</option>
             <option value="packaging">packaging</option>
             <option value="shipping">shipping</option>
             <option value="ads">ads</option>
@@ -566,7 +611,7 @@
         </div>
       </div>
 
-      <div class="form-section-title">Shipping 运费与物流</div>
+      <div class="form-section-title">Shipping</div>
       <div class="form-grid">
         <div style="grid-column: 1 / -1;">
           <label class="field-label">Ship to <span class="muted">(customer's delivery address)</span></label>
@@ -579,14 +624,14 @@
         <div>
           <label class="field-label">Shipping zone</label>
           <select id="of-shipping-zone">
-            <option value="west_malaysia">西马 West Malaysia</option>
-            <option value="east_malaysia">东马 East Malaysia (Sabah/Sarawak)</option>
-            <option value="singapore">新加坡 Singapore</option>
+            <option value="west_malaysia">West Malaysia</option>
+            <option value="east_malaysia">East Malaysia (Sabah/Sarawak)</option>
+            <option value="singapore">Singapore</option>
             <option value="other">Other / custom</option>
           </select>
         </div>
         <div>
-          <label class="field-label">Package weight (kg) <span class="muted">(for 东马/新加坡)</span></label>
+          <label class="field-label">Package weight (kg) <span class="muted">(for East Malaysia/Singapore)</span></label>
           <input id="of-shipping-weight" type="number" step="0.1" min="0" placeholder="e.g. 1.5">
         </div>
         <div>
@@ -634,7 +679,7 @@
 
   <!-- SCHEDULE -->
   <section class="page" id="page-schedule">
-    <div class="page-header"><h1>Schedule 排单</h1></div>
+    <div class="page-header"><h1>Schedule</h1></div>
     <p class="muted" style="margin-top:-8px;">Assign a make/ship date to each order (usually once payment comes in) so you know what to prepare for each livestream day.</p>
     <div id="schedule-content"></div>
   </section>
@@ -648,7 +693,12 @@
 
 </main>
 
-<footer>Data is stored locally in this browser (localStorage) and synced to your account. Use Export any time for an extra backup.</footer>
+<footer>
+  <div>Data is stored locally in this browser (localStorage) and synced to your account. Use Export any time for an extra backup.</div>
+  <div class="footer-actions">
+    <button class="btn-text" id="btn-sample">Load sample data</button>
+  </div>
+</footer>
 
 </div><!-- /#app-shell -->
 
@@ -669,10 +719,39 @@
 
   var state = loadState();
   if (!state.blockedDates) state.blockedDates = {};
+  if (!state.stockLog) state.stockLog = [];
+  if (state.costs) {
+    state.costs.forEach(function (c) {
+      if (c.category === 'materials') c.category = 'restock';
+    });
+  }
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     if (typeof scheduleCloudPush === 'function') scheduleCloudPush();
+  }
+
+  // Every place that changes a product's stock count also calls this, so Inventory can
+  // show a full history of why stock moved (restocks, sales, wastage, corrections).
+  // Movements from before this feature existed won't have log entries.
+  var STOCK_LOG_LABELS = {
+    restock: 'Restock',
+    order: 'Sold (order)',
+    order_restore: 'Order cancelled/deleted — restored',
+    wastage: 'Wastage / loss',
+    correction: 'Manual correction'
+  };
+  function logStock(productId, qty, type, note, date, costId) {
+    if (!productId || !qty) return;
+    state.stockLog.push({
+      id: uid(),
+      productId: productId,
+      qty: qty,
+      type: type,
+      note: note || '',
+      date: date || todayISO(),
+      costId: costId || null
+    });
   }
 
   function uid() {
@@ -698,6 +777,13 @@
     if (!d) return '';
     var dt = new Date(d + 'T00:00:00');
     return dt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  // "12 Aug 2026" — no weekday, used where space is tight (e.g. stock history).
+  function formatDateCompact(d) {
+    if (!d) return '';
+    var dt = new Date(d + 'T00:00:00');
+    return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   function escapeHtml(s) {
@@ -782,6 +868,7 @@
   var pfPhotoData = '';
   var expandedThemes = {};
   var adjustingStockProductId = null;
+  var viewingStockLogProductId = null;
   var STOCK_ADJUST_REASONS = {
     wastage: 'Wastage / spillage',
     damaged: 'Damaged',
@@ -819,9 +906,9 @@
     }
   });
 
-  document.getElementById('pf-photo-file').addEventListener('change', function (e) {
-    var file = e.target.files[0];
-    if (!file) return;
+  // Shared by both the file picker and paste-an-image — resizes/compresses so photos
+  // don't bloat localStorage (and the earlier blurry-thumbnail bug stays fixed).
+  function processImageBlob(blob) {
     var reader = new FileReader();
     reader.onload = function (ev) {
       var img = new Image();
@@ -838,7 +925,28 @@
       };
       img.src = ev.target.result;
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
+  }
+
+  document.getElementById('pf-photo-file').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    processImageBlob(file);
+  });
+
+  // Paste an image (Ctrl+V / Cmd+V) straight into the product form — e.g. copied from
+  // a chat, a supplier listing, or another app — no need to save it as a file first.
+  document.addEventListener('paste', function (e) {
+    var wrap = document.getElementById('product-form-wrap');
+    if (!wrap || wrap.style.display === 'none') return;
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image/') === 0) {
+        var blob = items[i].getAsFile();
+        if (blob) { processImageBlob(blob); e.preventDefault(); }
+        break;
+      }
+    }
   });
 
   document.getElementById('pf-photo-remove').addEventListener('click', function () {
@@ -927,15 +1035,21 @@
       newProductId = data.id;
       state.products.push(data);
     }
+    var initialStockCostId = null;
     if (newProductId && document.getElementById('pf-also-cost').checked && cost > 0 && stock > 0) {
+      initialStockCostId = uid();
       state.costs.push({
-        id: uid(),
-        category: 'materials',
+        id: initialStockCostId,
+        category: 'restock',
         date: todayISO(),
         amount: cost * stock,
         productId: newProductId,
+        qty: stock,
         description: 'Initial stock for ' + name + (data.variant ? ' — ' + data.variant : '') + ' (' + stock + ' × ' + money(cost) + ')'
       });
+    }
+    if (newProductId && stock > 0) {
+      logStock(newProductId, stock, 'restock', 'Initial stock', todayISO(), initialStockCostId);
     }
     save();
     document.getElementById('product-form-wrap').style.display = 'none';
@@ -995,14 +1109,13 @@
     var thumb = p.image
       ? '<img class="thumb" src="' + p.image + '">'
       : '<div class="thumb-placeholder">' + escapeHtml((p.name || '?').charAt(0).toUpperCase()) + '</div>';
+    var skuLine = (p.sku && p.type === 'Stickers') ? '<div class="muted" style="font-size:12px;">SKU: ' + escapeHtml(p.sku) + '</div>' : '';
     var row = '<tr>' +
       '<td><div style="display:flex; align-items:center; gap:8px;">' + thumb +
-      '<div><div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' + (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '') + sourceLineHtml(p) + '</div></div></td>' +
-      '<td class="muted">' + (escapeHtml(p.sku) || '—') + '</td>' +
-      '<td>' + money(p.cost) + '</td>' +
-      '<td>' + money(p.price) + '</td>' +
-      '<td style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + money(margin) + '</td>' +
-      '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '">' + p.stock + (low ? ' ⚠ low' : '') + '</span></td>' +
+      '<div><div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' + (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '') + skuLine + sourceLineHtml(p) + '</div></div></td>' +
+      '<td style="white-space:nowrap;"><div>Cost ' + money(p.cost) + ' · Price ' + money(p.price) + '</div>' +
+      '<div class="muted" style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">Margin ' + money(margin) + '</div></td>' +
+      '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see stock history">' + p.stock + (low ? ' ⚠ low' : '') + '</span></td>' +
       '<td style="text-align:right; white-space:nowrap;">' +
       '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
       '<span class="row-actions-sep">·</span>' +
@@ -1011,9 +1124,35 @@
       '<button class="btn-text danger" data-delete-product="' + p.id + '">Delete</button>' +
       '</td></tr>';
     if (adjustingStockProductId === p.id) {
-      row += '<tr><td colspan="7" style="background:#fafbfd;">' + renderStockAdjustPanel(p) + '</td></tr>';
+      row += '<tr><td colspan="4" style="background:#fafbfd;">' + renderStockAdjustPanel(p) + '</td></tr>';
+    }
+    if (viewingStockLogProductId === p.id) {
+      row += renderStockLogPanel(p);
     }
     return row;
+  }
+
+  function renderStockLogPanel(p) {
+    var entries = state.stockLog
+      .filter(function (l) { return l.productId === p.id; })
+      .slice()
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || 0; });
+    var titleRow = '<tr style="background:#fafbfd;"><td colspan="4" style="font-weight:600; font-size:13px;">Stock history — ' + escapeHtml(p.name) + ' <span class="muted" style="font-weight:400;">(current: ' + p.stock + ')</span></td></tr>';
+    var rowsHtml = entries.length
+      ? entries.map(function (l) {
+          var label = STOCK_LOG_LABELS[l.type] || l.type;
+          var sign = l.qty > 0 ? '+' : '';
+          var color = l.qty > 0 ? 'var(--green)' : 'var(--red)';
+          return '<tr style="background:#fafbfd;">' +
+            '<td style="font-size:13px; color:var(--muted);">' + escapeHtml(formatDateCompact(l.date)) + '</td>' +
+            '<td style="font-size:13px;">' + escapeHtml(label) + (l.note ? ' — ' + escapeHtml(l.note) : '') + '</td>' +
+            '<td style="font-size:13px; color:' + color + '; font-weight:600;">' + sign + l.qty + '</td>' +
+            '<td style="text-align:right;"><button class="btn-text danger" data-remove-stock-log="' + l.id + '" title="Remove this history entry (does not change the stock count)" style="font-size:11px;">Remove</button></td>' +
+          '</tr>';
+        }).join('')
+      : '<tr style="background:#fafbfd;"><td colspan="4" class="empty">No recorded stock movements yet for this product (movements from before this feature won\'t show here).</td></tr>';
+    var closeRow = '<tr style="background:#fafbfd;"><td colspan="4" style="padding-top:10px;"><button class="btn btn-secondary btn-small" data-close-stock-log="' + p.id + '">Close</button></td></tr>';
+    return titleRow + rowsHtml + closeRow;
   }
 
   function renderStockAdjustPanel(p) {
@@ -1024,9 +1163,8 @@
         '<div class="field-block"><div class="field-label" style="margin-bottom:2px;">Current stock</div><div style="font-size:13px;">' + p.stock + '</div></div>' +
         '<div class="field-block"><label class="field-label">New stock quantity</label><input type="number" min="0" id="sa-newstock-' + p.id + '" data-product-id="' + p.id + '" class="sa-newstock-input" value="' + p.stock + '"></div>' +
         '<div class="field-block"><label class="field-label">Reason</label><select id="sa-reason-' + p.id + '">' + reasonOptions + '</select></div>' +
-        '<div class="field-block checkbox-row" id="sa-logcost-wrap-' + p.id + '" style="padding-top:18px; display:none;"><input type="checkbox" id="sa-logcost-' + p.id + '" checked><label for="sa-logcost-' + p.id + '">Log the lost value as a Cost entry</label></div>' +
       '</div>' +
-      '<div id="sa-restock-hint-' + p.id + '" class="muted" style="font-size:12px; display:none; margin:-4px 0 4px;">Restocking with a purchase? Log it from the Costs tab instead — pick this product and enter the quantity, and stock updates automatically.</div>' +
+      '<div id="sa-hint-' + p.id + '" class="muted" style="font-size:12px; display:none; margin:-4px 0 4px;"></div>' +
       '<div class="form-actions" style="margin-top:10px;">' +
         '<button class="btn btn-primary btn-small" data-save-stock-adjust="' + p.id + '">Save</button> ' +
         '<button class="btn btn-secondary btn-small" data-cancel-stock-adjust="' + p.id + '">Cancel</button>' +
@@ -1036,21 +1174,19 @@
   function updateStockAdjustBlocks(id) {
     var p = state.products.find(function (x) { return x.id === id; });
     var input = document.getElementById('sa-newstock-' + id);
-    var logCostWrap = document.getElementById('sa-logcost-wrap-' + id);
-    var hint = document.getElementById('sa-restock-hint-' + id);
-    if (!p || !input || !logCostWrap || !hint) return;
+    var hint = document.getElementById('sa-hint-' + id);
+    if (!p || !input || !hint) return;
     var newVal = Number(input.value);
     if (isNaN(newVal) || newVal === p.stock) {
-      logCostWrap.style.display = 'none';
       hint.style.display = 'none';
       return;
     }
     if (newVal > p.stock) {
-      logCostWrap.style.display = 'none';
+      hint.textContent = 'Restocking with a purchase? Log it from the Costs tab instead — pick this product and enter the quantity, and stock updates automatically.';
       hint.style.display = 'block';
     } else {
-      logCostWrap.style.display = 'flex';
-      hint.style.display = 'none';
+      hint.textContent = 'This will also log the lost value as a Cost entry (wastage) automatically.';
+      hint.style.display = 'block';
     }
   }
 
@@ -1071,18 +1207,19 @@
     p.stock = newStock;
     if (diff < 0) {
       var lost = -diff;
-      var logCostEl = document.getElementById('sa-logcost-' + id);
-      var logCost = logCostEl && logCostEl.checked;
-      if (logCost) {
-        state.costs.push({
-          id: uid(),
-          category: 'wastage',
-          date: todayISO(),
-          amount: lost * p.cost,
-          productId: p.id,
-          description: (STOCK_ADJUST_REASONS[reason] || reason) + ' — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + lost + ' units)'
-        });
-      }
+      var wastageCostId = uid();
+      state.costs.push({
+        id: wastageCostId,
+        category: 'wastage',
+        date: todayISO(),
+        amount: lost * p.cost,
+        productId: p.id,
+        qty: diff,
+        description: (STOCK_ADJUST_REASONS[reason] || reason) + ' — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + lost + ' units)'
+      });
+      logStock(p.id, diff, 'wastage', STOCK_ADJUST_REASONS[reason] || reason, null, wastageCostId);
+    } else if (diff > 0) {
+      logStock(p.id, diff, 'correction', STOCK_ADJUST_REASONS[reason] || reason || 'Manual correction');
     }
     adjustingStockProductId = null;
     save();
@@ -1114,7 +1251,7 @@
       });
       groups.forEach(function (g) {
         var isOpen = !!expandedThemes[g.theme];
-        rowsHtml += '<tr><td colspan="7" style="background:#fafbfd; padding:0;">' +
+        rowsHtml += '<tr><td colspan="4" style="background:#fafbfd; padding:0;">' +
           '<button type="button" class="theme-toggle" data-toggle-theme="' + escapeHtml(g.theme) + '">' +
           '<span>' + (isOpen ? '▾' : '▸') + ' ' + escapeHtml(g.theme || 'No theme set') + '</span>' +
           '<span class="muted">' + g.items.length + '</span>' +
@@ -1128,7 +1265,7 @@
     }
     return '<div class="card" style="margin-bottom:14px; overflow-x:auto;">' +
       '<div style="font-weight:600; margin-bottom:10px;">' + escapeHtml(title) + ' (' + items.length + ')</div>' +
-      '<table><thead><tr><th>Product</th><th>SKU</th><th>Cost</th><th>Price</th><th>Margin</th><th>Stock</th><th></th></tr></thead>' +
+      '<table><thead><tr><th>Product</th><th>Pricing</th><th>Stock</th><th></th></tr></thead>' +
       '<tbody>' + rowsHtml + '</tbody></table></div>';
   }
 
@@ -1161,6 +1298,9 @@
     var adjustId = e.target.getAttribute('data-adjust-stock');
     var saveAdjustId = e.target.getAttribute('data-save-stock-adjust');
     var cancelAdjustId = e.target.getAttribute('data-cancel-stock-adjust');
+    var viewLogId = e.target.getAttribute('data-view-stock-log');
+    var closeLogId = e.target.getAttribute('data-close-stock-log');
+    var removeLogId = e.target.getAttribute('data-remove-stock-log');
     var toggleBtn = e.target.closest ? e.target.closest('[data-toggle-theme]') : null;
     if (editId) editProduct(editId);
     if (delId) deleteProduct(delId);
@@ -1172,6 +1312,21 @@
     if (cancelAdjustId) {
       adjustingStockProductId = null;
       renderInventory();
+    }
+    if (viewLogId) {
+      viewingStockLogProductId = (viewingStockLogProductId === viewLogId) ? null : viewLogId;
+      renderInventory();
+    }
+    if (closeLogId) {
+      viewingStockLogProductId = null;
+      renderInventory();
+    }
+    if (removeLogId) {
+      if (confirm('Remove this stock history entry? This only cleans up the record — it does NOT change the current stock count (use Adjust for that).')) {
+        state.stockLog = state.stockLog.filter(function (l) { return l.id !== removeLogId; });
+        save();
+        renderInventory();
+      }
     }
     if (toggleBtn) {
       var theme = toggleBtn.getAttribute('data-toggle-theme');
@@ -1196,7 +1351,7 @@
   });
 
   function clearCostForm() {
-    document.getElementById('cf-category').value = 'materials';
+    document.getElementById('cf-category').value = 'restock';
     document.getElementById('cf-date').value = todayISO();
     document.getElementById('cf-amount').value = '';
     document.getElementById('cf-amount').readOnly = false;
@@ -1420,6 +1575,7 @@
     var serviceFeeAmount = Number(document.getElementById('cf-extra-fee').value) || 0;
     var isNewEntry = !editingCostId;
     var isMulti = document.getElementById('cf-multi-toggle').checked;
+    var costId = editingCostId || uid();
 
     var amount, dataItems = null, linkedProductId = null;
 
@@ -1460,6 +1616,7 @@
           var p = state.products.find(function (x) { return x.id === it.productId; });
           if (!p) return;
           p.stock += it.qty;
+          logStock(p.id, it.qty, 'restock', 'Cost entry (batch)', date, costId);
           if (updateCosts) {
             var lineSubtotal = it.qty * it.unitCost;
             var share = itemsSubtotal > 0 ? (lineSubtotal / itemsSubtotal) * (sstAmount + serviceFeeAmount) : 0;
@@ -1517,22 +1674,28 @@
       sstAmount: sstAmount || null,
       serviceFeeAmount: serviceFeeAmount || null
     };
+    // Only stamp qty on NEW single-product entries — during an edit the qty field is hidden/stale
+    // (stock isn't re-touched on edit), so leaving it out of `data` here avoids clobbering it.
+    if (isNewEntry && !isMulti && linkedProductId) {
+      data.qty = Number(document.getElementById('cf-qty').value) || 0;
+    }
     if (editingCostId) {
       var c = state.costs.find(function (x) { return x.id === editingCostId; });
       Object.assign(c, data);
     } else {
-      data.id = uid();
+      data.id = costId;
       state.costs.push(data);
     }
     // Restocking (single-product mode): a new cost entry linked to a product (existing or just
     // created above), with a quantity, bumps that product's stock automatically — so restocking
     // never needs a second step in Inventory. (Multi-product mode does its own stock update above.)
     if (isNewEntry && !isMulti && linkedProductId) {
-      var qty2 = Number(document.getElementById('cf-qty').value) || 0;
+      var qty2 = data.qty;
       if (qty2 > 0) {
         var linkedProduct = state.products.find(function (x) { return x.id === linkedProductId; });
         if (linkedProduct) {
           linkedProduct.stock += qty2;
+          logStock(linkedProduct.id, qty2, 'restock', 'Cost entry (' + document.getElementById('cf-category').value + ')', date, costId);
           if (document.getElementById('cf-updatecost').checked && amount > 0) {
             linkedProduct.cost = Math.round((amount / qty2) * 100) / 100;
           }
@@ -1586,7 +1749,22 @@
   }
 
   function deleteCost(id) {
-    if (!confirm('Delete this cost entry?')) return;
+    var cost = state.costs.find(function (c) { return c.id === id; });
+    if (!cost) return;
+    // Any stock this cost entry added (restock) or removed (wastage, qty stored negative)
+    // gets reversed too, so Inventory and its stock history never drift out of sync with Costs.
+    var stockChanges = (cost.items && cost.items.length)
+      ? cost.items
+      : (cost.productId && typeof cost.qty === 'number' && cost.qty !== 0 ? [{ productId: cost.productId, qty: cost.qty }] : []);
+    var warn = stockChanges.length
+      ? ' This will also update the matching stock it changed in Inventory (and remove its stock history entries).'
+      : '';
+    if (!confirm('Delete this cost entry?' + warn)) return;
+    stockChanges.forEach(function (it) {
+      var p = state.products.find(function (x) { return x.id === it.productId; });
+      if (p) p.stock = Math.max(0, p.stock - it.qty);
+    });
+    state.stockLog = state.stockLog.filter(function (l) { return l.costId !== id; });
     state.costs = state.costs.filter(function (c) { return c.id !== id; });
     save();
     renderAll();
@@ -1787,10 +1965,10 @@
   }
 
   // ---- Shipping zone rules ----
-  // 西马 (West Malaysia): always free to the customer; RM7 courier cost absorbed as your cost, no weight surcharge.
-  // 东马 (East Malaysia): free once order subtotal hits RM100; below that, charge the customer the actual
+  // West Malaysia: always free to the customer; RM7 courier cost absorbed as your cost, no weight surcharge.
+  // East Malaysia: free once order subtotal hits RM100; below that, charge the customer the actual
   //   weight-based courier rate (pass-through, no markup) — same table used for your own cost either way.
-  // 新加坡 (Singapore): never free; always the weight-based courier rate in SGD, converted to RM (pass-through).
+  // Singapore: never free; always the weight-based courier rate in SGD, converted to RM (pass-through).
   var EAST_MY_WEIGHT_TIERS = [
     { maxKg: 1, rm: 13.70 },
     { maxKg: 2, rm: 20.60 },
@@ -1986,23 +2164,25 @@
   });
 
   function restoreStock(order) {
+    var who = order.buyerName ? ('Order: ' + order.buyerName) : 'Order';
     order.items.forEach(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
-      if (p) p.stock += item.qty;
+      if (p) { p.stock += item.qty; logStock(p.id, item.qty, 'order_restore', who); }
     });
     (order.addOns || []).forEach(function (a) {
       var p = state.products.find(function (x) { return x.id === a.productId; });
-      if (p) p.stock += a.qty;
+      if (p) { p.stock += a.qty; logStock(p.id, a.qty, 'order_restore', who + ' (add-on)'); }
     });
   }
   function deductStock(order) {
+    var who = order.buyerName ? ('Order: ' + order.buyerName) : 'Order';
     order.items.forEach(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
-      if (p) p.stock = Math.max(0, p.stock - item.qty);
+      if (p) { var before = p.stock; p.stock = Math.max(0, p.stock - item.qty); logStock(p.id, -(before - p.stock), 'order', who, order.date); }
     });
     (order.addOns || []).forEach(function (a) {
       var p = state.products.find(function (x) { return x.id === a.productId; });
-      if (p) p.stock = Math.max(0, p.stock - a.qty);
+      if (p) { var before2 = p.stock; p.stock = Math.max(0, p.stock - a.qty); logStock(p.id, -(before2 - p.stock), 'order', who + ' (add-on)', order.date); }
     });
   }
 
@@ -2128,7 +2308,9 @@
     if (!order.addOns) order.addOns = [];
     order.addOns.push(addOn);
     if (order.status !== 'cancelled' && p) {
+      var beforeAo = p.stock;
       p.stock = Math.max(0, p.stock - qty);
+      logStock(p.id, -(beforeAo - p.stock), 'order', (order.buyerName ? ('Order: ' + order.buyerName) : 'Order') + ' (add-on)', addOn.date);
     }
     addOnDraftFor = null;
     save();
@@ -2143,7 +2325,7 @@
     if (!confirm('Remove this add-on? Stock will be restored if the order is not cancelled.')) return;
     if (order.status !== 'cancelled') {
       var p = state.products.find(function (x) { return x.id === addOn.productId; });
-      if (p) p.stock += addOn.qty;
+      if (p) { p.stock += addOn.qty; logStock(p.id, addOn.qty, 'order_restore', (order.buyerName ? ('Order: ' + order.buyerName) : 'Order') + ' (add-on removed)'); }
     }
     order.addOns = order.addOns.filter(function (a) { return a.id !== addOnId; });
     save();
@@ -2205,11 +2387,11 @@
           '<div class="field-block checkbox-row" style="padding-top:0;">' +
             (isCancelled
               ? '<span title="Cancelled — payment not applicable">⛔</span><label style="color:var(--muted);">Payment not applicable (order cancelled)</label>'
-              : '<input type="checkbox" id="def-paid-' + o.id + '"' + (o.paid ? ' checked' : '') + '><label for="def-paid-' + o.id + '">已汇款 / Payment received</label>') +
+              : '<input type="checkbox" id="def-paid-' + o.id + '"' + (o.paid ? ' checked' : '') + '><label for="def-paid-' + o.id + '">Payment received</label>') +
           '</div>' +
           '<div class="field-block"><label class="field-label">Payment date</label><input type="date" id="def-paymentDate-' + o.id + '" value="' + escapeHtml(o.paymentDate || '') + '"></div>' +
-          '<div class="field-block"><label class="field-label">汇款编号 / Reference no.</label><input id="def-paymentRef-' + o.id + '" value="' + escapeHtml(o.paymentRef || '') + '"></div>' +
-          '<div class="field-block"><label class="field-label">汇款人户口名称</label><input id="def-paymentBankName-' + o.id + '" value="' + escapeHtml(o.paymentBankName || '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">Reference no.</label><input id="def-paymentRef-' + o.id + '" value="' + escapeHtml(o.paymentRef || '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">Payer account name</label><input id="def-paymentBankName-' + o.id + '" value="' + escapeHtml(o.paymentBankName || '') + '"></div>' +
           '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Ship to (address)</label><textarea id="def-shipTo-' + o.id + '" rows="2" style="resize:vertical;">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
           '<div class="field-block"><label class="field-label">Postcode</label><input id="def-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostActual || 0) + '"></div>' +
@@ -2223,8 +2405,8 @@
     return '<div class="order-edit-grid">' +
         detailRow('Paid', isCancelled ? '⛔ Not applicable (cancelled)' : (o.paid ? 'Yes' : 'No')) +
         detailRow('Payment date', o.paymentDate || '—') +
-        detailRow('汇款编号', o.paymentRef || '—') +
-        detailRow('汇款人户口名称', o.paymentBankName || '—') +
+        detailRow('Reference no.', o.paymentRef || '—') +
+        detailRow('Payer account name', o.paymentBankName || '—') +
         detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
         detailRow('Shipping cost paid', money(o.shippingCostActual || 0)) +
         detailRow('Tracking number', o.trackingNumber || '—') +
@@ -2493,7 +2675,7 @@
       var addOnsCogs = (o.addOns || []).reduce(function (ss, a) { return ss + a.qty * a.unitCost; }, 0);
       return s + itemsCogs + addOnsCogs;
     }, 0);
-    var otherCosts = state.costs.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+    var otherCosts = state.costs.reduce(function (s, c) { return c.category === 'restock' ? s : s + Number(c.amount); }, 0);
     var shippingCostsPaid = active.reduce(function (s, o) { return s + Number(o.shippingCostActual || 0); }, 0);
     var totalCosts = cogs + otherCosts + shippingCostsPaid;
     var profit = revenue - totalCosts;
@@ -2591,8 +2773,8 @@
         '<div class="schedule-row">' +
           '<div><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.buyerHandle ? ' <span class="muted">' + escapeHtml(o.buyerHandle) + '</span>' : '') + (o.buyerTelegram ? ' <span class="muted">TG: ' + escapeHtml(o.buyerTelegram) + '</span>' : '') + '</div>' +
           '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' + estimateNote + '</div>' +
-          '<div style="display:flex; align-items:center; gap:10px;">' + queuePill + paidPill +
-            (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '" style="width:150px;">') +
+          '<div class="schedule-controls">' + queuePill + paidPill +
+            (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '">') +
             '<label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); white-space:nowrap;">' +
               '<input type="checkbox" class="schedule-done-checkbox" data-order-id="' + o.id + '"' + (isDone ? ' checked' : '') + '> Done' +
             '</label>' +
@@ -2688,6 +2870,15 @@
     e.target.value = '';
   });
 
+  // ================= RESET ALL DATA =================
+  document.getElementById('btn-reset-data').addEventListener('click', function () {
+    if (!confirm('This will permanently delete ALL products, costs, orders and calendar data — including anything already synced to your account. This cannot be undone. Continue?')) return;
+    if (!confirm('Really sure? This clears everything and starts you with a blank tracker.')) return;
+    state = { products: [], costs: [], orders: [], blockedDates: {}, stockLog: [] };
+    save();
+    renderAll();
+  });
+
   // ================= SAMPLE DATA =================
   document.getElementById('btn-sample').addEventListener('click', function () {
     if (state.products.length || state.costs.length || state.orders.length) {
@@ -2704,8 +2895,8 @@
     state.products.push(tumbler, a001, a002, b001, b002, b003, towel, syringe);
 
     state.costs.push(
-      { id: uid(), category: 'materials', date: '2026-07-28', amount: 180, productId: null, description: '40x tumbler blanks from supplier' },
-      { id: uid(), category: 'materials', date: '2026-07-29', amount: 50, productId: null, description: 'Glitter refill batch (hard to track per bottle, logged as a batch cost)' },
+      { id: uid(), category: 'restock', date: '2026-07-28', amount: 180, productId: null, description: '40x tumbler blanks from supplier' },
+      { id: uid(), category: 'restock', date: '2026-07-29', amount: 50, productId: null, description: 'Glitter refill batch (hard to track per bottle, logged as a batch cost)' },
       { id: uid(), category: 'packaging', date: '2026-07-29', amount: 35, productId: null, description: 'Bubble mailers x100' },
       { id: uid(), category: 'shipping', date: '2026-07-30', amount: 40, productId: null, description: 'Courier account top-up (bulk)' },
       { id: uid(), category: 'ads', date: '2026-08-01', amount: 25, productId: null, description: 'TikTok promo boost' }
@@ -2791,9 +2982,15 @@
       var isToday = dateStr === todayStr;
       var isEditing = dateStr === calEditingDate;
       var classes = 'cal-day' + (isBlocked ? ' cal-blocked' : '') + (isConflict ? ' cal-conflict' : '') + (isToday ? ' cal-today' : '') + (isEditing ? ' cal-editing' : '');
-      var chipsHtml = dayOrders.slice(0, 2).map(function (o) {
-        return '<div class="cal-order-chip" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + '">' + escapeHtml(o.buyerName || 'Order') + '</div>';
-      }).join('') + (dayOrders.length > 2 ? '<div class="muted" style="font-size:10px;">+' + (dayOrders.length - 2) + ' more</div>' : '');
+      var CAL_CHIP_CAP = 6;
+      var chipsHtml = dayOrders.length
+        ? '<div class="cal-chip-row">' +
+            dayOrders.slice(0, CAL_CHIP_CAP).map(function (o) {
+              return '<div class="cal-order-chip" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + '">' + escapeHtml(o.buyerName || 'Order') + '</div>';
+            }).join('') +
+            (dayOrders.length > CAL_CHIP_CAP ? '<div class="muted" style="font-size:10px;">+' + (dayOrders.length - CAL_CHIP_CAP) + ' more</div>' : '') +
+          '</div>'
+        : '';
       var blockedTag = isBlocked ? '<span class="cal-blocked-tag">Personal</span>' : '';
       var noteText = (isBlocked && state.blockedDates[dateStr]) ? '<div class="muted" style="font-size:10px;">' + escapeHtml(state.blockedDates[dateStr]) + '</div>' : '';
       cellsHtml += '<div class="' + classes + '" data-cal-day="' + dateStr + '">' +
@@ -2813,8 +3010,18 @@
     if (calEditingDate) {
       var editIsBlocked = state.blockedDates.hasOwnProperty(calEditingDate);
       var editNote = editIsBlocked ? (state.blockedDates[calEditingDate] || '') : '';
+      var editDayOrders = ordersByDate[calEditingDate] || [];
+      var ordersListHtml = editDayOrders.length
+        ? '<div style="grid-column: 1 / -1;"><label class="field-label">Scheduled orders (' + editDayOrders.length + ')</label>' +
+            '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
+              editDayOrders.map(function (o) {
+                return '<div class="cal-order-chip cal-order-chip-lg" data-cal-order="' + o.id + '">' + escapeHtml(o.buyerName || 'Order') + '</div>';
+              }).join('') +
+            '</div></div>'
+        : '';
       editPanelHtml = '<div class="order-edit-grid" style="margin-top:14px;">' +
           '<div style="grid-column: 1 / -1; font-weight:600; font-size:13px;">Editing ' + escapeHtml(formatDateLong(calEditingDate)) + '</div>' +
+          ordersListHtml +
           '<div class="field-block checkbox-row" style="padding-top:0;">' +
             '<input type="checkbox" id="cal-edit-blocked"' + (editIsBlocked ? ' checked' : '') + '>' +
             '<label for="cal-edit-blocked">Mark as personal day (unavailable for customer slots)</label>' +
@@ -2927,8 +3134,35 @@
   var SUPABASE_URL = 'https://thjdbvkvpjrdfcgtumsf.supabase.co';
   var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoamRidmt2cGpyZGZjZ3R1bXNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMTAyODIsImV4cCI6MjEwMTc4NjI4Mn0.2hf1ucfJ9aKmG_YXsWUg6o1Q3-I66JbrwdUdzkq4x2w';
 
+  // "Stay signed in" toggle: when checked (default), the session is written to
+  // localStorage so it survives closing the browser/app. When unchecked, it's
+  // written to sessionStorage instead, so it disappears once the tab/window closes.
+  // This storage object is checked at read/write time, so a single Supabase client
+  // can be created once at page load and still respect whatever the user picks
+  // on the login screen each time they sign in.
+  var staySignedIn = true;
+  var authStorage = {
+    getItem: function (key) {
+      var v = localStorage.getItem(key);
+      return (v !== null) ? v : sessionStorage.getItem(key);
+    },
+    setItem: function (key, value) {
+      if (staySignedIn) {
+        localStorage.setItem(key, value);
+        sessionStorage.removeItem(key);
+      } else {
+        sessionStorage.setItem(key, value);
+        localStorage.removeItem(key);
+      }
+    },
+    removeItem: function (key) {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    }
+  };
+
   var sb = (typeof supabase !== 'undefined' && supabase.createClient)
-    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: authStorage } })
     : null;
 
   var cloudPushTimer = null;
@@ -2970,6 +3204,12 @@
         if (!state.products) state.products = [];
         if (!state.costs) state.costs = [];
         if (!state.orders) state.orders = [];
+        if (!state.stockLog) state.stockLog = [];
+        if (state.costs) {
+          state.costs.forEach(function (c) {
+            if (c.category === 'materials') c.category = 'restock';
+          });
+        }
         save();
         renderAll();
       } else {
@@ -3008,6 +3248,7 @@
       var errorEl = document.getElementById('auth-error');
       errorEl.textContent = '';
       if (!email || !password) { errorEl.textContent = 'Enter both email and password.'; return; }
+      staySignedIn = document.getElementById('auth-stay-signed-in').checked;
       var submitBtn = document.getElementById('btn-auth-submit');
       submitBtn.disabled = true;
       var action = authMode === 'signin' ? sb.auth.signInWithPassword({ email: email, password: password }) : sb.auth.signUp({ email: email, password: password });
@@ -3019,11 +3260,13 @@
           return;
         }
         // onAuthStateChange below handles the rest (pulling cloud state, showing the app).
+      }).catch(function () {
+        // Network/request failure (bad connection, or opening this file directly instead of
+        // via a real web address, which some mobile browsers block from reaching the internet) —
+        // without this, the button would stay stuck disabled forever with no explanation.
+        submitBtn.disabled = false;
+        errorEl.textContent = 'Could not reach the server. Check your internet connection and try again — if you opened this file directly on your phone instead of via its web address, that can also block sign-in.';
       });
-    });
-
-    document.getElementById('btn-logout').addEventListener('click', function () {
-      sb.auth.signOut().then(function () { location.reload(); });
     });
 
     window.addEventListener('online', function () { scheduleCloudPush(); });
@@ -3047,6 +3290,27 @@
     // Supabase script failed to load (e.g. offline on first-ever visit) — fall back to local-only.
     showApp();
   }
+
+  // Always wire up Logout, whether or not the Supabase client loaded successfully —
+  // otherwise a transient CDN failure would leave the button doing nothing.
+  document.getElementById('btn-logout').addEventListener('click', function () {
+    if (sb) {
+      sb.auth.signOut().then(function () { location.reload(); });
+    } else {
+      location.reload();
+    }
+  });
+
+  // Show/hide password toggle — always wired up regardless of Supabase load state.
+  var EYE_OPEN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+  var EYE_OFF_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+  document.getElementById('auth-toggle-password').addEventListener('click', function () {
+    var pwInput = document.getElementById('auth-password');
+    var showing = pwInput.type === 'text';
+    pwInput.type = showing ? 'password' : 'text';
+    this.innerHTML = showing ? EYE_OPEN_SVG : EYE_OFF_SVG;
+    this.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  });
 })();
 </script>
 
