@@ -137,6 +137,24 @@
   .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
   .row-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f2f3f7; }
+  .qa-log { max-height: 460px; overflow-y: auto; padding: 4px 2px; margin-bottom: 12px; }
+  .qa-welcome { padding: 20px; }
+  .qa-row { display: flex; margin-bottom: 8px; }
+  .qa-bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+  .qa-bubble-user { background: var(--blue); color: #fff; border-bottom-right-radius: 4px; }
+  .qa-bubble-bot { background: #f1f3f8; color: var(--text); border-bottom-left-radius: 4px; }
+  .qa-stage { background: #eef4ff; margin-bottom: 12px; }
+  #quickadd-content { padding-bottom: 84px; }
+  main:has(#page-quickadd.active) ~ footer { display: none; }
+  .qa-input-bar {
+    display: flex; align-items: flex-end; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 24px; padding: 8px 8px 8px 18px;
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: max(14px, env(safe-area-inset-bottom));
+    width: calc(100% - 40px); max-width: 1060px; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.1); z-index: 20;
+  }
+  .qa-input-bar textarea { flex: 1; border: none; outline: none; resize: none; font-family: inherit; font-size: 14px; max-height: 120px; padding: 6px 0; background: transparent; }
+  .qa-send-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--blue); color: #fff; border: none; cursor: pointer; flex: 0 0 auto; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; }
+  .qa-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .qa-lastentry { display: flex; align-items: center; gap: 8px; padding: 6px 4px; margin-bottom: 4px; }
   .row-line:last-child { border-bottom: none; }
   .order-items-row td { background: #fafbfd; }
   .item-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
@@ -282,6 +300,7 @@
       <button data-tab="orders">Orders</button>
       <button data-tab="schedule">Schedule</button>
       <button data-tab="calendar">Calendar</button>
+      <button data-tab="quickadd">Quick Add</button>
     </nav>
     <div class="header-actions">
       <div class="header-actions-left">
@@ -328,6 +347,7 @@
           <select id="pf-type">
             <option value="Tumbler">Tumbler</option>
             <option value="Stickers">Stickers</option>
+            <option value="Add ons">Add ons</option>
             <option value="Others">Others</option>
           </select>
         </div>
@@ -388,13 +408,15 @@
           </div>
           <div class="muted" style="font-size:12px; margin-top:4px;">Tip: you can also just paste an image (Ctrl+V / Cmd+V) anywhere on this form.</div>
         </div>
-        <div>
-          <label class="field-label">Bought from (platform)</label>
-          <input id="pf-source-platform" list="platform-list" placeholder="e.g. WeChat, Taobao, Shopee">
-        </div>
-        <div>
-          <label class="field-label">Seller / contact / link</label>
-          <input id="pf-source-link" placeholder="e.g. xiaomei_supplies or https://...">
+        <div id="pf-source-wrap" style="display:contents;">
+          <div>
+            <label class="field-label">Bought from (platform)</label>
+            <input id="pf-source-platform" list="platform-list" placeholder="e.g. WeChat, Taobao, Shopee">
+          </div>
+          <div>
+            <label class="field-label">Seller / contact / link</label>
+            <input id="pf-source-link" placeholder="e.g. xiaomei_supplies or https://...">
+          </div>
         </div>
       </div>
       <div class="checkbox-row" id="pf-also-cost-wrap" style="padding-top:0; margin-bottom:14px;">
@@ -415,12 +437,14 @@
       <h1>Costs</h1>
       <button class="btn btn-primary" id="btn-add-cost">+ Add cost</button>
     </div>
+    <div id="cost-breakdown"></div>
     <div class="card" id="cost-form-wrap" style="display:none; margin-bottom:16px;">
       <div class="form-grid">
         <div>
           <label class="field-label">Category</label>
           <select id="cf-category">
             <option value="restock">restock</option>
+            <option value="new_inventory">new inventory</option>
             <option value="packaging">packaging</option>
             <option value="shipping">shipping</option>
             <option value="ads">ads</option>
@@ -446,6 +470,25 @@
             <label class="field-label">Related product (optional)</label>
             <select id="cf-product"><option value="">— none —</option></select>
           </div>
+          <div id="cf-typetag-wrap" style="display:none;">
+            <label class="field-label">Product type (optional)</label>
+            <select id="cf-type-tag">
+              <option value="">— not specific to a type —</option>
+              <option value="Tumbler">Tumbler</option>
+              <option value="Stickers">Stickers</option>
+              <option value="Add ons">Add ons</option>
+              <option value="Others">Others</option>
+            </select>
+            <div class="muted" style="font-size:11px; margin-top:3px;">For general material bought for a whole type (e.g. tumbler blanks not tied to one design) — counts toward that type's total on the Costs breakdown above.</div>
+          </div>
+          <div id="cf-sellerinfo-wrap" style="display:none;">
+            <label class="field-label">Platform (optional)</label>
+            <input id="cf-platform" placeholder="e.g. Taobao, Shopee">
+          </div>
+          <div id="cf-sellerinfo-wrap2" style="display:none;">
+            <label class="field-label">Seller (optional)</label>
+            <input id="cf-seller" placeholder="e.g. seller username/link">
+          </div>
           <div id="cf-qty-wrap" style="display:none;">
             <label class="field-label">Quantity purchased (adds to stock)</label>
             <input id="cf-qty" type="number" min="0" step="1" placeholder="e.g. 20">
@@ -466,6 +509,7 @@
                 <select id="cf-newp-type">
                   <option value="Tumbler">Tumbler</option>
                   <option value="Stickers">Stickers</option>
+                  <option value="Add ons">Add ons</option>
                   <option value="Others">Others</option>
                 </select>
               </div>
@@ -498,9 +542,9 @@
           <button type="button" class="btn btn-secondary btn-small" id="btn-add-cost-item" style="margin:6px 0 10px;">+ Add product line</button>
           <div class="checkbox-row" style="padding-top:0;">
             <input type="checkbox" id="cf-multi-updatecost" checked>
-            <label for="cf-multi-updatecost">Update each product's cost price to its landed cost (unit cost + its share of SST/fees)</label>
+            <label for="cf-multi-updatecost">Update each product's cost price to its landed cost (unit cost + its share of shipping/fees)</label>
           </div>
-          <div class="muted" style="font-size:12px; margin-top:4px;">Amount above is calculated automatically from these lines plus any SST/service fee below — split proportionally across products so you don't have to work it out by hand.</div>
+          <div class="muted" style="font-size:12px; margin-top:4px;">Amount above is calculated automatically from these lines plus any shipping/service fee below — split proportionally across products so you don't have to work it out by hand.</div>
         </div>
         <div style="grid-column: 1 / -1;">
           <label class="field-label">Description</label>
@@ -532,15 +576,15 @@
         </div>
         <div style="grid-column: 1 / -1;">
           <details>
-            <summary style="cursor:pointer; color:var(--blue); font-size:13px;">Add SST / payment service fee? (only if this batch had one)</summary>
+            <summary style="cursor:pointer; color:var(--blue); font-size:13px;">Add shipping / service fee? (only if this batch had one)</summary>
             <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">
               <div style="flex:1 1 100px;">
                 <label class="field-label">Goods cost (RM)</label>
                 <input id="cf-extra-goods" type="number" step="0.01" min="0">
               </div>
               <div style="flex:1 1 100px;">
-                <label class="field-label">SST (RM)</label>
-                <input id="cf-extra-sst" type="number" step="0.01" min="0" placeholder="0.00">
+                <label class="field-label">Shipping (RM)</label>
+                <input id="cf-extra-shipping" type="number" step="0.01" min="0" placeholder="0.00">
               </div>
               <div style="flex:1 1 100px;">
                 <label class="field-label">Payment service fee (RM)</label>
@@ -548,7 +592,7 @@
               </div>
               <button type="button" class="btn-secondary btn-small" id="cf-extra-apply">Add to Amount</button>
             </div>
-            <div class="muted" style="font-size:12px; margin-top:6px;">Convert to RM first if needed, then use this to add SST/fees on top — only fill this in for batches that actually had one. It replaces the Amount above with the total, and the breakdown is kept as a note so you can still see what was tax/fee vs. goods.</div>
+            <div class="muted" style="font-size:12px; margin-top:6px;">Convert to RM first if needed, then use this to add shipping/fees on top — only fill this in for batches that actually had one (e.g. 集运仓 forwarding fee, or SST if that applies instead). It replaces the Amount above with the total, and the breakdown is kept as a note so you can still see what was shipping vs. fee vs. goods.</div>
           </details>
         </div>
       </div>
@@ -691,6 +735,12 @@
     <div id="calendar-content"></div>
   </section>
 
+  <!-- QUICK ADD -->
+  <section class="page" id="page-quickadd">
+    <div class="page-header"><h1>Quick Add</h1></div>
+    <div id="quickadd-content"></div>
+  </section>
+
 </main>
 
 <footer>
@@ -707,7 +757,7 @@
   'use strict';
 
   var STORAGE_KEY = 'snowglobeTrackerData';
-  var PRODUCT_TYPES = ['Tumbler', 'Stickers', 'Others'];
+  var PRODUCT_TYPES = ['Tumbler', 'Stickers', 'Add ons', 'Others'];
 
   function loadState() {
     try {
@@ -720,9 +770,11 @@
   var state = loadState();
   if (!state.blockedDates) state.blockedDates = {};
   if (!state.stockLog) state.stockLog = [];
+  if (!state.chatLog) state.chatLog = [];
   if (state.costs) {
     state.costs.forEach(function (c) {
       if (c.category === 'materials') c.category = 'restock';
+      if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; }
     });
   }
 
@@ -892,7 +944,12 @@
   document.getElementById('pf-type').addEventListener('change', function () {
     var isStickers = this.value === 'Stickers';
     document.getElementById('pf-theme-wrap').style.display = isStickers ? 'block' : 'none';
-    if (isStickers) refreshThemeSelect(document.getElementById('pf-theme-select').value);
+    document.getElementById('pf-source-wrap').style.display = isStickers ? 'none' : 'contents';
+    if (isStickers) {
+      refreshThemeSelect(document.getElementById('pf-theme-select').value);
+      document.getElementById('pf-source-platform').value = '';
+      document.getElementById('pf-source-link').value = '';
+    }
   });
 
   document.getElementById('pf-theme-select').addEventListener('change', function () {
@@ -982,6 +1039,7 @@
     document.getElementById('pf-sku').value = '';
     document.getElementById('pf-type').value = 'Tumbler';
     document.getElementById('pf-theme-wrap').style.display = 'none';
+    document.getElementById('pf-source-wrap').style.display = 'contents';
     refreshThemeSelect('');
     document.getElementById('pf-theme-new').style.display = 'none';
     document.getElementById('pf-theme-new').value = '';
@@ -1065,6 +1123,7 @@
     document.getElementById('pf-sku').value = p.sku || '';
     document.getElementById('pf-type').value = p.type || 'Tumbler';
     document.getElementById('pf-theme-wrap').style.display = (p.type === 'Stickers') ? 'block' : 'none';
+    document.getElementById('pf-source-wrap').style.display = (p.type === 'Stickers') ? 'none' : 'contents';
     refreshThemeSelect(p.theme || '');
     document.getElementById('pf-theme-new').style.display = 'none';
     document.getElementById('pf-theme-new').value = '';
@@ -1115,7 +1174,7 @@
       '<div><div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' + (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '') + skuLine + sourceLineHtml(p) + '</div></div></td>' +
       '<td style="white-space:nowrap;"><div>Cost ' + money(p.cost) + ' · Price ' + money(p.price) + '</div>' +
       '<div class="muted" style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">Margin ' + money(margin) + '</div></td>' +
-      '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see stock history">' + p.stock + (low ? ' ⚠ low' : '') + '</span></td>' +
+      '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see stock history">' + p.stock + (p.unit ? p.unit : '') + (low ? ' ⚠ low' : '') + '</span></td>' +
       '<td style="text-align:right; white-space:nowrap;">' +
       '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
       '<span class="row-actions-sep">·</span>' +
@@ -1357,6 +1416,12 @@
     document.getElementById('cf-amount').readOnly = false;
     document.getElementById('cf-amount-label').textContent = 'Amount (in RM)';
     document.getElementById('cf-product').value = '';
+    document.getElementById('cf-type-tag').value = '';
+    document.getElementById('cf-typetag-wrap').style.display = 'block';
+    document.getElementById('cf-platform').value = '';
+    document.getElementById('cf-seller').value = '';
+    document.getElementById('cf-sellerinfo-wrap').style.display = 'block';
+    document.getElementById('cf-sellerinfo-wrap2').style.display = 'block';
     document.getElementById('cf-description').value = '';
     document.getElementById('cf-fx-amount').value = '';
     document.getElementById('cf-fx-currency').value = 'CNY';
@@ -1373,7 +1438,7 @@
     document.getElementById('cf-newp-price').value = '';
     document.getElementById('cf-newp-threshold').value = 5;
     document.getElementById('cf-extra-goods').value = '';
-    document.getElementById('cf-extra-sst').value = '';
+    document.getElementById('cf-extra-shipping').value = '';
     document.getElementById('cf-extra-fee').value = '';
     document.getElementById('cf-multi-toggle').checked = false;
     document.getElementById('cf-multi-updatecost').checked = true;
@@ -1393,6 +1458,9 @@
     document.getElementById('cf-qty-wrap').style.display = showQty ? 'block' : 'none';
     document.getElementById('cf-updatecost-wrap').style.display = showQty ? 'flex' : 'none';
     document.getElementById('cf-newproduct-wrap').style.display = (isNewProduct && !editingCostId) ? 'block' : 'none';
+    document.getElementById('cf-typetag-wrap').style.display = !val ? 'block' : 'none';
+    document.getElementById('cf-sellerinfo-wrap').style.display = !val ? 'block' : 'none';
+    document.getElementById('cf-sellerinfo-wrap2').style.display = !val ? 'block' : 'none';
     if (isNewProduct && !editingCostId) populateThemeOptions(document.getElementById('cf-newp-theme-select'), '');
   }
   document.getElementById('cf-product').addEventListener('change', updateCostQtyVisibility);
@@ -1423,9 +1491,9 @@
 
   document.getElementById('cf-extra-apply').addEventListener('click', function () {
     var goods = Number(document.getElementById('cf-extra-goods').value) || 0;
-    var sst = Number(document.getElementById('cf-extra-sst').value) || 0;
+    var sst = Number(document.getElementById('cf-extra-shipping').value) || 0;
     var fee = Number(document.getElementById('cf-extra-fee').value) || 0;
-    if (!goods && !sst && !fee) { alert('Enter at least the goods cost, SST, or service fee.'); return; }
+    if (!goods && !sst && !fee) { alert('Enter at least the goods cost, shipping, or service fee.'); return; }
     document.getElementById('cf-amount').value = (goods + sst + fee).toFixed(2);
   });
 
@@ -1435,11 +1503,11 @@
     var subtotal = draftCostItems.reduce(function (sum, item) {
       return sum + (Number(item.qty) || 0) * (Number(item.unitCost) || 0);
     }, 0);
-    var sst = Number(document.getElementById('cf-extra-sst').value) || 0;
+    var sst = Number(document.getElementById('cf-extra-shipping').value) || 0;
     var fee = Number(document.getElementById('cf-extra-fee').value) || 0;
     document.getElementById('cf-amount').value = (subtotal + sst + fee).toFixed(2);
   }
-  document.getElementById('cf-extra-sst').addEventListener('input', recalcMultiAmount);
+  document.getElementById('cf-extra-shipping').addEventListener('input', recalcMultiAmount);
   document.getElementById('cf-extra-fee').addEventListener('input', recalcMultiAmount);
 
   function updateCostItemSubtotal(idx) {
@@ -1571,7 +1639,7 @@
     var fxAmount = Number(document.getElementById('cf-fx-amount').value) || 0;
     var fxCurrency = document.getElementById('cf-fx-currency').value;
     var fxRate = Number(document.getElementById('cf-fx-rate').value) || 0;
-    var sstAmount = Number(document.getElementById('cf-extra-sst').value) || 0;
+    var shippingAmount = Number(document.getElementById('cf-extra-shipping').value) || 0;
     var serviceFeeAmount = Number(document.getElementById('cf-extra-fee').value) || 0;
     var isNewEntry = !editingCostId;
     var isMulti = document.getElementById('cf-multi-toggle').checked;
@@ -1607,7 +1675,7 @@
       }
       if (resolvedItems.length === 0) { alert('Add at least one product line with a product and quantity.'); return; }
       var itemsSubtotal = resolvedItems.reduce(function (s, it) { return s + it.qty * it.unitCost; }, 0);
-      amount = itemsSubtotal + sstAmount + serviceFeeAmount;
+      amount = itemsSubtotal + shippingAmount + serviceFeeAmount;
       dataItems = resolvedItems;
 
       if (isNewEntry) {
@@ -1619,7 +1687,7 @@
           logStock(p.id, it.qty, 'restock', 'Cost entry (batch)', date, costId);
           if (updateCosts) {
             var lineSubtotal = it.qty * it.unitCost;
-            var share = itemsSubtotal > 0 ? (lineSubtotal / itemsSubtotal) * (sstAmount + serviceFeeAmount) : 0;
+            var share = itemsSubtotal > 0 ? (lineSubtotal / itemsSubtotal) * (shippingAmount + serviceFeeAmount) : 0;
             p.cost = Math.round(((lineSubtotal + share) / it.qty) * 100) / 100;
           }
         });
@@ -1666,12 +1734,15 @@
       date: date,
       amount: amount,
       productId: isMulti ? null : linkedProductId,
+      productType: (isMulti || linkedProductId) ? null : (document.getElementById('cf-type-tag').value || null),
+      platform: (isMulti || linkedProductId) ? null : (document.getElementById('cf-platform').value.trim() || null),
+      seller: (isMulti || linkedProductId) ? null : (document.getElementById('cf-seller').value.trim() || null),
       items: dataItems,
       description: document.getElementById('cf-description').value.trim(),
       originalAmount: fxAmount || null,
       originalCurrency: fxAmount ? fxCurrency : null,
       exchangeRate: fxAmount ? fxRate : null,
-      sstAmount: sstAmount || null,
+      shippingAmount: shippingAmount || null,
       serviceFeeAmount: serviceFeeAmount || null
     };
     // Only stamp qty on NEW single-product entries — during an edit the qty field is hidden/stale
@@ -1720,7 +1791,7 @@
     document.getElementById('cf-fx-currency').value = c.originalCurrency || 'CNY';
     document.getElementById('cf-fx-rate').value = c.exchangeRate || '';
     document.getElementById('cf-extra-goods').value = '';
-    document.getElementById('cf-extra-sst').value = c.sstAmount || '';
+    document.getElementById('cf-extra-shipping').value = c.shippingAmount || c.sstAmount || '';
     document.getElementById('cf-extra-fee').value = c.serviceFeeAmount || '';
 
     if (c.items && c.items.length) {
@@ -1742,6 +1813,9 @@
       document.getElementById('cf-amount').readOnly = false;
       document.getElementById('cf-amount-label').textContent = 'Amount (in RM)';
       document.getElementById('cf-product').value = c.productId || '';
+      document.getElementById('cf-type-tag').value = c.productType || '';
+      document.getElementById('cf-platform').value = c.platform || '';
+      document.getElementById('cf-seller').value = c.seller || '';
       draftCostItems = [];
     }
     updateCostQtyVisibility();
@@ -1770,7 +1844,104 @@
     renderAll();
   }
 
+  var costBreakdownSelection = {};
+
+  function costAmountForProduct(productId) {
+    var total = 0;
+    state.costs.forEach(function (c) {
+      if (c.items && c.items.length) {
+        c.items.forEach(function (it) {
+          if (it.productId === productId) total += (Number(it.qty) || 0) * (Number(it.unitCost) || 0);
+        });
+      } else if (c.productId === productId) {
+        total += Number(c.amount) || 0;
+      }
+    });
+    return total;
+  }
+
+  function costAmountForType(type) {
+    var ids = state.products.filter(function (p) { return p.type === type; }).map(function (p) { return p.id; });
+    var total = 0;
+    state.costs.forEach(function (c) {
+      if (c.items && c.items.length) {
+        c.items.forEach(function (it) {
+          if (ids.indexOf(it.productId) !== -1) total += (Number(it.qty) || 0) * (Number(it.unitCost) || 0);
+        });
+      } else if (c.productId && ids.indexOf(c.productId) !== -1) {
+        total += Number(c.amount) || 0;
+      } else if (!c.productId && c.productType === type) {
+        // General material for the whole type (e.g. tumbler blanks), not tied to one specific product.
+        total += Number(c.amount) || 0;
+      }
+    });
+    return total;
+  }
+
+  function costAmountForCategory(category) {
+    var total = 0;
+    state.costs.forEach(function (c) {
+      if (c.category === category) total += Number(c.amount) || 0;
+    });
+    return total;
+  }
+
+  var COST_BREAKDOWN_CATEGORIES = [
+    { key: 'ads', label: 'Ads' },
+    { key: 'shipping', label: 'Shipping' },
+    { key: 'packaging', label: 'Packaging' }
+  ];
+  var costBreakdownCategorySelection = COST_BREAKDOWN_CATEGORIES[0].key;
+
+  function renderCostBreakdown() {
+    var wrap = document.getElementById('cost-breakdown');
+    if (!wrap) return;
+    var selectedCat = COST_BREAKDOWN_CATEGORIES.find(function (c) { return c.key === costBreakdownCategorySelection; }) || COST_BREAKDOWN_CATEGORIES[0];
+    var catOpts = COST_BREAKDOWN_CATEGORIES.map(function (c) {
+      return '<option value="' + c.key + '"' + (c.key === selectedCat.key ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>';
+    }).join('');
+    var categoryCardsHtml = '<div class="stat-grid" style="margin-top:-6px;">' +
+      '<div class="stat-card" style="position:relative; padding-right:14px;">' +
+        '<select class="cost-breakdown-select" id="cost-breakdown-category-select" style="position:absolute; top:10px; right:10px; max-width:120px; font-size:11px; padding:2px 4px;">' + catOpts + '</select>' +
+        '<div class="stat-label">' + escapeHtml(selectedCat.label) + '</div>' +
+        '<div class="stat-value">' + money(costAmountForCategory(selectedCat.key)) + '</div>' +
+      '</div>' +
+    '</div>';
+    wrap.innerHTML = '<div class="stat-grid">' +
+      PRODUCT_TYPES.map(function (type) {
+        var itemsOfType = state.products.filter(function (p) { return p.type === type; });
+        var selectedId = costBreakdownSelection[type] || '';
+        var selectedProduct = selectedId ? itemsOfType.find(function (p) { return p.id === selectedId; }) : null;
+        var amount = selectedProduct ? costAmountForProduct(selectedId) : costAmountForType(type);
+        var opts = '<option value="">All ' + escapeHtml(type) + '</option>' +
+          itemsOfType.map(function (p) {
+            return '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : '')) + '</option>';
+          }).join('');
+        return '<div class="stat-card" style="position:relative; padding-right:14px;">' +
+          '<select class="cost-breakdown-select" data-cost-breakdown-type="' + escapeHtml(type) + '" style="position:absolute; top:10px; right:10px; max-width:120px; font-size:11px; padding:2px 4px;">' + opts + '</select>' +
+          '<div class="stat-label">' + escapeHtml(type) + '</div>' +
+          '<div class="stat-value">' + money(amount) + '</div>' +
+          '<div class="stat-sub">' + (selectedProduct ? escapeHtml(selectedProduct.name) : (itemsOfType.length + ' item' + (itemsOfType.length === 1 ? '' : 's'))) + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>' + categoryCardsHtml;
+  }
+
+  document.getElementById('cost-breakdown').addEventListener('change', function (e) {
+    if (e.target.id === 'cost-breakdown-category-select') {
+      costBreakdownCategorySelection = e.target.value;
+      renderCostBreakdown();
+      return;
+    }
+    var type = e.target.getAttribute('data-cost-breakdown-type');
+    if (type) {
+      costBreakdownSelection[type] = e.target.value;
+      renderCostBreakdown();
+    }
+  });
+
   function renderCosts() {
+    renderCostBreakdown();
     var tbody = document.querySelector('#cost-table tbody');
     var empty = document.getElementById('cost-empty');
     var totalEl = document.getElementById('cost-total');
@@ -1799,7 +1970,13 @@
           '<div class="muted" style="font-size:11px;">' + names.length + ' products</div>';
       } else {
         var product = state.products.find(function (p) { return p.id === c.productId; });
-        productCell = product ? escapeHtml(product.name) : '—';
+        if (product) {
+          productCell = escapeHtml(product.name);
+        } else {
+          var genLine = c.productType ? 'General — ' + escapeHtml(c.productType) : '—';
+          var sellerLine = (c.platform || c.seller) ? '<div class="muted" style="font-size:11px;">' + [c.platform, c.seller].filter(Boolean).map(escapeHtml).join(' · ') + '</div>' : '';
+          productCell = '<span class="muted">' + genLine + '</span>' + sellerLine;
+        }
       }
       return '<tr>' +
         '<td style="white-space:nowrap;">' + formatDate(c.date) + '</td>' +
@@ -1808,7 +1985,7 @@
         '<td class="muted">' + productCell + '</td>' +
         '<td>' + money(c.amount) +
           (c.originalAmount ? '<div class="muted" style="font-size:11px;">' + escapeHtml(c.originalCurrency) + ' ' + Number(c.originalAmount).toFixed(2) + ' @ ' + c.exchangeRate + '</div>' : '') +
-          ((c.sstAmount || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">incl. ' + [c.sstAmount ? 'SST ' + money(c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + '</div>' : '') +
+          (((c.shippingAmount || c.sstAmount) || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">incl. ' + [(c.shippingAmount || c.sstAmount) ? 'shipping ' + money(c.shippingAmount || c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + '</div>' : '') +
         '</td>' +
         '<td style="text-align:right; white-space:nowrap;">' +
         '<button class="btn-text" data-edit-cost="' + c.id + '">Edit</button> ' +
@@ -2675,7 +2852,10 @@
       var addOnsCogs = (o.addOns || []).reduce(function (ss, a) { return ss + a.qty * a.unitCost; }, 0);
       return s + itemsCogs + addOnsCogs;
     }, 0);
-    var otherCosts = state.costs.reduce(function (s, c) { return c.category === 'restock' ? s : s + Number(c.amount); }, 0);
+    // Both restock (topping up an existing product) and new_inventory (a first-time purchase
+    // of a brand-new product) are capital tied up in stock, not an operating expense — they're
+    // already reflected in Inventory value / COGS, so both are excluded here to avoid double-counting.
+    var otherCosts = state.costs.reduce(function (s, c) { return (c.category === 'restock' || c.category === 'new_inventory') ? s : s + Number(c.amount); }, 0);
     var shippingCostsPaid = active.reduce(function (s, o) { return s + Number(o.shippingCostActual || 0); }, 0);
     var totalCosts = cogs + otherCosts + shippingCostsPaid;
     var profit = revenue - totalCosts;
@@ -2874,7 +3054,9 @@
   document.getElementById('btn-reset-data').addEventListener('click', function () {
     if (!confirm('This will permanently delete ALL products, costs, orders and calendar data — including anything already synced to your account. This cannot be undone. Continue?')) return;
     if (!confirm('Really sure? This clears everything and starts you with a blank tracker.')) return;
-    state = { products: [], costs: [], orders: [], blockedDates: {}, stockLog: [] };
+    state = { products: [], costs: [], orders: [], blockedDates: {}, stockLog: [], chatLog: [] };
+    quickAddLastEntryId = null;
+    quickAddLastShipping = null;
     save();
     renderAll();
   });
@@ -2895,7 +3077,7 @@
     state.products.push(tumbler, a001, a002, b001, b002, b003, towel, syringe);
 
     state.costs.push(
-      { id: uid(), category: 'restock', date: '2026-07-28', amount: 180, productId: null, description: '40x tumbler blanks from supplier' },
+      { id: uid(), category: 'restock', date: '2026-07-28', amount: 180, productId: null, productType: 'Tumbler', description: '40x tumbler blanks from supplier' },
       { id: uid(), category: 'restock', date: '2026-07-29', amount: 50, productId: null, description: 'Glitter refill batch (hard to track per bottle, logged as a batch cost)' },
       { id: uid(), category: 'packaging', date: '2026-07-29', amount: 35, productId: null, description: 'Bubble mailers x100' },
       { id: uid(), category: 'shipping', date: '2026-07-30', amount: 40, productId: null, description: 'Courier account top-up (bulk)' },
@@ -3113,6 +3295,1009 @@
     }
   });
 
+  // ================= QUICK ADD (rule-based, no AI) =================
+  // Scope: only ever creates Cost entries and, optionally, new Inventory products.
+  // Never touches Orders, Schedule or Calendar. Any line it can't confidently
+  // categorize gets a button-based question instead of guessing.
+  var quickAddPending = [];
+  var quickAddStage = null;
+  var quickAddBatchMode = false;
+  var quickAddBatchIds = [];
+  // Remembers the most recent shipping amount (whether typed as its own "shipping 50"
+  // line, or entered via a shipping-fee question) so it can be offered as a one-click
+  // reuse option on later items, instead of having to retype the number every time.
+  var quickAddLastShipping = null;
+  // Tracks the id of the most recent cost entry Quick Add itself created, so a lightweight
+  // "Edit / Delete" shortcut can be offered for it without having to jump to the Costs page.
+  var quickAddLastEntryId = null;
+  var QUICKADD_DUP_DAYS = 14;
+  var QUICKADD_CATEGORY_KEYWORDS = [
+    { category: 'shipping', words: ['shipping', 'courier', 'postage', 'pos laju', 'poslaju', 'freight', '运费', '快递', '邮费'] },
+    { category: 'packaging', words: ['packaging', 'mailer', 'poly mailer', '包装', '包材', '纸箱'] },
+    { category: 'ads', words: ['ads', 'advert', 'boost post', 'facebook ads', 'fb ads', '广告'] },
+    { category: 'tiktok_fee', words: ['tiktok fee', 'platform fee', 'commission', '手续费', '平台费'] },
+    { category: 'wastage', words: ['wastage', 'broken', 'damaged', 'spoiled', '报废', '损坏'] },
+    // Loose fill materials (powder/liquid/clay) that go directly into making the tumbler —
+    // these are real stock, so autoInventory automatically creates a new Inventory product
+    // (tagged type 'Tumbler'). They're measured by volume/weight rather than piece count, so
+    // unitTracked asks for a total ml/g amount instead of a piece quantity.
+    { category: 'other', words: ['glitter', 'mica', 'mica powder', 'sequin', '亮片', 'glycerin', 'uv glue', 'mineral oil', 'resin', '颜料', '珠光粉', '软陶'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    // Tools/containers used to make the tumbler — also real stock, but counted in pieces like
+    // any normal product (not ml/g).
+    { category: 'other', words: ['syringe', 'squeeze bottle', 'oil bottle'], productType: 'Tumbler', autoInventory: true },
+    // General supplies not tied to one specific product type — no productType tag.
+    { category: 'other', words: ['bubble wrap', '泡泡纸', 'trash bag', 'garbage bag', '垃圾袋'] },
+    // Business/education costs.
+    { category: 'other', words: ['course', 'training', 'workshop', '课程', '培训', '工作坊'] }
+  ];
+
+  function pushChatMsg(role, text) {
+    state.chatLog.push({ id: uid(), role: role, text: text, ts: new Date().toISOString() });
+    save();
+  }
+
+  function normalizeDesc(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9一-鿿]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // Requires the amount to be the LAST token on the line (optionally prefixed/suffixed
+  // with RM, or suffixed with an "rmb"/"cny" currency word — either as its own token
+  // "40 rmb" or glued directly onto the number "40rmb") — not just any lone number
+  // anywhere in the line. This avoids misreading quantity words like "5 colours" as RM5.00.
+  function parseAmountFromLine(line) {
+    var trimmed = line.trim();
+    if (!trimmed) return null;
+    var tokens = trimmed.split(/\s+/);
+    var currencyHint = null;
+    var hasCurrencyMarker = false;
+    var last = tokens[tokens.length - 1];
+    if (/^(rmb|cny|人民币)$/i.test(last)) {
+      currencyHint = 'rmb';
+      hasCurrencyMarker = true;
+      tokens = tokens.slice(0, tokens.length - 1);
+      last = tokens[tokens.length - 1];
+    } else {
+      var glued = last.match(/^(?:rm)?(\d+(?:\.\d+)?)(rmb|cny|人民币)$/i);
+      if (glued) {
+        currencyHint = 'rmb';
+        hasCurrencyMarker = true;
+        last = glued[1];
+      }
+    }
+    if (!last) return null;
+    if (/^rm\d/i.test(last)) hasCurrencyMarker = true;
+    var cleaned = last.replace(/^rm/i, '').replace(/,/g, '');
+    if (!/^\d+(\.\d+)?$/.test(cleaned)) return null;
+    var amount = Number(cleaned);
+    if (!amount || amount <= 0) return null;
+    var descTokens = tokens.slice(0, tokens.length - 1);
+    if (descTokens.length && /^rm$/i.test(descTokens[descTokens.length - 1])) {
+      hasCurrencyMarker = true;
+      descTokens = descTokens.slice(0, descTokens.length - 1);
+    }
+    var desc = descTokens.join(' ').trim();
+    if (!desc) desc = 'Cost entry';
+    // If neither "rmb"/"cny"/"人民币" nor an explicit "RM" marker was typed, the currency
+    // is ambiguous — flag it so Quick Add asks instead of silently assuming MYR.
+    var result = { amount: amount, description: desc, hasCurrencyMarker: hasCurrencyMarker };
+    if (currencyHint) result.currencyHint = currencyHint;
+    return result;
+  }
+
+  function matchProductByName(desc) {
+    var nd = normalizeDesc(desc);
+    if (!nd) return null;
+    return state.products.find(function (p) {
+      var n = normalizeDesc(p.name);
+      if (n && nd.indexOf(n) !== -1) return true;
+      if (p.variant) {
+        var v = normalizeDesc(p.name + ' ' + p.variant);
+        if (v && nd.indexOf(v) !== -1) return true;
+      }
+      return false;
+    }) || null;
+  }
+
+  // Pulls a quantity out of phrases like "100 pieces", "100pcs", "100 units", "100件".
+  // Used to auto-compute a per-unit cost and, when linked to a real product, to bump
+  // its stock the same way a normal restock would.
+  function parseQtyFromDesc(desc) {
+    var m = String(desc || '').match(/(\d+)\s*(pieces|piece|pcs|pc|units|unit|个|件|条)\b/i);
+    return m ? Number(m[1]) : null;
+  }
+
+  // Recognizes a bare mention of a product Type (Tumbler / Stickers / Others) in a line
+  // that didn't match any specific existing product or cost-category keyword — e.g. a
+  // bulk purchase of blank tumblers that isn't tied to one finished design/SKU.
+  function matchProductTypeWord(desc) {
+    var nd = normalizeDesc(desc);
+    if (!nd) return null;
+    if (nd.indexOf('tumbler') !== -1) return 'Tumbler';
+    if (nd.indexOf('sticker') !== -1) return 'Stickers';
+    if (/\bothers\b/.test(nd)) return 'Others';
+    return null;
+  }
+
+  function matchQuickAddCategory(desc) {
+    var nd = normalizeDesc(desc);
+    for (var i = 0; i < QUICKADD_CATEGORY_KEYWORDS.length; i++) {
+      var grp = QUICKADD_CATEGORY_KEYWORDS[i];
+      for (var j = 0; j < grp.words.length; j++) {
+        if (nd.indexOf(normalizeDesc(grp.words[j])) !== -1) return grp;
+      }
+    }
+    return null;
+  }
+
+  // Explicit signal that a line is topping up an EXISTING inventory item rather than
+  // describing a brand new one — e.g. "restock glitter 25" or "补货 mica powder 25".
+  function isRestockKeyword(desc) {
+    var nd = normalizeDesc(desc);
+    return /\brestock\b/.test(nd) || nd.indexOf('补货') !== -1 || nd.indexOf('进货') !== -1;
+  }
+
+  // A line that is ONLY the word "restock" (nothing else — no product, no amount) still
+  // means "show me what I can restock" — don't require an amount to be typed before showing
+  // the Inventory picker; she'll give the amount after picking which product it's for.
+  function isBareRestockLine(line) {
+    var nd = normalizeDesc(line);
+    return nd === 'restock' || nd === '补货' || nd === '进货';
+  }
+
+  // Drops a trailing quantity phrase from a description so it reads cleanly as a product
+  // name, e.g. "tumbler 700ml 100 pieces" -> "tumbler 700ml".
+  function stripQtyPhrase(desc) {
+    var stripped = String(desc || '').replace(/\d+\s*(pieces|piece|pcs|pc|units|unit|个|件|条)\b/i, '').replace(/\s+/g, ' ').trim();
+    return stripped || desc;
+  }
+
+  // For a keyword-matched material line (e.g. "glitter 6 colours" or "hello kitty glitter"),
+  // split the matched keyword out as a clean product Name and keep whatever else she typed
+  // (e.g. "6 colours", "hello kitty") as the Variant, so it shows as its own small line under
+  // the product name in Inventory instead of being buried inside one long name string.
+  function extractMaterialNameVariant(desc, group) {
+    var nd = normalizeDesc(desc);
+    var matchedWord = null;
+    for (var i = 0; i < group.words.length; i++) {
+      if (nd.indexOf(normalizeDesc(group.words[i])) !== -1) { matchedWord = group.words[i]; break; }
+    }
+    if (!matchedWord) return null;
+    var esc = matchedWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var re = new RegExp(esc, 'i');
+    var variant = String(desc || '').replace(re, '').replace(/\s+/g, ' ').trim();
+    var name = matchedWord.replace(/(^|\s)\w/g, function (c) { return c.toUpperCase(); });
+    return { name: name, variant: variant };
+  }
+
+  // A line clearly describes real stock (a bulk Type-word mention, or a recognized
+  // "goes into the product" material) but doesn't already match any existing product by
+  // name — before silently creating it, confirm which Type it belongs to. The keyword group
+  // may suggest a likely type (e.g. glitter -> Tumbler), but that's only ever a suggestion:
+  // she still gets to pick, since a themed material name (e.g. "hello kitty glitter") could
+  // just as easily belong to Stickers or Others.
+  function askQuickAddProductType(item, typeGuess, unitTracked, nameVariant) {
+    quickAddStage = { type: 'producttypeask', item: item, typeGuess: typeGuess || null, unitTracked: !!unitTracked, nameVariant: nameVariant || null };
+    renderQuickAdd();
+  }
+
+  function chooseQuickAddProductType(type) {
+    var stage = quickAddStage;
+    if (stage.unitTracked) {
+      quickAddStage = { type: 'materialqty', item: stage.item, productType: type, nameVariant: stage.nameVariant || null };
+      renderQuickAdd();
+      return;
+    }
+    proceedAfterProductType(stage.item, type, null, stage.nameVariant);
+  }
+
+  // For loose fill materials (glitter, mica powder, etc.) tracked by volume/weight rather
+  // than piece count — ask for the total ml or g instead of silently defaulting to "1 unit".
+  function saveQuickAddMaterialQty() {
+    var stage = quickAddStage;
+    var amt = Number(document.getElementById('qa-material-qty').value) || 0;
+    if (amt <= 0) { alert('Enter a valid amount.'); return; }
+    var unit = document.getElementById('qa-material-unit').value;
+    stage.item.parsedQty = amt;
+    proceedAfterProductType(stage.item, stage.productType, unit, stage.nameVariant);
+  }
+
+  // Tumbler/Stickers are the two types she actually sells with a listed price, so once the
+  // Type is confirmed for one of those, ask for the selling price before creating the product
+  // — that way margin can be calculated right away instead of showing RM0 until she edits it
+  // manually later. Others (tools/supplies) skip straight to creation, no selling price to ask.
+  function proceedAfterProductType(item, type, unit, nameVariant) {
+    if (type === 'Tumbler' || type === 'Stickers') {
+      quickAddStage = { type: 'sellingprice', item: item, productType: type, unit: unit || null, nameVariant: nameVariant || null };
+      renderQuickAdd();
+      return;
+    }
+    autoCreateInventoryFromItem(item, type, unit, nameVariant, 0);
+  }
+
+  function saveQuickAddSellingPrice() {
+    var stage = quickAddStage;
+    var price = Number(document.getElementById('qa-selling-price').value) || 0;
+    autoCreateInventoryFromItem(stage.item, stage.productType, stage.unit, stage.nameVariant, price);
+  }
+
+  function skipQuickAddSellingPrice() {
+    var stage = quickAddStage;
+    autoCreateInventoryFromItem(stage.item, stage.productType, stage.unit, stage.nameVariant, 0);
+  }
+
+  // Creates the brand-new Inventory product once the Type (and, for Tumbler/Stickers, selling
+  // price) has been confirmed. Stock/cost are left at 0 here — finalizeQuickAddCost's existing
+  // qty logic fills them in correctly once the amount (and any shipping fee) is finalized, the
+  // same way it does for a normal matched-product restock.
+  function autoCreateInventoryFromItem(item, type, unit, nameVariant, price) {
+    if (!item.parsedQty) item.parsedQty = parseQtyFromDesc(item.description) || 1;
+    var nm = (nameVariant && nameVariant.name) ? nameVariant.name : stripQtyPhrase(item.description);
+    var vr = (nameVariant && nameVariant.variant) ? nameVariant.variant : '';
+    var newProduct = {
+      id: uid(), name: nm, variant: vr, sku: '',
+      type: type || 'Others', theme: '', image: '',
+      cost: 0, price: price || 0, stock: 0, threshold: 5,
+      sourcePlatform: '', sourceLink: '', unit: unit || ''
+    };
+    state.products.push(newProduct);
+    save();
+    pushChatMsg('bot', '🆕 New inventory item created: "' + newProduct.name + (newProduct.variant ? ' — ' + newProduct.variant : '') + '" (' + newProduct.type + ')');
+    quickAddStage = { type: 'sellercheck', item: item, productId: newProduct.id, mode: 'input', category: 'new_inventory' };
+    renderQuickAdd();
+  }
+
+  function findDuplicateQuickAddCost(desc, amount) {
+    var nd = normalizeDesc(desc);
+    if (!nd) return null;
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - QUICKADD_DUP_DAYS);
+    var cutoffISO = cutoff.toISOString().slice(0, 10);
+    return state.costs.find(function (c) {
+      if (Number(c.amount) !== amount) return false;
+      if ((c.date || '') < cutoffISO) return false;
+      var cnd = normalizeDesc(c.description || '');
+      if (!cnd) return false;
+      return cnd === nd || cnd.indexOf(nd) !== -1 || nd.indexOf(cnd) !== -1;
+    }) || null;
+  }
+
+  function processNextQuickAdd() {
+    quickAddStage = null;
+    if (quickAddPending.length === 0) {
+      if (quickAddBatchMode && quickAddBatchIds.length) {
+        quickAddStage = { type: 'batchshipping' };
+        renderQuickAdd();
+        return;
+      }
+      quickAddBatchMode = false;
+      quickAddBatchIds = [];
+      renderQuickAdd();
+      return;
+    }
+    var item = quickAddPending[0];
+    if (item.needsFx) {
+      quickAddStage = { type: 'fxconvert', item: item };
+      renderQuickAdd();
+      return;
+    }
+    if (item.currencyUnconfirmed) {
+      quickAddStage = { type: 'currencyask', item: item };
+      renderQuickAdd();
+      return;
+    }
+    var dup = findDuplicateQuickAddCost(item.description, item.amount);
+    if (dup) {
+      quickAddStage = { type: 'duplicate', item: item, match: dup };
+      renderQuickAdd();
+      return;
+    }
+    resolveQuickAddCategory(item);
+  }
+
+  function resolveQuickAddCategory(item) {
+    var product = matchProductByName(item.description);
+    if (product) {
+      var matchedQty = parseQtyFromDesc(item.description);
+      if (matchedQty) item.parsedQty = matchedQty;
+      quickAddStage = { type: 'sellercheck', item: item, productId: product.id, mode: (product.sourcePlatform || product.sourceLink) ? 'ask' : 'input', category: 'restock' };
+      renderQuickAdd();
+      return;
+    }
+    // Explicit "restock"/补货/进货 keyword on a line that didn't already match an existing
+    // product by name -> let her pick which inventory item this tops up, instead of guessing
+    // or (worse) accidentally spinning up a duplicate product for it.
+    if (isRestockKeyword(item.description)) {
+      quickAddStage = { type: 'productpicker', item: item };
+      renderQuickAdd();
+      return;
+    }
+    var matchedGroup = matchQuickAddCategory(item.description);
+    if (matchedGroup) {
+      // Materials that go straight into the product (glitter, mica powder, 软陶, etc.) are
+      // real stock, not just a service cost — confirm the Type, then auto-create a new
+      // Inventory item for them.
+      if (matchedGroup.autoInventory) {
+        var nv = extractMaterialNameVariant(item.description, matchedGroup);
+        askQuickAddProductType(item, matchedGroup.productType || null, matchedGroup.unitTracked, nv);
+        return;
+      }
+      var cat = matchedGroup.category;
+      var pType = matchedGroup.productType || null;
+      // Always ask seller/platform (skippable) for a keyword-matched line, regardless of category.
+      quickAddStage = { type: 'sellerplatform', item: item, category: cat, productType: pType };
+      renderQuickAdd();
+      return;
+    }
+    // No specific product or cost-category keyword matched — but if the line names a
+    // product Type (e.g. "tumbler") AND includes a quantity (e.g. "100 pieces"), treat it
+    // as a brand new bulk Inventory item of that type instead of asking to pick a category
+    // manually. The quantity is the disambiguating signal: a bare mention like "sticker pack"
+    // with no qty is still ambiguous and should fall through to the manual category buttons
+    // (which is where the "+ Add new product" option lives).
+    // The type word is literally in what she typed (e.g. "tumbler 700ml 100 pieces") — that's
+    // not a guess, so skip the Type-confirm step, but still ask for selling price if it's a
+    // Tumbler/Sticker (see proceedAfterProductType).
+    var typeWord = parseQtyFromDesc(item.description) ? matchProductTypeWord(item.description) : null;
+    if (typeWord) {
+      proceedAfterProductType(item, typeWord, null, null);
+      return;
+    }
+    quickAddStage = { type: 'category', item: item };
+    renderQuickAdd();
+  }
+
+  // Gate before finalizing: in a single-line send, ask whether a separate shipping
+  // fee applies (optional). In a multi-line batch send, skip the per-line ask and
+  // defer to a single shared "batch shipping" question once the whole batch is done.
+  function proceedAfterSeller(item, category, productId, platform, seller, productType) {
+    if (category === 'shipping') {
+      // This line IS itself a shipping payment (e.g. "shipping 50") — remember the
+      // amount (and which cost entry it landed in) so it can be offered to later items,
+      // and finalize directly; asking "did this also have a shipping fee" would be circular.
+      var shipAmt = item.amount;
+      finalizeQuickAddCost(item, category, productId, platform, seller, undefined, productType);
+      quickAddLastShipping = { amount: shipAmt, sourceEntryId: quickAddLastEntryId, claimantIds: [] };
+      return;
+    }
+    if (quickAddBatchMode) {
+      finalizeQuickAddCost(item, category, productId, platform, seller, undefined, productType);
+      return;
+    }
+    quickAddStage = { type: 'shippingask', item: item, category: category, productId: productId, platform: platform, seller: seller, productType: productType };
+    renderQuickAdd();
+  }
+
+  function finalizeQuickAddCost(item, category, productId, platform, seller, shippingFeeAmount, productType) {
+    var totalAmount = item.amount + (shippingFeeAmount || 0);
+    var entry = {
+      id: uid(),
+      category: category,
+      date: todayISO(),
+      amount: Math.round(totalAmount * 100) / 100,
+      productId: productId || null,
+      description: item.description
+    };
+    if (!productId) {
+      if (platform) entry.platform = platform;
+      if (seller) entry.seller = seller;
+      if (productType) entry.productType = productType;
+    }
+    if (shippingFeeAmount) entry.shippingAmount = shippingFeeAmount;
+    // If a quantity was picked up from the line (e.g. "100 pieces"), record it, show a
+    // computed per-unit cost, and — when this is linked to a real product — bump its
+    // stock and update its landed cost per unit, same as a normal restock would.
+    var perUnitNote = '';
+    if (item.parsedQty && item.parsedQty > 0) {
+      entry.qty = item.parsedQty;
+      var perUnit = Math.round((entry.amount / item.parsedQty) * 100) / 100;
+      var linkedPForUnit = productId ? state.products.find(function (p) { return p.id === productId; }) : null;
+      var unitLabel = (linkedPForUnit && linkedPForUnit.unit) ? linkedPForUnit.unit : ' pcs';
+      perUnitNote = ' · ' + item.parsedQty + unitLabel + ' (~' + money(perUnit) + '/unit)';
+      if (productId) {
+        var linkedP = state.products.find(function (p) { return p.id === productId; });
+        if (linkedP) {
+          linkedP.stock += item.parsedQty;
+          linkedP.cost = perUnit;
+          logStock(productId, item.parsedQty, 'restock', 'Cost entry (' + category + ', via Quick Add)', entry.date, entry.id);
+        }
+      }
+    }
+    state.costs.push(entry);
+    quickAddLastEntryId = entry.id;
+    if (quickAddBatchMode) quickAddBatchIds.push(entry.id);
+    var linkedProduct = productId ? state.products.find(function (p) { return p.id === productId; }) : null;
+    var sellerNote = (!productId && (platform || seller)) ? ' · ' + [platform, seller].filter(Boolean).join(' / ') : '';
+    var shipNote = shippingFeeAmount ? ' (incl. shipping ' + money(shippingFeeAmount) + ')' : '';
+    pushChatMsg('bot', '✓ Logged: ' + item.description + ' — ' + money(entry.amount) + ' (' + category + ')' + (linkedProduct ? ' · linked to ' + linkedProduct.name : '') + sellerNote + shipNote + perUnitNote);
+    quickAddPending.shift();
+    processNextQuickAdd();
+    renderAll();
+  }
+
+  // When a shipping amount that was ALREADY recorded as its own standalone cost entry
+  // (e.g. "shipping 145") gets reused on later items via "Use previous shipping", the
+  // money must not be double-counted: it's already sitting in Total Costs once, via that
+  // standalone entry. So instead of adding the full amount again on every item that
+  // reuses it, this redistributes the ORIGINAL amount proportionally across every entry
+  // that has claimed a share so far (recomputed each time a new item joins), and removes
+  // the now-redundant standalone entry once its cost has been absorbed into the claimants.
+  function redistributeSharedShipping(newClaimEntryId) {
+    var pool = quickAddLastShipping;
+    if (!pool || !pool.sourceEntryId) return;
+    if (!pool.claimantIds) pool.claimantIds = [];
+    if (newClaimEntryId && pool.claimantIds.indexOf(newClaimEntryId) === -1) {
+      pool.claimantIds.push(newClaimEntryId);
+    }
+    var claimants = pool.claimantIds
+      .map(function (id) { return state.costs.find(function (c) { return c.id === id; }); })
+      .filter(Boolean);
+    if (!claimants.length) return;
+    var subtotal = claimants.reduce(function (s, c) {
+      return s + (Number(c.amount) - (Number(c.shippingAmount) || 0));
+    }, 0);
+    claimants.forEach(function (c) {
+      var base = Number(c.amount) - (Number(c.shippingAmount) || 0);
+      var share = subtotal > 0 ? (base / subtotal) * pool.amount : pool.amount / claimants.length;
+      share = Math.round(share * 100) / 100;
+      c.amount = Math.round((base + share) * 100) / 100;
+      c.shippingAmount = share;
+    });
+    state.costs = state.costs.filter(function (c) { return c.id !== pool.sourceEntryId; });
+    save();
+    renderAll();
+  }
+
+  function skipQuickAddDuplicate() {
+    var item = quickAddPending[0];
+    pushChatMsg('bot', '⏭ Skipped as duplicate: ' + item.description + ' — ' + money(item.amount));
+    quickAddPending.shift();
+    processNextQuickAdd();
+  }
+
+  function keepQuickAddDuplicate() {
+    resolveQuickAddCategory(quickAddPending[0]);
+  }
+
+  function chooseQuickAddCategory(category) {
+    var item = quickAddPending[0];
+    if (category === 'restock') {
+      quickAddStage = { type: 'productpicker', item: item };
+      renderQuickAdd();
+      return;
+    }
+    // Always ask seller/platform (skippable), regardless of category.
+    quickAddStage = { type: 'sellerplatform', item: item, category: category };
+    renderQuickAdd();
+  }
+
+  function confirmQuickAddProductPicker() {
+    var item = quickAddPending[0];
+    var sel = document.getElementById('qa-product-select');
+    var val = sel ? sel.value : '';
+    if (val === '__new__') {
+      quickAddStage = { type: 'newproduct', item: item };
+      renderQuickAdd();
+      return;
+    }
+    // A bare "restock" line (nothing else typed) has no amount yet — ask for it (and qty)
+    // once she's picked which product this restock is for, or before finalizing an unlinked one.
+    if (item.amount == null) {
+      quickAddStage = { type: 'restockamount', item: item, productId: val || null };
+      renderQuickAdd();
+      return;
+    }
+    if (!val) {
+      quickAddStage = { type: 'sellerplatform', item: item, category: 'restock' };
+      renderQuickAdd();
+      return;
+    }
+    var product = state.products.find(function (p) { return p.id === val; });
+    quickAddStage = { type: 'sellercheck', item: item, productId: val, mode: (product && (product.sourcePlatform || product.sourceLink)) ? 'ask' : 'input', category: 'restock' };
+    renderQuickAdd();
+  }
+
+  // Only reachable from a bare "restock" line with a product already picked but no amount yet.
+  function saveQuickAddRestockAmount() {
+    var stage = quickAddStage;
+    var amt = Number(document.getElementById('qa-restock-amount').value) || 0;
+    if (amt <= 0) { alert('Enter a valid amount.'); return; }
+    var qty = Number(document.getElementById('qa-restock-qty').value) || 0;
+    var item = stage.item;
+    item.amount = amt;
+    if (qty > 0) item.parsedQty = qty;
+    if (stage.productId) {
+      var product = state.products.find(function (p) { return p.id === stage.productId; });
+      quickAddStage = { type: 'sellercheck', item: item, productId: stage.productId, mode: (product && (product.sourcePlatform || product.sourceLink)) ? 'ask' : 'input', category: 'restock' };
+    } else {
+      quickAddStage = { type: 'sellerplatform', item: item, category: 'restock' };
+    }
+    renderQuickAdd();
+  }
+
+  function confirmQuickAddSellerSame() {
+    var stage = quickAddStage;
+    proceedAfterSeller(stage.item, stage.category || 'restock', stage.productId);
+  }
+
+  function switchQuickAddSellerToInput() {
+    quickAddStage.mode = 'input';
+    renderQuickAdd();
+  }
+
+  function saveQuickAddSellerInfo() {
+    var stage = quickAddStage;
+    var platform = document.getElementById('qa-seller-platform').value.trim();
+    var seller = document.getElementById('qa-seller-name').value.trim();
+    if (stage.type === 'sellercheck') {
+      var product = state.products.find(function (p) { return p.id === stage.productId; });
+      if (product) {
+        product.sourcePlatform = platform;
+        product.sourceLink = seller;
+        save();
+      }
+      proceedAfterSeller(stage.item, stage.category || 'restock', stage.productId);
+    } else {
+      proceedAfterSeller(stage.item, stage.category, null, platform, seller, stage.productType);
+    }
+  }
+
+  function skipQuickAddSellerInfo() {
+    var stage = quickAddStage;
+    if (stage.type === 'sellercheck') {
+      proceedAfterSeller(stage.item, stage.category || 'restock', stage.productId);
+    } else {
+      proceedAfterSeller(stage.item, stage.category, null, null, null, stage.productType);
+    }
+  }
+
+  function confirmQuickAddCurrencyMyr() {
+    var item = quickAddPending[0];
+    item.currencyUnconfirmed = false;
+    processNextQuickAdd();
+  }
+
+  function confirmQuickAddCurrencyRmb() {
+    var item = quickAddPending[0];
+    item.currencyUnconfirmed = false;
+    item.rawAmount = item.amount;
+    item.amount = null;
+    item.needsFx = true;
+    processNextQuickAdd();
+  }
+
+  function confirmQuickAddFx() {
+    var item = quickAddPending[0];
+    var rate = Number(document.getElementById('qa-fx-rate').value) || 0;
+    if (rate <= 0) { alert('Enter a valid exchange rate.'); return; }
+    item.amount = Math.round(item.rawAmount * rate * 100) / 100;
+    item.description = item.description.replace(/rmb|人民币|cny/gi, '').replace(/\s+/g, ' ').trim() || 'Cost entry';
+    item.needsFx = false;
+    processNextQuickAdd();
+  }
+
+  function cancelQuickAddPending() {
+    var item = quickAddPending[0];
+    var amountText = (item.amount != null) ? ' — ' + money(item.amount) : (item.rawAmount != null ? ' — RMB ' + item.rawAmount.toFixed(2) : '');
+    pushChatMsg('bot', '✕ Cancelled: "' + item.description + '"' + amountText + ' — nothing was saved.');
+    quickAddPending.shift();
+    processNextQuickAdd();
+  }
+
+  function saveQuickAddNewProduct() {
+    var item = quickAddPending[0];
+    var name = document.getElementById('qa-np-name').value.trim();
+    if (!name) { alert('Enter a product name.'); return; }
+    var type = document.getElementById('qa-np-type').value;
+    var cost = Number(document.getElementById('qa-np-cost').value) || 0;
+    var price = Number(document.getElementById('qa-np-price').value) || 0;
+    var stock = Number(document.getElementById('qa-np-stock').value) || 0;
+    var platformEl = document.getElementById('qa-np-platform');
+    var sellerEl = document.getElementById('qa-np-seller');
+    var newProduct = {
+      id: uid(), name: name, variant: '', sku: '', type: type, theme: '',
+      image: '', cost: cost, price: price, stock: stock, threshold: 5,
+      sourcePlatform: (type !== 'Stickers' && platformEl) ? platformEl.value.trim() : '',
+      sourceLink: (type !== 'Stickers' && sellerEl) ? sellerEl.value.trim() : ''
+    };
+    state.products.push(newProduct);
+    var costId = uid();
+    // A bare "restock" line has no amount typed yet — fall back to cost-per-unit x stock.
+    var totalAmt = (item.amount != null) ? item.amount : Math.round(cost * stock * 100) / 100;
+    state.costs.push({
+      id: costId, category: 'new_inventory', date: todayISO(), amount: totalAmt,
+      productId: newProduct.id, qty: stock, description: item.description
+    });
+    if (stock > 0) logStock(newProduct.id, stock, 'restock', 'Initial stock (via Quick Add)', todayISO(), costId);
+    quickAddLastEntryId = costId;
+    pushChatMsg('bot', '✓ Created new product "' + name + '" and logged ' + money(totalAmt) + ' as new inventory.');
+    quickAddPending.shift();
+    processNextQuickAdd();
+    renderAll();
+  }
+
+  function saveQuickAddShipping() {
+    var stage = quickAddStage;
+    var fee = Number(document.getElementById('qa-shipping-amount').value) || 0;
+    if (fee > 0) quickAddLastShipping = { amount: fee };
+    finalizeQuickAddCost(stage.item, stage.category, stage.productId, stage.platform, stage.seller, fee > 0 ? fee : null, stage.productType);
+  }
+
+  function useLastQuickAddShipping() {
+    var stage = quickAddStage;
+    if (!quickAddLastShipping) return;
+    finalizeQuickAddCost(stage.item, stage.category, stage.productId, stage.platform, stage.seller, quickAddLastShipping.amount, stage.productType);
+    redistributeSharedShipping(quickAddLastEntryId);
+  }
+
+  function skipQuickAddShipping() {
+    var stage = quickAddStage;
+    finalizeQuickAddCost(stage.item, stage.category, stage.productId, stage.platform, stage.seller, undefined, stage.productType);
+  }
+
+  function saveQuickAddBatchShipping(feeOverride) {
+    // If the amount being applied is a reuse of an already-recorded standalone shipping
+    // entry, that entry's money must not be double-counted on top of this split.
+    var reusingSourceId = (feeOverride != null && quickAddLastShipping && quickAddLastShipping.amount === feeOverride)
+      ? quickAddLastShipping.sourceEntryId : null;
+    var fee = (feeOverride != null) ? feeOverride : (Number(document.getElementById('qa-batch-shipping-amount').value) || 0);
+    if (fee > 0 && quickAddBatchIds.length) {
+      var entries = quickAddBatchIds.map(function (id) { return state.costs.find(function (c) { return c.id === id; }); }).filter(Boolean);
+      var subtotal = entries.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+      entries.forEach(function (c) {
+        var share = subtotal > 0 ? (Number(c.amount) / subtotal) * fee : fee / entries.length;
+        share = Math.round(share * 100) / 100;
+        c.amount = Math.round((Number(c.amount) + share) * 100) / 100;
+        c.shippingAmount = Math.round(((c.shippingAmount || 0) + share) * 100) / 100;
+      });
+      if (reusingSourceId) {
+        state.costs = state.costs.filter(function (c) { return c.id !== reusingSourceId; });
+      }
+      quickAddLastShipping = { amount: fee };
+      pushChatMsg('bot', '✓ Split shipping fee ' + money(fee) + ' across ' + entries.length + ' item(s).');
+    }
+    quickAddBatchMode = false;
+    quickAddBatchIds = [];
+    quickAddStage = null;
+    renderAll();
+  }
+
+  function skipQuickAddBatchShipping() {
+    quickAddBatchMode = false;
+    quickAddBatchIds = [];
+    quickAddStage = null;
+    renderQuickAdd();
+  }
+
+  var QUICKADD_CANCEL_BTN = '<button class="btn btn-secondary btn-small" data-qa-cancel="1">Cancel</button>';
+
+  function renderQuickAdd() {
+    var container = document.getElementById('quickadd-content');
+    if (!container) return;
+    var welcomeHtml = '<div class="card qa-welcome">' +
+      '<div style="font-weight:600; font-size:16px; margin-bottom:10px;">👋 Welcome to Quick Add</div>' +
+      '<div class="muted" style="margin-bottom:10px;">Type your costs here, one per line, ending each line with the amount. I\'ll work out the category myself — and ask you (with buttons, never guessing) whenever I\'m not sure.</div>' +
+      '<div style="font-family:monospace; font-size:12px; line-height:1.9; background:#f7f8fb; border-radius:8px; padding:10px 12px;">' +
+        '<div>glitter 8 colours 45</div>' +
+        '<div>courier fee 12</div>' +
+        '<div>Tumbler 1234 restock 330</div>' +
+        '<div>phone case 100 rmb</div>' +
+      '</div>' +
+      '<div class="muted" style="margin-top:10px; font-size:12px;">Mention "RMB" and I\'ll ask for the exchange rate and convert it to RM for you. Made a typo? There\'s always a Cancel button when I ask you something.</div>' +
+    '</div>';
+
+    var logHtml = state.chatLog.length
+      ? state.chatLog.map(function (m) {
+          var isUser = m.role === 'user';
+          return '<div class="qa-row" style="justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';">' +
+            '<div class="qa-bubble ' + (isUser ? 'qa-bubble-user' : 'qa-bubble-bot') + '">' + escapeHtml(m.text) + '</div>' +
+          '</div>';
+        }).join('')
+      : welcomeHtml;
+
+    var stageHtml = '';
+    if (quickAddStage && quickAddStage.type === 'fxconvert') {
+      var itF = quickAddStage.item;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(itF.description) + '" looks like it\'s in RMB — RMB ' + itF.rawAmount.toFixed(2) + '. What\'s the exchange rate (RMB → RM)?</div>' +
+        '<input id="qa-fx-rate" type="number" step="0.0001" min="0" placeholder="e.g. 0.62" style="width:140px;">' +
+        '<div id="qa-fx-preview" class="muted" style="font-size:12px; margin-top:6px;">Enter a rate to see the converted amount.</div>' +
+        '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-fx-confirm">Confirm</button> ' + QUICKADD_CANCEL_BTN + '</div>' +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'currencyask') {
+      var itCur = quickAddStage.item;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(itCur.description) + '" — is ' + money(itCur.amount) + ' in MYR (RM) or RMB (¥)? You didn\'t specify, so just confirming before I log it.</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-currency-myr">MYR (RM)</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-qa-currency-rmb">RMB (¥)</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'duplicate') {
+      var itD = quickAddStage.item, dup = quickAddStage.match;
+      stageHtml = '<div class="card qa-stage" style="background:#fff8ec;">' +
+        '<div style="font-size:13px; margin-bottom:8px;">This looks similar to an entry from ' + escapeHtml(formatDateCompact(dup.date)) + ': "' + escapeHtml(dup.description || '') + '" — ' + money(dup.amount) + '. Is "' + escapeHtml(itD.description) + '" — ' + money(itD.amount) + ' a duplicate?</div>' +
+        '<button class="btn btn-secondary btn-small" data-qa-dup="skip">Yes, skip it</button> ' +
+        '<button class="btn btn-primary btn-small" data-qa-dup="keep">No, add it anyway</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'category') {
+      var itC = quickAddStage.item;
+      var catBtns = ['restock', 'packaging', 'shipping', 'ads', 'tiktok_fee', 'wastage', 'other'].map(function (c) {
+        return '<button class="btn btn-secondary btn-small" style="margin:2px;" data-qa-cat="' + c + '">' + c + '</button>';
+      }).join('');
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">Not sure what "' + escapeHtml(itC.description) + '" — ' + money(itC.amount) + ' is. Is it a cost, or a brand new Inventory item (Tumbler/Stickers/Others)?</div>' +
+        catBtns + ' <button class="btn btn-primary btn-small" style="margin:2px;" data-qa-newinventory="1">🆕 New inventory item</button>' +
+        ' <button class="btn btn-secondary btn-small" style="margin:2px;" data-qa-newproduct="1">+ Add new product (full details)</button>' +
+        '<div style="margin-top:8px;">' + QUICKADD_CANCEL_BTN + '</div>' +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'producttypeask') {
+      var itPT = quickAddStage.item, guessPT = quickAddStage.typeGuess;
+      var typeBtns = PRODUCT_TYPES.map(function (t) {
+        var cls = (t === guessPT) ? 'btn-primary' : 'btn-secondary';
+        return '<button class="btn ' + cls + ' btn-small" style="margin:2px;" data-qa-producttype="' + t + '">' + t + (t === guessPT ? ' (suggested)' : '') + '</button>';
+      }).join('');
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(itPT.description) + '" — ' + money(itPT.amount) + ' looks like a new Inventory item. Which type is it?</div>' +
+        typeBtns +
+        '<div style="margin-top:8px;">' + QUICKADD_CANCEL_BTN + '</div>' +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'productpicker') {
+      var itP = quickAddStage.item;
+      var productOpts = '<option value="">— none / not linked to a specific product —</option>' +
+        state.products.map(function (p) { return '<option value="' + p.id + '">' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : '')) + '</option>'; }).join('') +
+        '<option value="__new__">+ Add new product</option>';
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">Which product is this restock for?' + (itP.amount != null ? ' "' + escapeHtml(itP.description) + '" — ' + money(itP.amount) : '') + '</div>' +
+        '<select id="qa-product-select">' + productOpts + '</select>' +
+        '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-product-confirm">Confirm</button> ' + QUICKADD_CANCEL_BTN + '</div>' +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'restockamount') {
+      var stRA = quickAddStage;
+      var prodRA = stRA.productId ? state.products.find(function (p) { return p.id === stRA.productId; }) : null;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">' + (prodRA ? 'Restocking "' + escapeHtml(prodRA.name) + '"' : 'Logging this restock') + ' — how much did it cost, and how many units (optional)?</div>' +
+        '<div class="form-grid" style="margin-bottom:8px;">' +
+          '<div><label class="field-label">Amount (RM)</label><input id="qa-restock-amount" type="number" step="0.01" min="0"></div>' +
+          '<div><label class="field-label">Qty (optional)</label><input id="qa-restock-qty" type="number" step="1" min="0"></div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-restock-amount-save">Continue</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'materialqty') {
+      var stMQ = quickAddStage;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(stMQ.item.description) + '" — ' + money(stMQ.item.amount) + '. How much in total (by volume/weight)?</div>' +
+        '<div class="form-grid" style="margin-bottom:8px;">' +
+          '<div><label class="field-label">Amount</label><input id="qa-material-qty" type="number" step="0.01" min="0"></div>' +
+          '<div><label class="field-label">Unit</label><select id="qa-material-unit"><option value="ml">ml</option><option value="g">g</option></select></div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-material-qty-save">Continue</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'sellingprice') {
+      var stSP = quickAddStage;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">What\'s the selling price for this ' + stSP.productType + '? (helps calculate margin right away)</div>' +
+        '<div class="form-grid" style="margin-bottom:8px;">' +
+          '<div><label class="field-label">Selling price (RM)</label><input id="qa-selling-price" type="number" step="0.01" min="0"></div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-sellingprice-save">Continue</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-qa-sellingprice-skip">Skip</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'newproduct') {
+      var typeOpts = PRODUCT_TYPES.map(function (t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">New product for "' + escapeHtml(quickAddStage.item.description) + '"' + (quickAddStage.item.amount != null ? ' — ' + money(quickAddStage.item.amount) : '') + ':</div>' +
+        '<div class="form-grid" style="margin-bottom:8px;">' +
+          '<div><label class="field-label">Name</label><input id="qa-np-name"></div>' +
+          '<div><label class="field-label">Type</label><select id="qa-np-type">' + typeOpts + '</select></div>' +
+          '<div><label class="field-label">Cost per unit</label><input id="qa-np-cost" type="number" step="0.01" min="0" value="0"></div>' +
+          '<div><label class="field-label">Price per unit</label><input id="qa-np-price" type="number" step="0.01" min="0" value="0"></div>' +
+          '<div><label class="field-label">Initial stock</label><input id="qa-np-stock" type="number" step="1" min="0" value="0"></div>' +
+          '<div id="qa-np-source-wrap" style="display:contents;">' +
+            '<div><label class="field-label">Platform (optional)</label><input id="qa-np-platform" placeholder="e.g. Taobao, Shopee"></div>' +
+            '<div><label class="field-label">Seller (optional)</label><input id="qa-np-seller" placeholder="e.g. seller username/link"></div>' +
+          '</div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-save-newproduct">Save</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'sellercheck') {
+      var stC = quickAddStage;
+      var prodC = state.products.find(function (p) { return p.id === stC.productId; });
+      if (stC.mode === 'ask') {
+        stageHtml = '<div class="card qa-stage">' +
+          '<div style="font-size:13px; margin-bottom:8px;">Restocking "' + escapeHtml(prodC ? prodC.name : '?') + '" — ' + money(stC.item.amount) + '. Same seller as before (' + escapeHtml([prodC.sourcePlatform, prodC.sourceLink].filter(Boolean).join(' / ') || '—') + ')?</div>' +
+          '<button class="btn btn-primary btn-small" data-qa-seller-same="1">Yes, same</button> ' +
+          '<button class="btn btn-secondary btn-small" data-qa-seller-changed="1">No, it changed</button> ' + QUICKADD_CANCEL_BTN +
+        '</div>';
+      } else {
+        stageHtml = '<div class="card qa-stage">' +
+          '<div style="font-size:13px; margin-bottom:8px;">Which platform/seller is "' + escapeHtml(prodC ? prodC.name : '?') + '" from now? (optional)</div>' +
+          '<div class="form-grid" style="margin-bottom:8px;">' +
+            '<div><label class="field-label">Platform</label><input id="qa-seller-platform" placeholder="e.g. Taobao, Shopee"></div>' +
+            '<div><label class="field-label">Seller</label><input id="qa-seller-name" placeholder="e.g. seller username/link"></div>' +
+          '</div>' +
+          '<button class="btn btn-primary btn-small" id="btn-qa-seller-save">Save</button> ' +
+          '<button class="btn btn-secondary btn-small" id="btn-qa-seller-skip">Skip</button> ' + QUICKADD_CANCEL_BTN +
+        '</div>';
+      }
+    } else if (quickAddStage && quickAddStage.type === 'sellerplatform') {
+      var stS = quickAddStage;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">Where did you buy "' + escapeHtml(stS.item.description) + '" — ' + money(stS.item.amount) + ' from? (optional)</div>' +
+        '<div class="form-grid" style="margin-bottom:8px;">' +
+          '<div><label class="field-label">Platform</label><input id="qa-seller-platform" placeholder="e.g. Taobao, Shopee"></div>' +
+          '<div><label class="field-label">Seller</label><input id="qa-seller-name" placeholder="e.g. seller username/link"></div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-seller-save">Save</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-qa-seller-skip">Skip</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'shippingask') {
+      var stSh = quickAddStage;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">Did "' + escapeHtml(stSh.item.description) + '" — ' + money(stSh.item.amount) + ' also have a separate shipping fee (not already included)? (optional)</div>' +
+        (quickAddLastShipping ? '<div style="margin-bottom:8px;"><button class="btn btn-secondary btn-small" id="btn-qa-shipping-uselast">Use previous shipping (' + money(quickAddLastShipping.amount) + ')</button></div>' : '') +
+        '<input id="qa-shipping-amount" type="number" step="0.01" min="0" placeholder="or enter a different amount" style="width:200px;">' +
+        '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-shipping-save">Save</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-qa-shipping-skip">Skip</button> ' + QUICKADD_CANCEL_BTN +
+        '</div>' +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'batchshipping') {
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">This batch had ' + quickAddBatchIds.length + ' item(s) logged. Was there one shared shipping fee for the whole batch? I\'ll split it proportionally across the items. (optional)</div>' +
+        (quickAddLastShipping ? '<div style="margin-bottom:8px;"><button class="btn btn-secondary btn-small" id="btn-qa-batch-shipping-uselast">Use previous shipping (' + money(quickAddLastShipping.amount) + ')</button></div>' : '') +
+        '<input id="qa-batch-shipping-amount" type="number" step="0.01" min="0" placeholder="or enter a different amount" style="width:200px;">' +
+        '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-batch-shipping-save">Save</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-qa-batch-shipping-skip">Skip</button></div>' +
+      '</div>';
+    }
+
+    var lastEntryHtml = '';
+    if (!quickAddStage && quickAddPending.length === 0 && quickAddLastEntryId) {
+      var lastEntry = state.costs.find(function (c) { return c.id === quickAddLastEntryId; });
+      if (lastEntry) {
+        lastEntryHtml = '<div class="qa-lastentry">' +
+          '<span class="muted" style="font-size:12px;">Last: ' + escapeHtml(lastEntry.description || '') + ' — ' + money(lastEntry.amount) + '</span> ' +
+          '<button class="btn-text" id="btn-qa-edit-last">Edit</button> ' +
+          '<button class="btn-text danger" id="btn-qa-delete-last">Delete</button>' +
+        '</div>';
+      }
+    }
+
+    container.innerHTML =
+      '<div class="qa-log">' + logHtml + '</div>' +
+      stageHtml +
+      lastEntryHtml +
+      '<div class="qa-input-bar">' +
+        '<textarea id="qa-input" rows="1" placeholder="Type a cost… e.g. glitter 8 colours 45"' + (quickAddStage ? ' disabled' : '') + '></textarea>' +
+        '<button class="qa-send-btn" id="btn-qa-send"' + (quickAddStage ? ' disabled' : '') + ' title="Send">↑</button>' +
+      '</div>';
+  }
+
+  document.getElementById('quickadd-content').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-qa-send') {
+      var val = document.getElementById('qa-input').value;
+      var lines = val.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+      if (!lines.length) return;
+      pushChatMsg('user', val.trim());
+      var parsedLines = [];
+      var skipped = [];
+      lines.forEach(function (line) {
+        if (isBareRestockLine(line)) {
+          parsedLines.push({ description: line.trim(), amount: null });
+          return;
+        }
+        var parsed = parseAmountFromLine(line);
+        if (parsed) {
+          if (parsed.currencyHint === 'rmb') {
+            parsed.needsFx = true;
+            parsed.rawAmount = parsed.amount;
+            parsed.amount = null;
+          } else if (!parsed.hasCurrencyMarker) {
+            parsed.currencyUnconfirmed = true;
+          }
+          parsedLines.push(parsed);
+        } else skipped.push(line);
+      });
+      if (skipped.length) {
+        pushChatMsg('bot', 'Could not find an amount in: ' + skipped.join(' / ') + ' — skipped. Make sure each line ends with a number.');
+      }
+      quickAddBatchMode = parsedLines.length > 1;
+      quickAddBatchIds = [];
+      quickAddPending = quickAddPending.concat(parsedLines);
+      processNextQuickAdd();
+      return;
+    }
+    if (e.target.getAttribute('data-qa-cancel')) { cancelQuickAddPending(); return; }
+    if (e.target.id === 'btn-qa-fx-confirm') { confirmQuickAddFx(); return; }
+    if (e.target.id === 'btn-qa-currency-myr') { confirmQuickAddCurrencyMyr(); return; }
+    if (e.target.id === 'btn-qa-currency-rmb') { confirmQuickAddCurrencyRmb(); return; }
+    if (e.target.id === 'btn-qa-edit-last') {
+      if (quickAddLastEntryId) {
+        document.querySelectorAll('nav button').forEach(function (b) { b.classList.remove('active'); });
+        document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
+        document.querySelector('nav button[data-tab="costs"]').classList.add('active');
+        document.getElementById('page-costs').classList.add('active');
+        renderAll();
+        editCost(quickAddLastEntryId);
+      }
+      return;
+    }
+    if (e.target.id === 'btn-qa-delete-last') {
+      if (quickAddLastEntryId) {
+        var idToDelete = quickAddLastEntryId;
+        deleteCost(idToDelete);
+        var stillExists = state.costs.some(function (c) { return c.id === idToDelete; });
+        if (!stillExists) {
+          quickAddLastEntryId = null;
+          pushChatMsg('bot', '🗑 Deleted your last entry.');
+          renderQuickAdd();
+        }
+      }
+      return;
+    }
+    var dupAction = e.target.getAttribute('data-qa-dup');
+    if (dupAction === 'skip') { skipQuickAddDuplicate(); return; }
+    if (dupAction === 'keep') { keepQuickAddDuplicate(); return; }
+    var cat = e.target.getAttribute('data-qa-cat');
+    if (cat) { chooseQuickAddCategory(cat); return; }
+    var ptType = e.target.getAttribute('data-qa-producttype');
+    if (ptType) { chooseQuickAddProductType(ptType); return; }
+    if (e.target.getAttribute('data-qa-newinventory')) {
+      askQuickAddProductType(quickAddPending[0], null, false, null);
+      return;
+    }
+    if (e.target.getAttribute('data-qa-newproduct')) {
+      quickAddStage = { type: 'newproduct', item: quickAddPending[0] };
+      renderQuickAdd();
+      return;
+    }
+    if (e.target.id === 'btn-qa-product-confirm') { confirmQuickAddProductPicker(); return; }
+    if (e.target.id === 'btn-qa-restock-amount-save') { saveQuickAddRestockAmount(); return; }
+    if (e.target.id === 'btn-qa-material-qty-save') { saveQuickAddMaterialQty(); return; }
+    if (e.target.id === 'btn-qa-sellingprice-save') { saveQuickAddSellingPrice(); return; }
+    if (e.target.id === 'btn-qa-sellingprice-skip') { skipQuickAddSellingPrice(); return; }
+    if (e.target.id === 'btn-qa-save-newproduct') { saveQuickAddNewProduct(); return; }
+    if (e.target.getAttribute('data-qa-seller-same')) { confirmQuickAddSellerSame(); return; }
+    if (e.target.getAttribute('data-qa-seller-changed')) { switchQuickAddSellerToInput(); return; }
+    if (e.target.id === 'btn-qa-seller-save') { saveQuickAddSellerInfo(); return; }
+    if (e.target.id === 'btn-qa-seller-skip') { skipQuickAddSellerInfo(); return; }
+    if (e.target.id === 'btn-qa-shipping-save') { saveQuickAddShipping(); return; }
+    if (e.target.id === 'btn-qa-shipping-uselast') { useLastQuickAddShipping(); return; }
+    if (e.target.id === 'btn-qa-shipping-skip') { skipQuickAddShipping(); return; }
+    if (e.target.id === 'btn-qa-batch-shipping-save') { saveQuickAddBatchShipping(); return; }
+    if (e.target.id === 'btn-qa-batch-shipping-uselast') { saveQuickAddBatchShipping(quickAddLastShipping ? quickAddLastShipping.amount : null); return; }
+    if (e.target.id === 'btn-qa-batch-shipping-skip') { skipQuickAddBatchShipping(); return; }
+  });
+
+  document.getElementById('quickadd-content').addEventListener('change', function (e) {
+    if (e.target.id === 'qa-np-type') {
+      var wrap = document.getElementById('qa-np-source-wrap');
+      if (wrap) wrap.style.display = e.target.value === 'Stickers' ? 'none' : 'contents';
+    }
+  });
+
+  document.getElementById('quickadd-content').addEventListener('input', function (e) {
+    if (e.target.id === 'qa-fx-rate') {
+      var rate = Number(e.target.value) || 0;
+      var item = quickAddPending[0];
+      var preview = document.getElementById('qa-fx-preview');
+      if (preview && item) {
+        preview.textContent = rate > 0
+          ? 'RMB ' + item.rawAmount.toFixed(2) + ' × ' + rate + ' = ' + money(Math.round(item.rawAmount * rate * 100) / 100)
+          : 'Enter a rate to see the converted amount.';
+      }
+    }
+    if (e.target.id === 'qa-input') {
+      e.target.style.height = 'auto';
+      e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+    }
+  });
+
+  document.getElementById('quickadd-content').addEventListener('keydown', function (e) {
+    if (e.target.id === 'qa-input' && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      var sendBtn = document.getElementById('btn-qa-send');
+      if (sendBtn && !sendBtn.disabled) sendBtn.click();
+    }
+  });
+
   // ================= RENDER ALL =================
   function renderAll() {
     refreshProductDropdowns();
@@ -3122,6 +4307,7 @@
     renderOrders();
     renderSchedule();
     renderCalendar();
+    renderQuickAdd();
   }
 
   renderAll();
@@ -3205,9 +4391,11 @@
         if (!state.costs) state.costs = [];
         if (!state.orders) state.orders = [];
         if (!state.stockLog) state.stockLog = [];
+        if (!state.chatLog) state.chatLog = [];
         if (state.costs) {
           state.costs.forEach(function (c) {
             if (c.category === 'materials') c.category = 'restock';
+            if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; }
           });
         }
         save();
