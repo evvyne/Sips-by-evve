@@ -1170,11 +1170,18 @@
       ? '<img class="thumb" src="' + p.image + '">'
       : '<div class="thumb-placeholder">' + escapeHtml((p.name || '?').charAt(0).toUpperCase()) + '</div>';
     var skuLine = (p.sku && p.type === 'Stickers') ? '<div class="muted" style="font-size:12px;">SKU: ' + escapeHtml(p.sku) + '</div>' : '';
+    // No selling price set (Others / raw materials & supplies like glitter, mica powder, 软陶
+    // that she doesn't sell directly) — a per-unit Cost/Price/Margin breakdown is meaningless
+    // here (Price would show RM0 and Margin a confusing negative). Just show what she actually
+    // spent in total on the stock currently on hand.
+    var pricingHtml = p.price > 0
+      ? '<div>Cost ' + money(p.cost) + ' · Price ' + money(p.price) + '</div>' +
+        '<div class="muted" style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">Margin ' + money(margin) + '</div>'
+      : '<div>Total cost ' + money(p.cost * p.stock) + '</div>';
     var row = '<tr>' +
       '<td><div style="display:flex; align-items:center; gap:8px;">' + thumb +
       '<div><div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' + (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '') + skuLine + sourceLineHtml(p) + '</div></div></td>' +
-      '<td style="white-space:nowrap;"><div>Cost ' + money(p.cost) + ' · Price ' + money(p.price) + '</div>' +
-      '<div class="muted" style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">Margin ' + money(margin) + '</div></td>' +
+      '<td style="white-space:nowrap;">' + pricingHtml + '</td>' +
       '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see stock history">' + p.stock + (p.unit ? p.unit : '') + (low ? ' ⚠ low' : '') + '</span></td>' +
       '<td style="text-align:right; white-space:nowrap;">' +
       '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
@@ -3398,11 +3405,22 @@
     return String(s || '').toLowerCase().replace(/[^a-z0-9一-鿿]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
-  // Recognizes a trailing volume/weight quantity ("10ml", "5 g") written AFTER the price —
-  // e.g. "candle dye 2.72rmb 10ml" — so it doesn't block amount detection below. Returns the
-  // line with that quantity chopped off, plus the qty/unit, or null if there isn't one.
+  // A size written per-colour ("6 colours 20g", "6 colours x 20ml") means she bought that
+  // amount in EACH of several colours — the real total is count x amount, not just the
+  // amount on its own. Applies to any loose-fill material (glitter, mica powder, 软陶, resin,
+  // dye, etc.) since none of them are tied to one specific keyword for this pattern.
+  var UNIT_QTY_COLOUR_RE = /(\d+)\s*colou?rs?\s*[x×,]?\s*(\d+(?:\.\d+)?)\s*(ml|g)\b/i;
+  var UNIT_QTY_PLAIN_RE = /(\d+(?:\.\d+)?)\s*(ml|g)\b/i;
+
+  // Recognizes a trailing volume/weight quantity ("10ml", "5 g", or "6 colours 20g" meaning
+  // 6x20=120g total) written AFTER the price — e.g. "candle dye 2.72rmb 10ml" — so it doesn't
+  // block amount detection below. Returns the line with that quantity chopped off, plus the
+  // resolved qty/unit, or null if there isn't one.
   function extractTrailingUnitQty(line) {
-    var m = String(line || '').match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(ml|g)$/i);
+    var s = String(line || '');
+    var mc = s.match(new RegExp('^(.+?)\\s+' + UNIT_QTY_COLOUR_RE.source + '$', 'i'));
+    if (mc && mc[1]) return { rest: mc[1].trim(), qty: Number(mc[2]) * Number(mc[3]), unit: mc[4].toLowerCase() };
+    var m = s.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(ml|g)$/i);
     if (!m || !m[1]) return null;
     return { rest: m[1].trim(), qty: Number(m[2]), unit: m[3].toLowerCase() };
   }
@@ -3485,7 +3503,10 @@
   // Lets the materialqty prompt be pre-filled instead of asking again for a number she
   // already typed.
   function parseUnitQtyFromDesc(desc) {
-    var m = String(desc || '').match(/(\d+(?:\.\d+)?)\s*(ml|g)\b/i);
+    var s = String(desc || '');
+    var mc = s.match(UNIT_QTY_COLOUR_RE);
+    if (mc) return { qty: Number(mc[1]) * Number(mc[2]), unit: mc[3].toLowerCase() };
+    var m = s.match(UNIT_QTY_PLAIN_RE);
     return m ? { qty: Number(m[1]), unit: m[2].toLowerCase() } : null;
   }
 
