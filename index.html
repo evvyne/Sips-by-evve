@@ -4176,6 +4176,7 @@
       stageHtml = '<div class="card qa-stage">' +
         '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(itPT.description) + '" — ' + money(itPT.amount) + ' looks like a new Inventory item. Which type is it?</div>' +
         typeBtns +
+        '<div style="margin-top:8px;"><button class="btn btn-secondary btn-small" data-qa-treat-as-cost="1">💰 This is a cost</button></div>' +
         '<div style="margin-top:8px;">' + QUICKADD_CANCEL_BTN + '</div>' +
       '</div>';
     } else if (quickAddStage && quickAddStage.type === 'productpicker') {
@@ -4379,6 +4380,14 @@
     if (cat) { chooseQuickAddCategory(cat); return; }
     var ptType = e.target.getAttribute('data-qa-producttype');
     if (ptType) { chooseQuickAddProductType(ptType); return; }
+    if (e.target.getAttribute('data-qa-treat-as-cost')) {
+      // She's telling us this line was wrongly guessed as new Inventory — it's really just a
+      // cost (e.g. a fixed cost like a subscription or rent). Drop into the same category
+      // picker the ambiguous-line flow uses, so "other" is right there to log it under.
+      quickAddStage = { type: 'category', item: quickAddStage.item };
+      renderQuickAdd();
+      return;
+    }
     if (e.target.getAttribute('data-qa-newinventory')) {
       askQuickAddProductType(quickAddPending[0], null, false, null);
       return;
