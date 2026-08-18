@@ -360,8 +360,9 @@
           <input id="pf-theme-new" placeholder="e.g. C - Elsa" style="display:none; margin-top:6px;">
         </div>
         <div>
-          <label class="field-label">Cost price (per unit, in RM)</label>
+          <label class="field-label">Total cost (in RM, for all stock below)</label>
           <input id="pf-cost" type="number" step="0.01" min="0">
+          <div class="muted" style="font-size:11px; margin-top:3px;">Enter what you paid in total — per-unit cost is worked out automatically from Stock below.</div>
         </div>
         <div>
           <label class="field-label">Selling price (per unit, in RM)</label>
@@ -816,6 +817,14 @@
     return v.toLocaleString('en-MY', { style: 'currency', currency: 'MYR' });
   }
 
+  // Same as money() but keeps 4 decimal places instead of rounding to 2 — used for per-unit
+  // costs that are genuinely fractions of a cent (e.g. 1000 units bought for RM14.73 -> RM0.0147
+  // each), so the exact figure is visible instead of getting rounded away to RM0.01.
+  function moneyPrecise(n) {
+    var v = Number(n) || 0;
+    return 'RM' + v.toFixed(4);
+  }
+
   function todayISO() {
     return new Date().toISOString().slice(0, 10);
   }
@@ -1069,8 +1078,16 @@
     if (!name) { alert('Product name is required.'); return; }
     var type = document.getElementById('pf-type').value;
     var theme = type === 'Stickers' ? currentThemeValue() : '';
-    var cost = Number(document.getElementById('pf-cost').value) || 0;
+    var totalCostInput = Number(document.getElementById('pf-cost').value) || 0;
     var stock = Number(document.getElementById('pf-stock').value) || 0;
+    // The Cost field is typed as a TOTAL (what she actually paid) — work out the per-unit
+    // cost by dividing by Stock, so she never has to do that division herself. p.cost stays
+    // per-unit everywhere else in the app (Margin, Quick Add landed-cost math, etc).
+    // Keep full precision here (don't round to 2dp) — with large stock counts, rounding the
+    // per-unit cost to cents first and then multiplying back by stock for display can drift
+    // noticeably from the total she actually typed (e.g. 1000 units: 14.73/1000 -> rounds to
+    // 0.01, and 0.01*1000 shows RM10.00 instead of RM14.73). money() still rounds for display.
+    var cost = stock > 0 ? (totalCostInput / stock) : totalCostInput;
     var data = {
       name: name,
       variant: document.getElementById('pf-variant').value.trim(),
@@ -1128,7 +1145,7 @@
     refreshThemeSelect(p.theme || '');
     document.getElementById('pf-theme-new').style.display = 'none';
     document.getElementById('pf-theme-new').value = '';
-    document.getElementById('pf-cost').value = p.cost;
+    document.getElementById('pf-cost').value = Math.round(p.cost * p.stock * 100) / 100;
     document.getElementById('pf-price').value = p.price;
     document.getElementById('pf-stock').value = p.stock;
     document.getElementById('pf-threshold').value = p.threshold;
@@ -1177,7 +1194,8 @@
     var pricingHtml = p.price > 0
       ? '<div>Cost ' + money(p.cost) + ' · Price ' + money(p.price) + '</div>' +
         '<div class="muted" style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">Margin ' + money(margin) + '</div>'
-      : '<div>Total cost ' + money(p.cost * p.stock) + '</div>';
+      : '<div>' + money(p.cost * p.stock) + '</div>' +
+        '<div class="muted" style="font-size:11px;">per unit ' + moneyPrecise(p.cost) + '</div>';
     var row = '<tr>' +
       '<td><div style="display:flex; align-items:center; gap:8px;">' + thumb +
       '<div><div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' + (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '') + skuLine + sourceLineHtml(p) + '</div></div></td>' +
@@ -4028,6 +4046,24 @@
     renderAll();
   }
 
+  // Up to `limit` most recent DISTINCT shipping amounts she's actually logged, read straight
+  // from state.costs (which is saved/synced) rather than the in-memory quickAddLastShipping var
+  // — so the choices still show up even after a reload/new session, and she can pick the right
+  // one instead of guessing or accidentally creating a duplicate/overlapping shipping entry.
+  function getRecentShippingChoices(limit) {
+    var seen = {};
+    var out = [];
+    for (var i = state.costs.length - 1; i >= 0 && out.length < limit; i--) {
+      var c = state.costs[i];
+      if (c.category !== 'shipping') continue;
+      var key = String(c.amount);
+      if (seen[key]) continue;
+      seen[key] = true;
+      out.push(c);
+    }
+    return out;
+  }
+
   function skipQuickAddDuplicate() {
     var item = quickAddPending[0];
     pushChatMsg('bot', '⏭ Skipped as duplicate: ' + item.description + ' — ' + money(item.amount));
@@ -4230,6 +4266,18 @@
     finalizeQuickAddCost(stage.item, stage.category, stage.productId, stage.platform, stage.seller, undefined, stage.productType);
   }
 
+  // Reuse one of her last 3 distinct shipping entries (picked from the "recent shipping" list)
+  // instead of "the very last one only" — same underlying entry gets claimed, so the money is
+  // never duplicated, just shared across whichever items she picks it for.
+  function pickQuickAddShipping(entryId) {
+    var stage = quickAddStage;
+    var entry = state.costs.find(function (c) { return c.id === entryId; });
+    if (!entry) return;
+    quickAddLastShipping = { amount: entry.amount, sourceEntryId: entry.id, claimantIds: [] };
+    finalizeQuickAddCost(stage.item, stage.category, stage.productId, stage.platform, stage.seller, entry.amount, stage.productType);
+    redistributeSharedShipping(quickAddLastEntryId);
+  }
+
   function saveQuickAddBatchShipping(feeOverride) {
     var fee = (feeOverride != null) ? feeOverride : (Number(document.getElementById('qa-batch-shipping-amount').value) || 0);
     if (fee > 0 && quickAddBatchIds.length) {
@@ -4256,6 +4304,18 @@
     quickAddBatchIds = [];
     quickAddStage = null;
     renderQuickAdd();
+  }
+
+  function pickQuickAddBatchShipping(entryId) {
+    var entry = state.costs.find(function (c) { return c.id === entryId; });
+    if (!entry || !quickAddBatchIds.length) return;
+    quickAddLastShipping = { amount: entry.amount, sourceEntryId: entry.id, claimantIds: [] };
+    quickAddBatchIds.forEach(function (id) { redistributeSharedShipping(id); });
+    pushChatMsg('bot', '✓ Split shipping fee ' + money(entry.amount) + ' across ' + quickAddBatchIds.length + ' item(s) — kept as its own Cost entry, each item just shows its share.');
+    quickAddBatchMode = false;
+    quickAddBatchIds = [];
+    quickAddStage = null;
+    renderAll();
   }
 
   var QUICKADD_CANCEL_BTN = '<button class="btn btn-secondary btn-small" data-qa-cancel="1">Cancel</button>';
@@ -4429,18 +4489,34 @@
       '</div>';
     } else if (quickAddStage && quickAddStage.type === 'shippingask') {
       var stSh = quickAddStage;
+      var recentShipSh = getRecentShippingChoices(3);
+      var recentShipHtmlSh = recentShipSh.length ? (
+        '<details style="margin-bottom:8px;"><summary style="cursor:pointer; font-size:13px;">📋 Pick from recent shipping fees</summary>' +
+        '<div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">' +
+        recentShipSh.map(function (c) { return '<button class="btn btn-secondary btn-small" data-qa-shipping-pick="' + c.id + '">' + money(c.amount) + '</button>'; }).join('') +
+        '</div></details>'
+      ) : '';
       stageHtml = '<div class="card qa-stage">' +
         '<div style="font-size:13px; margin-bottom:8px;">Did "' + escapeHtml(stSh.item.description) + '" — ' + money(stSh.item.amount) + ' also have a separate shipping fee (not already included)? (optional)</div>' +
         (quickAddLastShipping ? '<div style="margin-bottom:8px;"><button class="btn btn-secondary btn-small" id="btn-qa-shipping-uselast">Use previous shipping (' + money(quickAddLastShipping.amount) + ')</button></div>' : '') +
+        recentShipHtmlSh +
         '<input id="qa-shipping-amount" type="number" step="0.01" min="0" placeholder="or enter a different amount" style="width:200px;">' +
         '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-shipping-save">Save</button> ' +
         '<button class="btn btn-secondary btn-small" id="btn-qa-shipping-skip">Skip</button> ' + QUICKADD_CANCEL_BTN +
         '</div>' +
       '</div>';
     } else if (quickAddStage && quickAddStage.type === 'batchshipping') {
+      var recentShipBt = getRecentShippingChoices(3);
+      var recentShipHtmlBt = recentShipBt.length ? (
+        '<details style="margin-bottom:8px;"><summary style="cursor:pointer; font-size:13px;">📋 Pick from recent shipping fees</summary>' +
+        '<div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">' +
+        recentShipBt.map(function (c) { return '<button class="btn btn-secondary btn-small" data-qa-shipping-pick="' + c.id + '">' + money(c.amount) + '</button>'; }).join('') +
+        '</div></details>'
+      ) : '';
       stageHtml = '<div class="card qa-stage">' +
         '<div style="font-size:13px; margin-bottom:8px;">This batch had ' + quickAddBatchIds.length + ' item(s) logged. Was there one shared shipping fee for the whole batch? I\'ll split it proportionally across the items. (optional)</div>' +
         (quickAddLastShipping ? '<div style="margin-bottom:8px;"><button class="btn btn-secondary btn-small" id="btn-qa-batch-shipping-uselast">Use previous shipping (' + money(quickAddLastShipping.amount) + ')</button></div>' : '') +
+        recentShipHtmlBt +
         '<input id="qa-batch-shipping-amount" type="number" step="0.01" min="0" placeholder="or enter a different amount" style="width:200px;">' +
         '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-batch-shipping-save">Save</button> ' +
         '<button class="btn btn-secondary btn-small" id="btn-qa-batch-shipping-skip">Skip</button></div>' +
@@ -4572,6 +4648,12 @@
     if (e.target.id === 'btn-qa-batch-shipping-save') { saveQuickAddBatchShipping(); return; }
     if (e.target.id === 'btn-qa-batch-shipping-uselast') { saveQuickAddBatchShipping(quickAddLastShipping ? quickAddLastShipping.amount : null); return; }
     if (e.target.id === 'btn-qa-batch-shipping-skip') { skipQuickAddBatchShipping(); return; }
+    var shipPickId = e.target.getAttribute('data-qa-shipping-pick');
+    if (shipPickId) {
+      if (quickAddStage && quickAddStage.type === 'batchshipping') { pickQuickAddBatchShipping(shipPickId); return; }
+      if (quickAddStage && quickAddStage.type === 'shippingask') { pickQuickAddShipping(shipPickId); return; }
+      return;
+    }
   });
 
   document.getElementById('quickadd-content').addEventListener('change', function (e) {
