@@ -2371,6 +2371,53 @@
     });
   }
 
+  // The "Parcel Bag" / "Parcel Box" Inventory items (if she's created them, e.g. via Quick
+  // Add) get auto-consumed once per order — one per customer, regardless of how many items
+  // are inside — the moment an order actually goes out, rather than her needing to log it
+  // separately for every single order shipped. If she's set up BOTH (some orders go in a bag,
+  // others in a box), there's no way to guess which one she used, so instead of assuming,
+  // she gets asked directly via a small inline prompt in the Orders table. If only one of the
+  // two exists, that one is used automatically — no need to ask when there's no real choice.
+  var pendingPackagingChoiceOrderId = null;
+
+  function findPackagingProduct(name) {
+    return state.products.find(function (p) { return normalizeDesc(p.name) === name; }) || null;
+  }
+
+  function deductPackaging(order, product) {
+    if (!product) return;
+    var before = product.stock;
+    product.stock = Math.max(0, product.stock - 1);
+    logStock(product.id, -(before - product.stock), 'order', product.name + ' used' + (order.buyerName ? ' — order: ' + order.buyerName : ''), order.date);
+    order.parcelBagDeducted = true;
+    order.parcelBagProductId = product.id;
+  }
+
+  function restoreParcelBag(order) {
+    var p = order.parcelBagProductId ? state.products.find(function (x) { return x.id === order.parcelBagProductId; }) : null;
+    if (p) {
+      p.stock += 1;
+      logStock(p.id, 1, 'order_restore', p.name + ' restored' + (order.buyerName ? ' — order: ' + order.buyerName : ''));
+    }
+    order.parcelBagDeducted = false;
+    order.parcelBagProductId = null;
+  }
+
+  function resolvePackagingChoice(orderId, which) {
+    var order = state.orders.find(function (o) { return o.id === orderId; });
+    if (!order) return;
+    var product = findPackagingProduct(which === 'box' ? 'parcel box' : 'parcel bag');
+    deductPackaging(order, product);
+    if (pendingPackagingChoiceOrderId === orderId) pendingPackagingChoiceOrderId = null;
+    save();
+    renderAll();
+  }
+
+  function skipPackagingChoice(orderId) {
+    if (pendingPackagingChoiceOrderId === orderId) pendingPackagingChoiceOrderId = null;
+    renderOrders();
+  }
+
   function changeOrderStatus(id, newStatus) {
     var order = state.orders.find(function (o) { return o.id === id; });
     if (!order) return;
@@ -2378,6 +2425,19 @@
     var willBeCancelled = newStatus === 'cancelled';
     if (!wasCancelled && willBeCancelled) restoreStock(order);
     else if (wasCancelled && !willBeCancelled) deductStock(order);
+    if (!order.parcelBagDeducted && (newStatus === 'shipped' || newStatus === 'delivered')) {
+      var bag = findPackagingProduct('parcel bag');
+      var box = findPackagingProduct('parcel box');
+      if (bag && box) {
+        pendingPackagingChoiceOrderId = order.id;
+      } else if (bag || box) {
+        deductPackaging(order, bag || box);
+      }
+    } else if (order.parcelBagDeducted && willBeCancelled) {
+      restoreParcelBag(order);
+    } else if (willBeCancelled && pendingPackagingChoiceOrderId === order.id) {
+      pendingPackagingChoiceOrderId = null;
+    }
     order.status = newStatus;
     save();
     renderAll();
@@ -2388,6 +2448,8 @@
     if (!order) return;
     if (!confirm('Delete this order? Stock will be restored if it was not already cancelled.')) return;
     if (order.status !== 'cancelled') restoreStock(order);
+    if (order.parcelBagDeducted && order.status !== 'cancelled') restoreParcelBag(order);
+    if (pendingPackagingChoiceOrderId === id) pendingPackagingChoiceOrderId = null;
     state.orders = state.orders.filter(function (o) { return o.id !== id; });
     save();
     renderAll();
@@ -2648,6 +2710,14 @@
         '<button class="btn-text danger" data-delete-order="' + o.id + '">Delete</button>' +
         '</td>' +
         '</tr>';
+      if (pendingPackagingChoiceOrderId === o.id) {
+        rows += '<tr><td colspan="9" style="background:#fffaf0; padding:8px 12px;">' +
+          '<span style="font-size:13px;">📦 Which packaging did you use for this order?</span> ' +
+          '<button class="btn btn-secondary btn-small" data-packaging-choice="box" data-packaging-order="' + o.id + '">📦 Parcel Box</button> ' +
+          '<button class="btn btn-secondary btn-small" data-packaging-choice="bag" data-packaging-order="' + o.id + '">🛍️ Parcel Bag</button> ' +
+          '<button class="btn-text" data-packaging-skip="' + o.id + '">Skip</button>' +
+        '</td></tr>';
+      }
       if (expandedOrderId === o.id) {
         rows += '<tr class="order-items-row"><td colspan="9">' +
           o.items.map(function (i) {
@@ -2698,6 +2768,10 @@
   }
 
   document.querySelector('#order-table tbody').addEventListener('click', function (e) {
+    var packagingChoice = e.target.getAttribute('data-packaging-choice');
+    if (packagingChoice) { resolvePackagingChoice(e.target.getAttribute('data-packaging-order'), packagingChoice); return; }
+    var packagingSkipId = e.target.getAttribute('data-packaging-skip');
+    if (packagingSkipId) { skipPackagingChoice(packagingSkipId); return; }
     var toggleId = e.target.getAttribute('data-toggle-order');
     var delId = e.target.getAttribute('data-delete-order');
     var editOrderId = e.target.getAttribute('data-edit-order');
@@ -2863,10 +2937,17 @@
     var revenue = active.reduce(function (s, o) { return s + orderTotal(o); }, 0);
     var shippingCostsPaid = active.reduce(function (s, o) { return s + Number(o.shippingCostActual || 0); }, 0);
     // Every Costs-page entry ever logged, split by whether it's an inventory purchase
-    // (restock / new_inventory — cash converted into stock) or a genuine operating expense.
+    // (cash converted into stock) or a genuine operating expense. The usual signal is the
+    // restock/new_inventory category, but a Cost entry linked to a product with a POSITIVE
+    // qty (i.e. it actually added stock) counts as inventory too even if it's tagged under a
+    // different label like "packaging" (bubble wrap, parcel bags) — the category is just a
+    // reporting tag for the Costs breakdown, not what decides Expense vs Inventory here.
+    // Qty <= 0 (e.g. a wastage write-off, which also links to a product) is excluded — that
+    // money was already counted once when the stock was originally purchased.
     var inventorySpend = 0, expenseFromCosts = 0;
     state.costs.forEach(function (c) {
-      if (c.category === 'restock' || c.category === 'new_inventory') inventorySpend += Number(c.amount);
+      var isInventoryPurchase = c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0);
+      if (isInventoryPurchase) inventorySpend += Number(c.amount);
       else expenseFromCosts += Number(c.amount);
     });
     var allCostsSpent = inventorySpend + expenseFromCosts;
@@ -3123,6 +3204,7 @@
     quickAddLastEntryId = null;
     quickAddLastShipping = null;
     quickAddLastFxRate = null;
+    pendingPackagingChoiceOrderId = null;
     save();
     renderAll();
   });
@@ -3394,8 +3476,15 @@
     // Tools/containers used to make the tumbler — also real stock, but counted in pieces like
     // any normal product (not ml/g).
     { category: 'other', words: ['syringe', 'squeeze bottle', 'oil bottle'], productType: 'Tumbler', autoInventory: true },
-    // General supplies not tied to one specific product type — no productType tag.
-    { category: 'other', words: ['bubble wrap', '泡泡纸', 'trash bag', 'garbage bag', '垃圾袋'] },
+    // Consumable packaging supplies — also real stock (something physical gets used up every
+    // time an order goes out), so these auto-create/restock an Inventory item just like the
+    // materials above. Tracked by count rather than ml/g: bubble wrap by the roll, bags by the
+    // piece. costCategory tags the resulting Cost entry "packaging" (instead of the default
+    // new_inventory/restock) so it still shows up correctly in the Packaging spend breakdown —
+    // it's still counted as Inventory (not Expense) on the Dashboard regardless of that label.
+    { category: 'packaging', words: ['bubble wrap', '泡泡纸'], autoInventory: true, unitTracked: true, defaultUnit: 'rolls', costCategory: 'packaging' },
+    { category: 'packaging', words: ['trash bag', 'garbage bag', '垃圾袋', 'parcel bag', '快递袋', '包裹袋'], autoInventory: true, unitTracked: true, defaultUnit: 'pcs', costCategory: 'packaging' },
+    { category: 'packaging', words: ['parcel box', '快递箱', '包裹箱'], autoInventory: true, unitTracked: true, defaultUnit: 'pcs', costCategory: 'packaging' },
     // Business/education costs.
     { category: 'other', words: ['course', 'training', 'workshop', '课程', '培训', '工作坊'] }
   ];
@@ -3414,19 +3503,41 @@
   // amount on its own. Applies to any loose-fill material (glitter, mica powder, 软陶, resin,
   // dye, etc.) since none of them are tied to one specific keyword for this pattern.
   var UNIT_QTY_COLOUR_RE = /(\d+)\s*colou?rs?\s*[x×,]?\s*(\d+(?:\.\d+)?)\s*(ml|g)\b/i;
-  var UNIT_QTY_PLAIN_RE = /(\d+(?:\.\d+)?)\s*(ml|g)\b/i;
+  // Covers volume/weight (ml/g, for loose-fill materials) AND count-based packaging supplies
+  // (rolls of bubble wrap; pieces for parcel/trash bags) with the same mechanism.
+  var UNIT_QTY_PLAIN_RE = /(\d+(?:\.\d+)?)\s*(ml|g|rolls?|卷|pcs?|pieces?|个|件)\b/i;
+  // A bare "x5" (or "x 5") with no unit word at all — she knows the count but the unit still
+  // needs picking from the dropdown (e.g. "bubble wrap x5 100rmb": 5 what? rolls or pieces?).
+  var COUNT_ONLY_RE = /(?:^|\s)x\s*(\d+)\b/i;
 
-  // Recognizes a trailing volume/weight quantity ("10ml", "5 g", or "6 colours 20g" meaning
-  // 6x20=120g total) written AFTER the price — e.g. "candle dye 2.72rmb 10ml" — so it doesn't
-  // block amount detection below. Returns the line with that quantity chopped off, plus the
-  // resolved qty/unit, or null if there isn't one.
+  // Collapses whatever unit word was actually typed ("roll", "rolls", "卷", "pcs", "piece", "个"...)
+  // down to the one canonical value used internally and in the dropdown ('ml' | 'g' | 'rolls' | 'pcs').
+  function normalizeUnitWord(raw) {
+    var w = String(raw || '').toLowerCase();
+    if (w === 'ml') return 'ml';
+    if (w === 'g') return 'g';
+    if (w.indexOf('roll') !== -1 || w === '卷') return 'rolls';
+    return 'pcs';
+  }
+
+  // Pulls out a bare count ("x5") with no unit attached — used to pre-fill the qty ask when
+  // the unit itself still needs to be picked from the dropdown.
+  function extractCountOnlyQty(desc) {
+    var m = String(desc || '').match(COUNT_ONLY_RE);
+    return m ? Number(m[1]) : null;
+  }
+
+  // Recognizes a trailing quantity ("10ml", "5 g", "5 rolls", "3 pcs", or "6 colours 20g"
+  // meaning 6x20=120g total) written AFTER the price — e.g. "candle dye 2.72rmb 10ml" — so it
+  // doesn't block amount detection below. Returns the line with that quantity chopped off,
+  // plus the resolved qty/unit, or null if there isn't one.
   function extractTrailingUnitQty(line) {
     var s = String(line || '');
     var mc = s.match(new RegExp('^(.+?)\\s+' + UNIT_QTY_COLOUR_RE.source + '$', 'i'));
     if (mc && mc[1]) return { rest: mc[1].trim(), qty: Number(mc[2]) * Number(mc[3]), unit: mc[4].toLowerCase() };
-    var m = s.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(ml|g)$/i);
+    var m = s.match(new RegExp('^(.+?)\\s+' + UNIT_QTY_PLAIN_RE.source + '$', 'i'));
     if (!m || !m[1]) return null;
-    return { rest: m[1].trim(), qty: Number(m[2]), unit: m[3].toLowerCase() };
+    return { rest: m[1].trim(), qty: Number(m[2]), unit: normalizeUnitWord(m[3]) };
   }
 
   // Requires the amount to be the LAST token on the line (optionally prefixed/suffixed
@@ -3526,7 +3637,7 @@
     var mc = s.match(UNIT_QTY_COLOUR_RE);
     if (mc) return { qty: Number(mc[1]) * Number(mc[2]), unit: mc[3].toLowerCase() };
     var m = s.match(UNIT_QTY_PLAIN_RE);
-    return m ? { qty: Number(m[1]), unit: m[2].toLowerCase() } : null;
+    return m ? { qty: Number(m[1]), unit: normalizeUnitWord(m[2]) } : null;
   }
 
   // Recognizes a bare mention of a product Type (Tumbler / Stickers / Others) in a line
@@ -3667,12 +3778,15 @@
       id: uid(), name: nm, variant: vr, sku: '',
       type: type || 'Others', theme: '', image: '',
       cost: 0, price: price || 0, stock: 0, threshold: 5,
-      sourcePlatform: '', sourceLink: '', unit: unit || ''
+      sourcePlatform: '', sourceLink: '', unit: unit || '',
+      // Remembered so every future restock of this same product also lands in the right Cost
+      // category (e.g. "packaging" for bubble wrap/bags) instead of the generic default.
+      costCategoryOverride: item.costCategoryHint || null
     };
     state.products.push(newProduct);
     save();
     pushChatMsg('bot', '🆕 New inventory item created: "' + newProduct.name + (newProduct.variant ? ' — ' + newProduct.variant : '') + '" (' + newProduct.type + ')');
-    quickAddStage = { type: 'sellercheck', item: item, productId: newProduct.id, mode: 'input', category: 'new_inventory' };
+    quickAddStage = { type: 'sellercheck', item: item, productId: newProduct.id, mode: 'input', category: item.costCategoryHint || 'new_inventory' };
     renderQuickAdd();
   }
 
@@ -3729,7 +3843,11 @@
     if (product) {
       var matchedQty = parseQtyFromDesc(item.description);
       if (matchedQty) item.parsedQty = matchedQty;
-      quickAddStage = { type: 'sellercheck', item: item, productId: product.id, mode: (product.sourcePlatform || product.sourceLink) ? 'ask' : 'input', category: 'restock' };
+      // Materials that were originally tagged with a specific Cost category override (e.g.
+      // packaging supplies filed under "packaging" instead of the generic restock label) should
+      // keep showing up under that same category on every later restock too, not just the first
+      // purchase — otherwise the Packaging breakdown would miss all but the very first buy.
+      quickAddStage = { type: 'sellercheck', item: item, productId: product.id, mode: (product.sourcePlatform || product.sourceLink) ? 'ask' : 'input', category: product.costCategoryOverride || 'restock' };
       renderQuickAdd();
       return;
     }
@@ -3748,12 +3866,24 @@
       // Inventory item for them.
       if (matchedGroup.autoInventory) {
         var nv = extractMaterialNameVariant(item.description, matchedGroup);
-        // The ml/g amount might already be in the line (before OR after the price — e.g.
+        // Carries the Cost-category override (e.g. "packaging") and the default unit to
+        // pre-select in the dropdown through to wherever the product actually gets created —
+        // stashed on `item` itself so it rides along without threading new params through
+        // every stage function in between.
+        if (matchedGroup.costCategory) item.costCategoryHint = matchedGroup.costCategory;
+        if (matchedGroup.defaultUnit) item.defaultUnit = matchedGroup.defaultUnit;
+        // The amount might already be in the line (before OR after the price — e.g.
         // "candle dye 2.72rmb 10ml" sets item.unitQty in parseAmountFromLine already, while
         // "mica powder 20g 5.7rmb" needs to be caught here since it's mid-description).
         if (matchedGroup.unitTracked && !item.unitQty) {
           var uq = parseUnitQtyFromDesc(item.description);
           if (uq) { item.unitQty = uq.qty; item.unitQtyUnit = uq.unit; }
+          else {
+            // No full "qty+unit" found — but a bare count ("x5") still pre-fills the amount
+            // field even though she'll need to confirm the unit from the dropdown herself.
+            var countOnly = extractCountOnlyQty(item.description);
+            if (countOnly) item.countHint = countOnly;
+          }
         }
         askQuickAddProductType(item, matchedGroup.productType || null, matchedGroup.unitTracked, nv);
         return;
@@ -4202,11 +4332,18 @@
       '</div>';
     } else if (quickAddStage && quickAddStage.type === 'materialqty') {
       var stMQ = quickAddStage;
+      var mqDefaultUnit = stMQ.item.defaultUnit || 'ml';
+      var mqCountHint = stMQ.item.countHint || '';
+      var mqUnitOpts = [
+        { v: 'ml', l: 'ml' }, { v: 'g', l: 'g' }, { v: 'rolls', l: 'rolls' }, { v: 'pcs', l: 'pcs' }
+      ].map(function (u) {
+        return '<option value="' + u.v + '"' + (u.v === mqDefaultUnit ? ' selected' : '') + '>' + u.l + '</option>';
+      }).join('');
       stageHtml = '<div class="card qa-stage">' +
-        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(stMQ.item.description) + '" — ' + money(stMQ.item.amount) + '. How much in total (by volume/weight)?</div>' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(stMQ.item.description) + '" — ' + money(stMQ.item.amount) + '. How much in total?</div>' +
         '<div class="form-grid" style="margin-bottom:8px;">' +
-          '<div><label class="field-label">Amount</label><input id="qa-material-qty" type="number" step="0.01" min="0"></div>' +
-          '<div><label class="field-label">Unit</label><select id="qa-material-unit"><option value="ml">ml</option><option value="g">g</option></select></div>' +
+          '<div><label class="field-label">Amount</label><input id="qa-material-qty" type="number" step="0.01" min="0" value="' + mqCountHint + '"></div>' +
+          '<div><label class="field-label">Unit</label><select id="qa-material-unit">' + mqUnitOpts + '</select></div>' +
         '</div>' +
         '<button class="btn btn-primary btn-small" id="btn-qa-material-qty-save">Continue</button> ' + QUICKADD_CANCEL_BTN +
       '</div>';
