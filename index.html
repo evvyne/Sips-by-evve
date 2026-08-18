@@ -771,6 +771,7 @@
   if (!state.blockedDates) state.blockedDates = {};
   if (!state.stockLog) state.stockLog = [];
   if (!state.chatLog) state.chatLog = [];
+  if (state.startingCash == null) state.startingCash = 5000;
   if (state.costs) {
     state.costs.forEach(function (c) {
       if (c.category === 'materials') c.category = 'restock';
@@ -2844,22 +2845,43 @@
     }).sort(function (a, b) { return a.estimatedDate.localeCompare(b.estimatedDate); });
   }
 
-  function renderDashboard() {
+  // ---- Cash-basis financial model (all-time, retroactive to state.startingCash) ----
+  // She doesn't want accrual/COGS matching — she wants a simple running ledger of actual
+  // cash movements: a starting balance, minus everything ever logged as a Cost (whether it's
+  // an operating expense or money converted into inventory stock), plus money actually
+  // collected from orders marked Paid. Inventory purchases don't vanish from the books —
+  // they just move from Cash into Inventory value instead of counting as an Expense.
+  function financials() {
     var active = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
     var revenue = active.reduce(function (s, o) { return s + orderTotal(o); }, 0);
-    var cogs = active.reduce(function (s, o) {
-      var itemsCogs = o.items.reduce(function (ss, i) { return ss + i.qty * i.unitCost; }, 0);
-      var addOnsCogs = (o.addOns || []).reduce(function (ss, a) { return ss + a.qty * a.unitCost; }, 0);
-      return s + itemsCogs + addOnsCogs;
-    }, 0);
-    // Both restock (topping up an existing product) and new_inventory (a first-time purchase
-    // of a brand-new product) are capital tied up in stock, not an operating expense — they're
-    // already reflected in Inventory value / COGS, so both are excluded here to avoid double-counting.
-    var otherCosts = state.costs.reduce(function (s, c) { return (c.category === 'restock' || c.category === 'new_inventory') ? s : s + Number(c.amount); }, 0);
     var shippingCostsPaid = active.reduce(function (s, o) { return s + Number(o.shippingCostActual || 0); }, 0);
-    var totalCosts = cogs + otherCosts + shippingCostsPaid;
-    var profit = revenue - totalCosts;
+    // Every Costs-page entry ever logged, split by whether it's an inventory purchase
+    // (restock / new_inventory — cash converted into stock) or a genuine operating expense.
+    var inventorySpend = 0, expenseFromCosts = 0;
+    state.costs.forEach(function (c) {
+      if (c.category === 'restock' || c.category === 'new_inventory') inventorySpend += Number(c.amount);
+      else expenseFromCosts += Number(c.amount);
+    });
+    var allCostsSpent = inventorySpend + expenseFromCosts;
+    var expense = expenseFromCosts + shippingCostsPaid;
+    // Money actually collected: an order only counts once it's marked Paid (add-ons are
+    // tracked/paid separately), not the moment it's logged — matches the app's existing
+    // paid/unpaid tracking so Cash reflects money really in hand.
+    var cashCollected = active.reduce(function (s, o) { return s + (orderTotal(o) - unpaidAmountFor(o)); }, 0);
+    var cash = Number(state.startingCash || 0) - allCostsSpent - shippingCostsPaid + cashCollected;
     var invValue = state.products.reduce(function (s, p) { return s + p.stock * p.cost; }, 0);
+    var netProfit = revenue - inventorySpend - expense;
+    var totalAccountValue = cash + invValue;
+    return {
+      active: active, revenue: revenue, shippingCostsPaid: shippingCostsPaid,
+      inventorySpend: inventorySpend, expense: expense, cash: cash, invValue: invValue,
+      netProfit: netProfit, totalAccountValue: totalAccountValue
+    };
+  }
+
+  function renderDashboard() {
+    var fin = financials();
+    var active = fin.active, revenue = fin.revenue, invValue = fin.invValue;
     var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
     var lowStock = state.products.filter(function (p) { return p.stock <= p.threshold; });
     var pendingCount = state.orders.filter(function (o) { return o.status === 'pending'; }).length;
@@ -2869,10 +2891,12 @@
     var needsDateConfirm = ordersNeedingDateConfirmation();
 
     var html = '<div class="stat-grid">' +
-      statCard('Revenue', money(revenue), active.length + ' orders (excl. cancelled)') +
-      statCard('Total costs', money(totalCosts), 'COGS ' + money(cogs) + ' + other ' + money(otherCosts) + ' + shipping ' + money(shippingCostsPaid)) +
-      statCard('Profit', money(profit), revenue > 0 ? ((profit / revenue) * 100).toFixed(1) + '% margin' : '', profit >= 0 ? 'var(--green)' : 'var(--red)') +
+      statCard('Total account value', money(fin.totalAccountValue), 'Cash + inventory value') +
+      cashStatCard(fin.cash, state.startingCash) +
+      statCard('Expense', money(fin.expense), 'Ads, shipping, packaging, fees etc. + courier paid') +
       statCard('Inventory value', money(invValue), unitsInStock + ' units in stock') +
+      statCard('Revenue', money(revenue), active.length + ' orders (excl. cancelled)') +
+      statCard('Net profit', money(fin.netProfit), 'Revenue − inventory spend (' + money(fin.inventorySpend) + ') − expense', fin.netProfit >= 0 ? 'var(--green)' : 'var(--red)') +
       statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
       '</div>' +
       '<div class="panel-grid">' +
@@ -2915,13 +2939,47 @@
 
   document.getElementById('dashboard-content').addEventListener('click', function (e) {
     var el = e.target.closest ? e.target.closest('[data-dash-order]') : null;
-    if (el) goToOrder(el.getAttribute('data-dash-order'));
+    if (el) { goToOrder(el.getAttribute('data-dash-order')); return; }
+    if (e.target.id === 'btn-dash-edit-startingcash') { dashboardEditingCash = true; renderDashboard(); return; }
+    if (e.target.id === 'btn-dash-startingcash-cancel') { dashboardEditingCash = false; renderDashboard(); return; }
+    if (e.target.id === 'btn-dash-startingcash-save') {
+      var val = Number(document.getElementById('dash-startingcash-input').value);
+      if (!isNaN(val)) { state.startingCash = val; save(); }
+      dashboardEditingCash = false;
+      renderDashboard();
+      return;
+    }
+  });
+  document.getElementById('dashboard-content').addEventListener('keydown', function (e) {
+    if (e.target.id === 'dash-startingcash-input' && e.key === 'Enter') {
+      document.getElementById('btn-dash-startingcash-save').click();
+    }
   });
 
   function statCard(label, value, sub, color) {
     return '<div class="stat-card"><div class="stat-label">' + label + '</div>' +
       '<div class="stat-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' + value + '</div>' +
       (sub ? '<div class="stat-sub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  // Cash is the one figure she can correct by hand (e.g. if her real bank balance drifts
+  // from what the app calculates) — everything else on the Dashboard is purely derived.
+  var dashboardEditingCash = false;
+  function cashStatCard(cash, startingCash) {
+    if (dashboardEditingCash) {
+      return '<div class="stat-card">' +
+        '<div class="stat-label">Cash</div>' +
+        '<div style="margin-top:6px;"><label class="field-label">Starting cash (RM)</label>' +
+        '<input id="dash-startingcash-input" type="number" step="0.01" value="' + Number(startingCash || 0) + '"></div>' +
+        '<div style="margin-top:8px; display:flex; gap:6px;">' +
+        '<button class="btn btn-primary btn-small" id="btn-dash-startingcash-save">Save</button>' +
+        '<button class="btn btn-secondary btn-small" id="btn-dash-startingcash-cancel">Cancel</button></div>' +
+        '</div>';
+    }
+    return '<div class="stat-card"><div class="stat-label">Cash</div>' +
+      '<div class="stat-value">' + money(cash) + '</div>' +
+      '<div class="stat-sub">Starting ' + money(startingCash) + ' <button class="btn-text" id="btn-dash-edit-startingcash">✏️ Edit</button></div>' +
+      '</div>';
   }
 
   // ================= SCHEDULE =================
@@ -3054,7 +3112,7 @@
   document.getElementById('btn-reset-data').addEventListener('click', function () {
     if (!confirm('This will permanently delete ALL products, costs, orders and calendar data — including anything already synced to your account. This cannot be undone. Continue?')) return;
     if (!confirm('Really sure? This clears everything and starts you with a blank tracker.')) return;
-    state = { products: [], costs: [], orders: [], blockedDates: {}, stockLog: [], chatLog: [] };
+    state = { products: [], costs: [], orders: [], blockedDates: {}, stockLog: [], chatLog: [], startingCash: 5000 };
     quickAddLastEntryId = null;
     quickAddLastShipping = null;
     save();
@@ -3321,7 +3379,7 @@
     // these are real stock, so autoInventory automatically creates a new Inventory product
     // (tagged type 'Tumbler'). They're measured by volume/weight rather than piece count, so
     // unitTracked asks for a total ml/g amount instead of a piece quantity.
-    { category: 'other', words: ['glitter', 'mica', 'mica powder', 'sequin', '亮片', 'glycerin', 'uv glue', 'mineral oil', 'resin', '颜料', '珠光粉', '软陶'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', words: ['glitter', 'mica', 'mica powder', 'sequin', '亮片', 'glycerin', 'uv glue', 'mineral oil', 'resin', 'candle dye', 'dye', '颜料', '珠光粉', '染料', '软陶'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
     // Tools/containers used to make the tumbler — also real stock, but counted in pieces like
     // any normal product (not ml/g).
     { category: 'other', words: ['syringe', 'squeeze bottle', 'oil bottle'], productType: 'Tumbler', autoInventory: true },
@@ -3340,14 +3398,28 @@
     return String(s || '').toLowerCase().replace(/[^a-z0-9一-鿿]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
+  // Recognizes a trailing volume/weight quantity ("10ml", "5 g") written AFTER the price —
+  // e.g. "candle dye 2.72rmb 10ml" — so it doesn't block amount detection below. Returns the
+  // line with that quantity chopped off, plus the qty/unit, or null if there isn't one.
+  function extractTrailingUnitQty(line) {
+    var m = String(line || '').match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*(ml|g)$/i);
+    if (!m || !m[1]) return null;
+    return { rest: m[1].trim(), qty: Number(m[2]), unit: m[3].toLowerCase() };
+  }
+
   // Requires the amount to be the LAST token on the line (optionally prefixed/suffixed
   // with RM, or suffixed with an "rmb"/"cny" currency word — either as its own token
   // "40 rmb" or glued directly onto the number "40rmb") — not just any lone number
   // anywhere in the line. This avoids misreading quantity words like "5 colours" as RM5.00.
+  // A trailing "10ml"/"5g" quantity (written after the price) is set aside first so it
+  // doesn't get mistaken for part of the amount.
   function parseAmountFromLine(line) {
     var trimmed = line.trim();
     if (!trimmed) return null;
-    var tokens = trimmed.split(/\s+/);
+    var unitQty = extractTrailingUnitQty(trimmed);
+    var searchLine = unitQty ? unitQty.rest : trimmed;
+    if (!searchLine) return null;
+    var tokens = searchLine.split(/\s+/);
     var currencyHint = null;
     var hasCurrencyMarker = false;
     var last = tokens[tokens.length - 1];
@@ -3381,6 +3453,7 @@
     // is ambiguous — flag it so Quick Add asks instead of silently assuming MYR.
     var result = { amount: amount, description: desc, hasCurrencyMarker: hasCurrencyMarker };
     if (currencyHint) result.currencyHint = currencyHint;
+    if (unitQty) { result.unitQty = unitQty.qty; result.unitQtyUnit = unitQty.unit; }
     return result;
   }
 
@@ -3404,6 +3477,16 @@
   function parseQtyFromDesc(desc) {
     var m = String(desc || '').match(/(\d+)\s*(pieces|piece|pcs|pc|units|unit|个|件|条)\b/i);
     return m ? Number(m[1]) : null;
+  }
+
+  // Same idea but for loose-fill materials measured by volume/weight — catches a ml/g
+  // quantity written anywhere in the description, e.g. "mica powder 20g 5.7rmb" (qty BEFORE
+  // the price, as opposed to extractTrailingUnitQty which only catches it written after).
+  // Lets the materialqty prompt be pre-filled instead of asking again for a number she
+  // already typed.
+  function parseUnitQtyFromDesc(desc) {
+    var m = String(desc || '').match(/(\d+(?:\.\d+)?)\s*(ml|g)\b/i);
+    return m ? { qty: Number(m[1]), unit: m[2].toLowerCase() } : null;
   }
 
   // Recognizes a bare mention of a product Type (Tumbler / Stickers / Others) in a line
@@ -3483,6 +3566,13 @@
   function chooseQuickAddProductType(type) {
     var stage = quickAddStage;
     if (stage.unitTracked) {
+      // She may have already typed the total ml/g inline (e.g. "candle dye 2.72rmb 10ml") —
+      // if so, skip re-asking and use that instead of the separate materialqty prompt.
+      if (stage.item.unitQty) {
+        stage.item.parsedQty = stage.item.unitQty;
+        proceedAfterProductType(stage.item, type, stage.item.unitQtyUnit || 'ml', stage.nameVariant);
+        return;
+      }
       quickAddStage = { type: 'materialqty', item: stage.item, productType: type, nameVariant: stage.nameVariant || null };
       renderQuickAdd();
       return;
@@ -3618,6 +3708,13 @@
       // Inventory item for them.
       if (matchedGroup.autoInventory) {
         var nv = extractMaterialNameVariant(item.description, matchedGroup);
+        // The ml/g amount might already be in the line (before OR after the price — e.g.
+        // "candle dye 2.72rmb 10ml" sets item.unitQty in parseAmountFromLine already, while
+        // "mica powder 20g 5.7rmb" needs to be caught here since it's mid-description).
+        if (matchedGroup.unitTracked && !item.unitQty) {
+          var uq = parseUnitQtyFromDesc(item.description);
+          if (uq) { item.unitQty = uq.qty; item.unitQtyUnit = uq.unit; }
+        }
         askQuickAddProductType(item, matchedGroup.productType || null, matchedGroup.unitTracked, nv);
         return;
       }
@@ -4392,6 +4489,7 @@
         if (!state.orders) state.orders = [];
         if (!state.stockLog) state.stockLog = [];
         if (!state.chatLog) state.chatLog = [];
+        if (state.startingCash == null) state.startingCash = 5000;
         if (state.costs) {
           state.costs.forEach(function (c) {
             if (c.category === 'materials') c.category = 'restock';
