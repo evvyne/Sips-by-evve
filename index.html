@@ -1993,7 +1993,7 @@
         '<td class="muted">' + productCell + '</td>' +
         '<td>' + money(c.amount) +
           (c.originalAmount ? '<div class="muted" style="font-size:11px;">' + escapeHtml(c.originalCurrency) + ' ' + Number(c.originalAmount).toFixed(2) + ' @ ' + c.exchangeRate + '</div>' : '') +
-          (((c.shippingAmount || c.sstAmount) || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">incl. ' + [(c.shippingAmount || c.sstAmount) ? 'shipping ' + money(c.shippingAmount || c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + '</div>' : '') +
+          (((c.shippingAmount || c.sstAmount) || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">+ ' + [(c.shippingAmount || c.sstAmount) ? 'shipping ' + money(c.shippingAmount || c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + ' (not in price above)</div>' : '') +
         '</td>' +
         '<td style="text-align:right; white-space:nowrap;">' +
         '<button class="btn-text" data-edit-cost="' + c.id + '">Edit</button> ' +
@@ -3619,12 +3619,16 @@
     return null;
   }
 
-  // Pulls a quantity out of phrases like "100 pieces", "100pcs", "100 units", "100件".
-  // Used to auto-compute a per-unit cost and, when linked to a real product, to bump
-  // its stock the same way a normal restock would.
+  // Pulls a quantity out of phrases like "100 pieces", "100pcs", "100 units", "100件", or a
+  // bare "x30" shorthand (e.g. "600ml fat bottle x30 RM189.77"). Used to auto-compute a
+  // per-unit cost and, when linked to a real product, to bump its stock the same way a
+  // normal restock would.
   function parseQtyFromDesc(desc) {
-    var m = String(desc || '').match(/(\d+)\s*(pieces|piece|pcs|pc|units|unit|个|件|条)\b/i);
-    return m ? Number(m[1]) : null;
+    var s = String(desc || '');
+    var m = s.match(/(\d+)\s*(pieces|piece|pcs|pc|units|unit|个|件|条)\b/i);
+    if (m) return Number(m[1]);
+    var mx = s.match(COUNT_ONLY_RE);
+    return mx ? Number(mx[1]) : null;
   }
 
   // Same idea but for loose-fill materials measured by volume/weight — catches a ml/g
@@ -3935,12 +3939,17 @@
   }
 
   function finalizeQuickAddCost(item, category, productId, platform, seller, shippingFeeAmount, productType) {
-    var totalAmount = item.amount + (shippingFeeAmount || 0);
+    // The entry's own amount is just the item's price — a shared shipping fee always lives in
+    // its own standalone "shipping" Cost entry (see saveQuickAddShipping/saveQuickAddBatchShipping)
+    // instead of being folded in here, so the number in the Costs list always reads as "what
+    // this item cost" rather than a price+shipping total that's confusing to reconcile against
+    // what she actually typed. The landed cost (price + its shipping share) still feeds the
+    // per-unit product cost below, so Margin/Net Profit are unaffected by this display choice.
     var entry = {
       id: uid(),
       category: category,
       date: todayISO(),
-      amount: Math.round(totalAmount * 100) / 100,
+      amount: Math.round(item.amount * 100) / 100,
       productId: productId || null,
       description: item.description
     };
@@ -3950,13 +3959,20 @@
       if (productType) entry.productType = productType;
     }
     if (shippingFeeAmount) entry.shippingAmount = shippingFeeAmount;
+    if (item.fxOriginalAmount) {
+      entry.originalAmount = item.fxOriginalAmount;
+      entry.originalCurrency = item.fxCurrency || 'CNY';
+      entry.exchangeRate = item.fxRate;
+    }
     // If a quantity was picked up from the line (e.g. "100 pieces"), record it, show a
     // computed per-unit cost, and — when this is linked to a real product — bump its
-    // stock and update its landed cost per unit, same as a normal restock would.
+    // stock and update its landed cost per unit (price + shipping share), same as a normal
+    // restock would.
     var perUnitNote = '';
     if (item.parsedQty && item.parsedQty > 0) {
       entry.qty = item.parsedQty;
-      var perUnit = Math.round((entry.amount / item.parsedQty) * 100) / 100;
+      var landedTotal = entry.amount + (shippingFeeAmount || 0);
+      var perUnit = Math.round((landedTotal / item.parsedQty) * 100) / 100;
       var linkedPForUnit = productId ? state.products.find(function (p) { return p.id === productId; }) : null;
       var unitLabel = (linkedPForUnit && linkedPForUnit.unit) ? linkedPForUnit.unit : ' pcs';
       perUnitNote = ' · ' + item.parsedQty + unitLabel + ' (~' + money(perUnit) + '/unit)';
@@ -3981,13 +3997,12 @@
     renderAll();
   }
 
-  // When a shipping amount that was ALREADY recorded as its own standalone cost entry
-  // (e.g. "shipping 145") gets reused on later items via "Use previous shipping", the
-  // money must not be double-counted: it's already sitting in Total Costs once, via that
-  // standalone entry. So instead of adding the full amount again on every item that
-  // reuses it, this redistributes the ORIGINAL amount proportionally across every entry
-  // that has claimed a share so far (recomputed each time a new item joins), and removes
-  // the now-redundant standalone entry once its cost has been absorbed into the claimants.
+  // A shared shipping fee lives in its own standalone Cost entry ("shipping 145") and STAYS
+  // there — it's never split off into or deleted in favour of the items that reuse it. This
+  // just works out each claiming item's proportional SHARE (recomputed every time a new item
+  // joins the pool) purely as an informational figure — shown under that item's row and folded
+  // into its linked product's per-unit landed cost — so Margin/Net Profit stay accurate even
+  // though the money itself is only ever counted once, via the standalone entry.
   function redistributeSharedShipping(newClaimEntryId) {
     var pool = quickAddLastShipping;
     if (!pool || !pool.sourceEntryId) return;
@@ -3999,17 +4014,16 @@
       .map(function (id) { return state.costs.find(function (c) { return c.id === id; }); })
       .filter(Boolean);
     if (!claimants.length) return;
-    var subtotal = claimants.reduce(function (s, c) {
-      return s + (Number(c.amount) - (Number(c.shippingAmount) || 0));
-    }, 0);
+    var subtotal = claimants.reduce(function (s, c) { return s + Number(c.amount); }, 0);
     claimants.forEach(function (c) {
-      var base = Number(c.amount) - (Number(c.shippingAmount) || 0);
-      var share = subtotal > 0 ? (base / subtotal) * pool.amount : pool.amount / claimants.length;
+      var share = subtotal > 0 ? (Number(c.amount) / subtotal) * pool.amount : pool.amount / claimants.length;
       share = Math.round(share * 100) / 100;
-      c.amount = Math.round((base + share) * 100) / 100;
       c.shippingAmount = share;
+      if (c.productId && c.qty) {
+        var p = state.products.find(function (x) { return x.id === c.productId; });
+        if (p) p.cost = Math.round(((Number(c.amount) + share) / c.qty) * 100) / 100;
+      }
     });
-    state.costs = state.costs.filter(function (c) { return c.id !== pool.sourceEntryId; });
     save();
     renderAll();
   }
@@ -4137,6 +4151,12 @@
     var rate = rateOverride != null ? rateOverride : (Number(document.getElementById('qa-fx-rate').value) || 0);
     if (rate <= 0) { alert('Enter a valid exchange rate.'); return; }
     item.amount = Math.round(item.rawAmount * rate * 100) / 100;
+    // Remembered so the resulting Cost entry can show "CNY 10.98 @ 0.61" underneath, the same
+    // way manually-added Costs-form entries already do — previously Quick Add converted the
+    // amount but never kept the original figure/rate around to display.
+    item.fxOriginalAmount = item.rawAmount;
+    item.fxRate = rate;
+    item.fxCurrency = 'CNY';
     item.description = item.description.replace(/rmb|人民币|cny/gi, '').replace(/\s+/g, ' ').trim() || 'Cost entry';
     item.needsFx = false;
     quickAddLastFxRate = rate;
@@ -4186,8 +4206,16 @@
   function saveQuickAddShipping() {
     var stage = quickAddStage;
     var fee = Number(document.getElementById('qa-shipping-amount').value) || 0;
-    if (fee > 0) quickAddLastShipping = { amount: fee };
+    if (fee > 0) {
+      // The fee itself is real spend — give it its own standalone Cost entry (same as typing
+      // "shipping 45" as its own line) rather than only living folded inside this item, so a
+      // later item can also draw on it via "Use previous shipping" without inventing money.
+      var shipEntry = { id: uid(), category: 'shipping', date: todayISO(), amount: fee, productId: null, description: 'Shipping' };
+      state.costs.push(shipEntry);
+      quickAddLastShipping = { amount: fee, sourceEntryId: shipEntry.id, claimantIds: [] };
+    }
     finalizeQuickAddCost(stage.item, stage.category, stage.productId, stage.platform, stage.seller, fee > 0 ? fee : null, stage.productType);
+    if (fee > 0) redistributeSharedShipping(quickAddLastEntryId);
   }
 
   function useLastQuickAddShipping() {
@@ -4203,25 +4231,19 @@
   }
 
   function saveQuickAddBatchShipping(feeOverride) {
-    // If the amount being applied is a reuse of an already-recorded standalone shipping
-    // entry, that entry's money must not be double-counted on top of this split.
-    var reusingSourceId = (feeOverride != null && quickAddLastShipping && quickAddLastShipping.amount === feeOverride)
-      ? quickAddLastShipping.sourceEntryId : null;
     var fee = (feeOverride != null) ? feeOverride : (Number(document.getElementById('qa-batch-shipping-amount').value) || 0);
     if (fee > 0 && quickAddBatchIds.length) {
-      var entries = quickAddBatchIds.map(function (id) { return state.costs.find(function (c) { return c.id === id; }); }).filter(Boolean);
-      var subtotal = entries.reduce(function (s, c) { return s + Number(c.amount); }, 0);
-      entries.forEach(function (c) {
-        var share = subtotal > 0 ? (Number(c.amount) / subtotal) * fee : fee / entries.length;
-        share = Math.round(share * 100) / 100;
-        c.amount = Math.round((Number(c.amount) + share) * 100) / 100;
-        c.shippingAmount = Math.round(((c.shippingAmount || 0) + share) * 100) / 100;
-      });
-      if (reusingSourceId) {
-        state.costs = state.costs.filter(function (c) { return c.id !== reusingSourceId; });
+      // Reusing a previous shipping amount she already logged as its own entry -> share that
+      // same pool. Otherwise this is a fresh amount, so it needs its own standalone Cost entry
+      // to actually hold the money (each item only ever shows an informational share of it).
+      var isReuse = feeOverride != null && quickAddLastShipping && quickAddLastShipping.amount === feeOverride && quickAddLastShipping.sourceEntryId;
+      if (!isReuse) {
+        var shipEntry = { id: uid(), category: 'shipping', date: todayISO(), amount: fee, productId: null, description: 'Shipping' };
+        state.costs.push(shipEntry);
+        quickAddLastShipping = { amount: fee, sourceEntryId: shipEntry.id, claimantIds: [] };
       }
-      quickAddLastShipping = { amount: fee };
-      pushChatMsg('bot', '✓ Split shipping fee ' + money(fee) + ' across ' + entries.length + ' item(s).');
+      quickAddBatchIds.forEach(function (id) { redistributeSharedShipping(id); });
+      pushChatMsg('bot', '✓ Split shipping fee ' + money(fee) + ' across ' + quickAddBatchIds.length + ' item(s) — kept as its own Cost entry, each item just shows its share.');
     }
     quickAddBatchMode = false;
     quickAddBatchIds = [];
