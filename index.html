@@ -424,6 +424,11 @@
         <input type="checkbox" id="pf-also-cost">
         <label for="pf-also-cost">Also log this as a Cost entry (restock, cost × stock, dated today) — for the batch you just bought to start this stock</label>
       </div>
+      <div id="pf-duplicate-warning" class="card" style="display:none; background:#fff8e6; border-color:#f0c674; margin-bottom:12px; padding:10px 12px;">
+        <div style="font-size:13px; margin-bottom:8px;">You already have a product with this same name/type/variant. Add it again anyway, or cancel?</div>
+        <button class="btn btn-primary btn-small" id="btn-pf-confirm-duplicate">Yes, add anyway</button>
+        <button class="btn btn-secondary btn-small" id="btn-pf-cancel-duplicate">Cancel</button>
+      </div>
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-product">Save</button>
         <button class="btn btn-secondary" id="btn-cancel-product">Cancel</button>
@@ -491,7 +496,7 @@
             <input id="cf-seller" placeholder="e.g. seller username/link">
           </div>
           <div id="cf-qty-wrap" style="display:none;">
-            <label class="field-label">Quantity purchased (adds to stock)</label>
+            <label class="field-label" id="cf-qty-label">Quantity purchased (adds to stock)</label>
             <input id="cf-qty" type="number" min="0" step="1" placeholder="e.g. 20">
           </div>
           <div id="cf-updatecost-wrap" class="checkbox-row" style="display:none; padding-top:18px; grid-column: 1 / -1;">
@@ -1082,9 +1087,32 @@
   });
   document.getElementById('btn-cancel-product').addEventListener('click', function () {
     document.getElementById('product-form-wrap').style.display = 'none';
+    resetProductSaveGuard();
+  });
+
+  // Guards against the "Save" button silently making duplicate products when tapped more than
+  // once (e.g. no visible feedback made her think it hadn't worked, so she tapped again several
+  // times). pfSaving blocks re-entrant clicks outright; pfDuplicateConfirmed is a one-shot flag
+  // set only once she's explicitly said "add anyway" on the warning below.
+  var pfSaving = false;
+  var pfDuplicateConfirmed = false;
+  function resetProductSaveGuard() {
+    pfSaving = false;
+    pfDuplicateConfirmed = false;
+    document.getElementById('pf-duplicate-warning').style.display = 'none';
+    document.getElementById('btn-save-product').disabled = false;
+  }
+  document.getElementById('btn-pf-confirm-duplicate').addEventListener('click', function () {
+    pfDuplicateConfirmed = true;
+    document.getElementById('pf-duplicate-warning').style.display = 'none';
+    document.getElementById('btn-save-product').click();
+  });
+  document.getElementById('btn-pf-cancel-duplicate').addEventListener('click', function () {
+    document.getElementById('pf-duplicate-warning').style.display = 'none';
   });
 
   function clearProductForm() {
+    resetProductSaveGuard();
     document.getElementById('pf-name').value = '';
     document.getElementById('pf-variant').value = '';
     document.getElementById('pf-sku').value = '';
@@ -1115,9 +1143,26 @@
   }
 
   document.getElementById('btn-save-product').addEventListener('click', function () {
+    if (pfSaving) return; // rapid repeat clicks (no visible feedback made it look like it failed) shouldn't create duplicates
     var name = document.getElementById('pf-name').value.trim();
     if (!name) { alert('Product name is required.'); return; }
     var type = document.getElementById('pf-type').value;
+    var variantForDupCheck = document.getElementById('pf-variant').value.trim();
+    if (!editingProductId && !pfDuplicateConfirmed) {
+      var dup = state.products.some(function (x) {
+        return x.name.trim().toLowerCase() === name.toLowerCase() &&
+          x.type === type &&
+          (x.variant || '').trim().toLowerCase() === variantForDupCheck.toLowerCase();
+      });
+      if (dup) {
+        document.getElementById('pf-duplicate-warning').style.display = 'block';
+        return;
+      }
+    }
+    pfDuplicateConfirmed = false;
+    document.getElementById('pf-duplicate-warning').style.display = 'none';
+    pfSaving = true;
+    this.disabled = true;
     var theme = type === 'Stickers' ? currentThemeValue() : '';
     var totalCostInput = Number(document.getElementById('pf-cost').value) || 0;
     var stock = Number(document.getElementById('pf-stock').value) || 0;
@@ -1147,6 +1192,17 @@
     if (editingProductId) {
       var p = state.products.find(function (x) { return x.id === editingProductId; });
       Object.assign(p, data);
+      // A price correction here (she typed the wrong Cost when first creating this product)
+      // should also fix the one-and-only "new_inventory" Cost entry that recorded it — restock
+      // entries are deliberately NOT touched here (she corrects those directly on the Costs
+      // page instead, which is its own sync path). Use the cost entry's OWN qty (not the
+      // product's current stock) so this stays correct even if stock has since grown via
+      // separate restocks after the product was first created.
+      var newInvCost = state.costs.find(function (c) { return c.productId === editingProductId && c.category === 'new_inventory'; });
+      if (newInvCost) {
+        var newInvQty = (typeof newInvCost.qty === 'number' && newInvCost.qty > 0) ? newInvCost.qty : stock;
+        newInvCost.amount = cost * newInvQty;
+      }
     } else {
       data.id = uid();
       newProductId = data.id;
@@ -1156,8 +1212,11 @@
     if (newProductId && document.getElementById('pf-also-cost').checked && cost > 0 && stock > 0) {
       initialStockCostId = uid();
       state.costs.push({
+        // "new_inventory" (not "restock") — this is the FIRST-time creation of this product,
+        // not topping up existing stock. Also lets a later price edit on this product find
+        // this one entry unambiguously (there's only ever one new_inventory entry per product).
         id: initialStockCostId,
-        category: 'restock',
+        category: 'new_inventory',
         date: todayISO(),
         amount: cost * stock,
         productId: newProductId,
@@ -1176,6 +1235,7 @@
   function editProduct(id) {
     var p = state.products.find(function (x) { return x.id === id; });
     if (!p) return;
+    resetProductSaveGuard();
     editingProductId = id;
     document.getElementById('pf-name').value = p.name;
     document.getElementById('pf-variant').value = p.variant || '';
@@ -1198,13 +1258,32 @@
     document.getElementById('product-form-wrap').style.display = 'block';
   }
 
+  // Every Cost entry that references this product — either as its single productId, or as one
+  // of several lines in a multi-product batch entry. Used so deleting a product from Inventory
+  // (because it was added by mistake) also cleans up the Cost records it created, instead of
+  // leaving them behind pointing at a product that no longer exists.
+  function linkedCostsForProduct(productId) {
+    return state.costs.filter(function (c) {
+      if (c.productId === productId) return true;
+      return !!(c.items && c.items.some(function (it) { return it.productId === productId; }));
+    });
+  }
+
   function deleteProduct(id) {
     var p = state.products.find(function (x) { return x.id === id; });
     if (!p) return;
+    var linkedCosts = linkedCostsForProduct(id);
+    var linkedCostIds = linkedCosts.map(function (c) { return c.id; });
+    state.costs = state.costs.filter(function (c) { return linkedCostIds.indexOf(c.id) === -1; });
+    state.stockLog = state.stockLog.filter(function (l) { return l.productId !== id; });
     state.products = state.products.filter(function (x) { return x.id !== id; });
     pendingDeleteProductId = null;
     save();
-    logDeletionToQuickAdd('Deleted product "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" from Inventory.');
+    logDeletionToQuickAdd('Deleted product "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" from Inventory' +
+      (linkedCosts.length ? ' (also removed ' + linkedCosts.length + ' linked cost ' + (linkedCosts.length === 1 ? 'entry' : 'entries') + ')' : '') + '.');
+    linkedCosts.forEach(function (c) {
+      logDeletionToQuickAdd('Deleted linked cost entry "' + (c.description || c.category) + '" (' + money(c.amount) + ') — the product it was for was deleted.');
+    });
     renderAll();
   }
 
@@ -1224,13 +1303,30 @@
     return '<div class="muted" style="font-size:12px;">🛒 ' + parts.join(' — ') + '</div>';
   }
 
+  function deleteProductConfirmText(p) {
+    var linkedCount = linkedCostsForProduct(p.id).length;
+    return linkedCount
+      ? 'Delete this product? This will also delete ' + linkedCount + ' linked Cost ' + (linkedCount === 1 ? 'entry' : 'entries') + '.'
+      : 'Delete this product?';
+  }
+
   function productRowHtml(p) {
     var low = p.stock <= p.threshold;
     var margin = p.price - p.cost;
     var thumb = p.image
       ? '<img class="thumb" src="' + p.image + '">'
       : '<div class="thumb-placeholder">' + escapeHtml((p.name || '?').charAt(0).toUpperCase()) + '</div>';
-    var skuLine = (p.sku && p.type === 'Stickers') ? '<div class="muted" style="font-size:12px;">SKU: ' + escapeHtml(p.sku) + '</div>' : '';
+    // Stickers with an SKU set: SKU becomes the primary bold/black line (that's what she
+    // actually looks up items by), Name (and variant) drop down to the grey secondary line
+    // below it. Everything else (non-Stickers, or a Sticker with no SKU yet) keeps Name as
+    // the primary line, unchanged.
+    var isStickerWithSku = p.type === 'Stickers' && p.sku;
+    var nameBlockHtml = isStickerWithSku
+      ? '<div style="font-weight:500;">SKU: ' + escapeHtml(p.sku) + '</div>' +
+        '<div class="muted">' + escapeHtml(p.name) + '</div>' +
+        (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '')
+      : '<div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' +
+        (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '');
     // No selling price set (Others / raw materials & supplies like glitter, mica powder, 软陶
     // that she doesn't sell directly) — a per-unit Cost/Price/Margin breakdown is meaningless
     // here (Price would show RM0 and Margin a confusing negative). Just show what she actually
@@ -1242,12 +1338,12 @@
         '<div class="muted" style="font-size:11px;">per unit ' + moneyPrecise(p.cost) + '</div>';
     var row = '<tr>' +
       '<td><div style="display:flex; align-items:center; gap:8px;">' + thumb +
-      '<div><div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' + (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '') + skuLine + sourceLineHtml(p) + '</div></div></td>' +
+      '<div>' + nameBlockHtml + sourceLineHtml(p) + '</div></div></td>' +
       '<td style="white-space:nowrap;">' + pricingHtml + '</td>' +
       '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see stock history">' + p.stock + (p.unit ? p.unit : '') + (low ? ' ⚠ low' : '') + '</span></td>' +
       '<td style="text-align:right; white-space:nowrap;">' +
       (pendingDeleteProductId === p.id
-        ? '<span style="color:var(--red); font-size:12px; margin-right:6px;">Delete this product?</span>' +
+        ? '<span style="color:var(--red); font-size:12px; margin-right:6px;">' + deleteProductConfirmText(p) + '</span>' +
           '<button class="btn-text danger" data-confirm-delete-product="' + p.id + '">Yes, delete</button>' +
           '<span class="row-actions-sep">·</span>' +
           '<button class="btn-text" data-cancel-delete-product="' + p.id + '">Cancel</button>'
@@ -1364,6 +1460,9 @@
   // persisted, resets on reload. Only offered on Tumbler/Add ons/Others, the sections that tend
   // to accumulate many distinct products, unlike Stickers which already groups by theme.
   var inventoryFilterState = {};
+  // Ephemeral (not persisted) search/sort state for the Stickers section specifically.
+  var stickerSearchText = '';
+  var stickerSortMode = 'name';
   function invFilterFor(type) {
     if (!inventoryFilterState[type]) inventoryFilterState[type] = { name: '', search: '' };
     return inventoryFilterState[type];
@@ -1396,6 +1495,25 @@
         return true;
       });
     }
+    // Stickers doesn't use the generic filter dropdown above (it already groups by theme, and
+    // a flat "pick one product name" dropdown doesn't fit that) — instead it gets its own small
+    // search box (matches name OR SKU) plus a sort-by-SKU option, without disturbing the theme
+    // grouping/dropdown itself.
+    if (groupByTheme && items.length > 0) {
+      filterHtml = '<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
+        '<input type="text" id="sticker-search" placeholder="Search name or SKU" value="' + escapeHtml(stickerSearchText) + '" style="width:170px;">' +
+        '<select id="sticker-sort">' +
+          '<option value="name"' + (stickerSortMode === 'name' ? ' selected' : '') + '>Sort: Name</option>' +
+          '<option value="sku"' + (stickerSortMode === 'sku' ? ' selected' : '') + '>Sort: SKU</option>' +
+        '</select>' +
+        '</div>';
+      if (stickerSearchText) {
+        var needle = stickerSearchText.toLowerCase();
+        items = items.filter(function (p) {
+          return p.name.toLowerCase().indexOf(needle) !== -1 || (p.sku || '').toLowerCase().indexOf(needle) !== -1;
+        });
+      }
+    }
     if (items.length === 0) {
       return '<div class="card" style="margin-bottom:14px;">' +
         '<div style="font-weight:600; margin-bottom:6px;">' + escapeHtml(title) + ' (0)</div>' +
@@ -1420,6 +1538,10 @@
         groups[groupIndex[key]].items.push(p);
       });
       groups.forEach(function (g) {
+        // Sort WITHIN each theme group only — the theme grouping/order itself is untouched.
+        if (groupByTheme && stickerSortMode === 'sku') {
+          g.items.sort(function (a, b) { return (a.sku || '').localeCompare(b.sku || ''); });
+        }
         var isOpen = !!expandedThemes[g.theme];
         rowsHtml += '<tr><td colspan="4" style="background:#fafbfd; padding:0;">' +
           '<button type="button" class="theme-toggle" data-toggle-theme="' + escapeHtml(g.theme) + '">' +
@@ -1467,12 +1589,22 @@
     if (filterType) {
       invFilterFor(filterType).name = e.target.value;
       renderInventory();
+      return;
+    }
+    if (e.target.id === 'sticker-sort') {
+      stickerSortMode = e.target.value;
+      renderInventory();
     }
   });
   document.getElementById('inventory-content').addEventListener('input', function (e) {
     var searchType = e.target.getAttribute('data-inv-search');
     if (searchType) {
       invFilterFor(searchType).search = e.target.value;
+      renderInventory();
+      return;
+    }
+    if (e.target.id === 'sticker-search') {
+      stickerSearchText = e.target.value;
       renderInventory();
     }
   });
@@ -1588,15 +1720,19 @@
     document.getElementById('cost-items').innerHTML = '';
   }
 
-  // Quantity/cost-update/new-product fields only make sense when creating a NEW cost entry
-  // tied to a product — editing an existing entry never re-touches stock, so we don't show
-  // them then (avoids silently double-adjusting stock if someone edits an old cost's amount later).
+  // Quantity/cost-update fields now also show while EDITING an existing single-product entry —
+  // she needs to be able to correct a mistyped restock qty/amount, and that correction should
+  // flow through to Inventory's Stock count and cost. Only the "+ Add new product" sub-form
+  // stays new-entry-only (you can't retroactively change which product an entry created).
   function updateCostQtyVisibility() {
     var val = document.getElementById('cf-product').value;
     var isNewProduct = val === '__new__';
-    var showQty = !!val && !editingCostId;
+    var showQty = !!val && val !== '__new__' || (val === '__new__' && !editingCostId);
     document.getElementById('cf-qty-wrap').style.display = showQty ? 'block' : 'none';
     document.getElementById('cf-updatecost-wrap').style.display = showQty ? 'flex' : 'none';
+    document.getElementById('cf-qty-label').textContent = editingCostId
+      ? 'Quantity (corrects Stock by the difference from before)'
+      : 'Quantity purchased (adds to stock)';
     document.getElementById('cf-newproduct-wrap').style.display = (isNewProduct && !editingCostId) ? 'block' : 'none';
     document.getElementById('cf-typetag-wrap').style.display = !val ? 'block' : 'none';
     document.getElementById('cf-sellerinfo-wrap').style.display = !val ? 'block' : 'none';
@@ -1888,9 +2024,16 @@
       shippingAmount: shippingAmount || null,
       serviceFeeAmount: serviceFeeAmount || null
     };
-    // Only stamp qty on NEW single-product entries — during an edit the qty field is hidden/stale
-    // (stock isn't re-touched on edit), so leaving it out of `data` here avoids clobbering it.
-    if (isNewEntry && !isMulti && linkedProductId) {
+    // Qty is now stamped on single-product entries for BOTH new entries and edits — she needs
+    // to be able to correct a mistyped restock qty from here, and that correction has to flow
+    // through to Inventory. Capture the OLD qty before we overwrite it, so the edit path below
+    // can work out the delta to apply to Stock instead of re-adding the whole new amount.
+    var oldQtyBeforeEdit = null;
+    if (editingCostId) {
+      var existingCostForEdit = state.costs.find(function (x) { return x.id === editingCostId; });
+      oldQtyBeforeEdit = existingCostForEdit ? (Number(existingCostForEdit.qty) || 0) : 0;
+    }
+    if (!isMulti && linkedProductId) {
       data.qty = Number(document.getElementById('cf-qty').value) || 0;
     }
     if (editingCostId) {
@@ -1900,7 +2043,7 @@
       data.id = costId;
       state.costs.push(data);
     }
-    // Restocking (single-product mode): a new cost entry linked to a product (existing or just
+    // Restocking (single-product mode): a NEW cost entry linked to a product (existing or just
     // created above), with a quantity, bumps that product's stock automatically — so restocking
     // never needs a second step in Inventory. (Multi-product mode does its own stock update above.)
     if (isNewEntry && !isMulti && linkedProductId) {
@@ -1915,6 +2058,28 @@
             // the multi-item batch path just above.
             linkedProduct.cost = amount / qty2;
           }
+        }
+      }
+    } else if (!isNewEntry && !isMulti && linkedProductId) {
+      // EDITING an existing single-product entry (correcting a mistyped restock, most likely) —
+      // apply just the DIFFERENCE to Stock rather than re-adding the whole new qty, and update
+      // the matching stock-history entry IN PLACE instead of creating a duplicate one.
+      var newQty = data.qty;
+      var qtyDelta = newQty - (oldQtyBeforeEdit || 0);
+      var linkedProductEdit = state.products.find(function (x) { return x.id === linkedProductId; });
+      if (linkedProductEdit) {
+        if (qtyDelta !== 0) {
+          linkedProductEdit.stock = Math.max(0, linkedProductEdit.stock + qtyDelta);
+        }
+        var matchingLog = state.stockLog.find(function (l) { return l.costId === editingCostId; });
+        if (matchingLog) {
+          matchingLog.qty = newQty;
+          matchingLog.date = date;
+        } else if (newQty !== 0) {
+          logStock(linkedProductEdit.id, newQty, 'restock', 'Cost entry (' + document.getElementById('cf-category').value + ')', date, editingCostId);
+        }
+        if (document.getElementById('cf-updatecost').checked && amount > 0 && newQty > 0) {
+          linkedProductEdit.cost = amount / newQty;
         }
       }
     }
@@ -1961,6 +2126,10 @@
       document.getElementById('cf-type-tag').value = c.productType || '';
       document.getElementById('cf-platform').value = c.platform || '';
       document.getElementById('cf-seller').value = c.seller || '';
+      // Pre-fill Qty with what this entry already recorded, so a mistyped restock amount can
+      // actually be corrected here — updateCostQtyVisibility (below) now shows this field
+      // during edit too, and the save handler applies the difference to Stock.
+      document.getElementById('cf-qty').value = (c.productId && typeof c.qty === 'number') ? c.qty : '';
       draftCostItems = [];
     }
     updateCostQtyVisibility();
@@ -4029,6 +4198,67 @@
   // anywhere in the line. This avoids misreading quantity words like "5 colours" as RM5.00.
   // A trailing "10ml"/"5g" quantity (written after the price) is set aside first so it
   // doesn't get mistaken for part of the amount.
+  // Lets her backdate a Quick Add line to when the purchase actually happened (she's often
+  // typing it up later, not the same day) by including a date anywhere in the text. Tries the
+  // least-ambiguous formats first (ISO, Chinese 月/号/日, English month names) and only falls
+  // back to a bare numeric DD/MM(/YYYY) pattern last, since that's most likely to accidentally
+  // collide with something else she typed. Deliberately does NOT support a dot as the numeric
+  // separator ("15.8") — that's indistinguishable from a plain decimal amount like "15.05" and
+  // would silently break amount parsing on nearly every line.
+  var QA_MONTH_NAMES = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  var QA_MONTH_RE_PART = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+  function qaBuildDateStr(y, m, d) {
+    if (!y || m < 1 || m > 12 || d < 1 || d > 31) return null;
+    var mm = (m < 10 ? '0' : '') + m;
+    var dd = (d < 10 ? '0' : '') + d;
+    return y + '-' + mm + '-' + dd;
+  }
+  function qaStripMatch(line, m) {
+    return (line.slice(0, m.index) + line.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
+  }
+  function extractDateFromLine(line) {
+    var today = new Date();
+    var m;
+    // ISO: 2026-08-15
+    m = line.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+    if (m) {
+      var iso = qaBuildDateStr(Number(m[1]), Number(m[2]), Number(m[3]));
+      if (iso) return { date: iso, rest: qaStripMatch(line, m) };
+    }
+    // Chinese: 8月15号 / 8月15日 / 8月15
+    m = line.match(/(\d{1,2})月(\d{1,2})[号日]?/);
+    if (m) {
+      var cn = qaBuildDateStr(today.getFullYear(), Number(m[1]), Number(m[2]));
+      if (cn) return { date: cn, rest: qaStripMatch(line, m) };
+    }
+    // English "15 Aug", "15th August 2026" (day before month name)
+    m = line.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+' + QA_MONTH_RE_PART + '\\s*(\\d{4})?\\b', 'i'));
+    if (m) {
+      var mon1 = QA_MONTH_NAMES[m[2].slice(0, 3).toLowerCase()];
+      var yr1 = m[3] ? Number(m[3]) : today.getFullYear();
+      var en1 = qaBuildDateStr(yr1, mon1, Number(m[1]));
+      if (en1) return { date: en1, rest: qaStripMatch(line, m) };
+    }
+    // English "Aug 15", "August 15 2026" (month name before day)
+    m = line.match(new RegExp('\\b' + QA_MONTH_RE_PART + '\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(\\d{4})?\\b', 'i'));
+    if (m) {
+      var mon2 = QA_MONTH_NAMES[m[1].slice(0, 3).toLowerCase()];
+      var yr2 = m[3] ? Number(m[3]) : today.getFullYear();
+      var en2 = qaBuildDateStr(yr2, mon2, Number(m[2]));
+      if (en2) return { date: en2, rest: qaStripMatch(line, m) };
+    }
+    // Numeric, day first: 15/8, 15/8/2026, 15-8, 15-8-26
+    m = line.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+    if (m) {
+      var day = Number(m[1]), mon3 = Number(m[2]);
+      var yr3 = today.getFullYear();
+      if (m[3]) yr3 = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+      var num = qaBuildDateStr(yr3, mon3, day);
+      if (num) return { date: num, rest: qaStripMatch(line, m) };
+    }
+    return null;
+  }
+
   function parseAmountFromLine(line) {
     var trimmed = line.trim();
     if (!trimmed) return null;
@@ -4450,7 +4680,9 @@
     var entry = {
       id: uid(),
       category: category,
-      date: todayISO(),
+      // If she typed a date anywhere in the line (backdating a purchase she's logging late),
+      // use that instead of today.
+      date: item.date || todayISO(),
       amount: Math.round(item.amount * 100) / 100,
       productId: productId || null,
       description: item.description
@@ -4728,11 +4960,12 @@
     var costId = uid();
     // A bare "restock" line has no amount typed yet — fall back to cost-per-unit x stock.
     var totalAmt = (item.amount != null) ? item.amount : Math.round(cost * stock * 100) / 100;
+    var entryDate = item.date || todayISO();
     state.costs.push({
-      id: costId, category: 'new_inventory', date: todayISO(), amount: totalAmt,
+      id: costId, category: 'new_inventory', date: entryDate, amount: totalAmt,
       productId: newProduct.id, qty: stock, description: item.description
     });
-    if (stock > 0) logStock(newProduct.id, stock, 'restock', 'Initial stock (via Quick Add)', todayISO(), costId);
+    if (stock > 0) logStock(newProduct.id, stock, 'restock', 'Initial stock (via Quick Add)', entryDate, costId);
     quickAddLastEntryId = costId;
     pushChatMsg('bot', '✓ Created new product "' + name + '" and logged ' + money(totalAmt) + ' as new inventory.');
     quickAddPending.shift();
@@ -5066,12 +5299,20 @@
       var parsedLines = [];
       var skipped = [];
       lines.forEach(function (line) {
-        if (isBareRestockLine(line)) {
-          parsedLines.push({ description: line.trim(), amount: null });
+        // A typed date (any supported format) means she's logging something that actually
+        // happened on a different day — pull it out first so it doesn't get mistaken for part
+        // of the amount/description, and carry it through to whatever Cost entry results.
+        var dateMatch = extractDateFromLine(line);
+        var workingLine = dateMatch ? dateMatch.rest : line;
+        if (isBareRestockLine(workingLine)) {
+          var bareItem = { description: workingLine.trim(), amount: null };
+          if (dateMatch) bareItem.date = dateMatch.date;
+          parsedLines.push(bareItem);
           return;
         }
-        var parsed = parseAmountFromLine(line);
+        var parsed = parseAmountFromLine(workingLine);
         if (parsed) {
+          if (dateMatch) parsed.date = dateMatch.date;
           if (parsed.currencyHint === 'rmb') {
             parsed.needsFx = true;
             parsed.rawAmount = parsed.amount;
