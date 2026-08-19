@@ -820,8 +820,20 @@
     });
   }
 
+  // Saving used to fail 100% silently if localStorage threw (e.g. device storage full,
+  // usually from accumulated product photos) — the button doing the save would just stay
+  // disabled forever with zero explanation. Now any failure shows a clear message and is
+  // re-thrown so the calling code stops (instead of pretending the save worked).
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+      var isQuota = !!(err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014));
+      alert(isQuota
+        ? 'Could not save — your device’s storage is full (usually from too many saved product photos). This change was NOT saved.\n\nTry removing a photo from an older product to free up space, then try again.'
+        : 'Could not save: ' + (err && err.message ? err.message : 'unknown error') + '\n\nThis change was NOT saved. Please try again.');
+      throw err;
+    }
     if (typeof scheduleCloudPush === 'function') scheduleCloudPush();
   }
 
@@ -841,8 +853,8 @@
     correction: 'Manual correction'
   };
   function logStock(productId, qty, type, note, date, costId) {
-    if (!productId || !qty) return;
-    state.stockLog.push({
+    if (!productId || !qty) return null;
+    var entry = {
       id: uid(),
       productId: productId,
       qty: qty,
@@ -850,7 +862,9 @@
       note: note || '',
       date: date || todayISO(),
       costId: costId || null
-    });
+    };
+    state.stockLog.push(entry);
+    return entry;
   }
 
   function uid() {
@@ -1020,20 +1034,22 @@
   });
 
   // Shared by both the file picker and paste-an-image — resizes/compresses so photos
-  // don't bloat localStorage (and the earlier blurry-thumbnail bug stays fixed).
+  // don't bloat localStorage. She's OK trading photo sharpness for storage headroom (these
+  // are just small "recognize the sticker design at a glance" thumbnails, not print-quality
+  // photos), so this is deliberately compressed hard: 500px max dimension + quality 0.5.
   function processImageBlob(blob) {
     var reader = new FileReader();
     reader.onload = function (ev) {
       var img = new Image();
       img.onload = function () {
-        var maxDim = 900;
+        var maxDim = 500;
         var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         var canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(img.width * scale));
         canvas.height = Math.max(1, Math.round(img.height * scale));
         var ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        pfPhotoData = canvas.toDataURL('image/jpeg', 0.85);
+        pfPhotoData = canvas.toDataURL('image/jpeg', 0.5);
         showPhotoPreview(pfPhotoData);
       };
       img.src = ev.target.result;
@@ -1189,8 +1205,13 @@
       sourceLink: document.getElementById('pf-source-link').value.trim()
     };
     var newProductId = null;
+    var p = null;
+    var prevProductSnapshot = null;
+    var newInvCostRef = null;
+    var prevNewInvAmount = null;
     if (editingProductId) {
-      var p = state.products.find(function (x) { return x.id === editingProductId; });
+      p = state.products.find(function (x) { return x.id === editingProductId; });
+      prevProductSnapshot = Object.assign({}, p);
       Object.assign(p, data);
       // A price correction here (she typed the wrong Cost when first creating this product)
       // should also fix the one-and-only "new_inventory" Cost entry that recorded it — restock
@@ -1200,6 +1221,8 @@
       // separate restocks after the product was first created.
       var newInvCost = state.costs.find(function (c) { return c.productId === editingProductId && c.category === 'new_inventory'; });
       if (newInvCost) {
+        newInvCostRef = newInvCost;
+        prevNewInvAmount = newInvCost.amount;
         var newInvQty = (typeof newInvCost.qty === 'number' && newInvCost.qty > 0) ? newInvCost.qty : stock;
         newInvCost.amount = cost * newInvQty;
       }
@@ -1209,9 +1232,10 @@
       state.products.push(data);
     }
     var initialStockCostId = null;
+    var addedCostEntry = null;
     if (newProductId && document.getElementById('pf-also-cost').checked && cost > 0 && stock > 0) {
       initialStockCostId = uid();
-      state.costs.push({
+      addedCostEntry = {
         // "new_inventory" (not "restock") — this is the FIRST-time creation of this product,
         // not topping up existing stock. Also lets a later price edit on this product find
         // this one entry unambiguously (there's only ever one new_inventory entry per product).
@@ -1222,12 +1246,31 @@
         productId: newProductId,
         qty: stock,
         description: 'Initial stock for ' + name + (data.variant ? ' — ' + data.variant : '') + ' (' + stock + ' × ' + money(cost) + ')'
-      });
+      };
+      state.costs.push(addedCostEntry);
     }
+    var addedStockLog = null;
     if (newProductId && stock > 0) {
-      logStock(newProductId, stock, 'restock', 'Initial stock', todayISO(), initialStockCostId);
+      addedStockLog = logStock(newProductId, stock, 'restock', 'Initial stock', todayISO(), initialStockCostId);
     }
-    save();
+    try {
+      save();
+    } catch (err) {
+      // save() already showed her an alert explaining why. Undo every in-memory change made
+      // above so `state` matches what's actually persisted, unstick the button, and leave the
+      // form open (with everything she typed still filled in) so she can retry once the
+      // problem's fixed — e.g. after freeing up storage — instead of losing her work.
+      if (newProductId) {
+        state.products = state.products.filter(function (x) { return x.id !== newProductId; });
+      } else if (prevProductSnapshot) {
+        Object.assign(p, prevProductSnapshot);
+      }
+      if (newInvCostRef) newInvCostRef.amount = prevNewInvAmount;
+      if (addedCostEntry) state.costs = state.costs.filter(function (c) { return c !== addedCostEntry; });
+      if (addedStockLog) state.stockLog = state.stockLog.filter(function (l) { return l !== addedStockLog; });
+      resetProductSaveGuard();
+      return;
+    }
     document.getElementById('product-form-wrap').style.display = 'none';
     renderAll();
   });
@@ -5584,7 +5627,19 @@
       var submitBtn = document.getElementById('btn-auth-submit');
       submitBtn.disabled = true;
       var action = authMode === 'signin' ? sb.auth.signInWithPassword({ email: email, password: password }) : sb.auth.signUp({ email: email, password: password });
+      // On a flaky connection (common on mobile) the request can just hang instead of ever
+      // resolving OR rejecting — without this timeout the button stays disabled forever with
+      // zero feedback, which looks exactly like "I tapped it and nothing happened". After 15s
+      // with no response, give up waiting and show a clear message instead of staying stuck.
+      var authTimedOut = false;
+      var authTimeoutId = setTimeout(function () {
+        authTimedOut = true;
+        submitBtn.disabled = false;
+        errorEl.textContent = 'This is taking too long — check your internet connection and try again.';
+      }, 15000);
       action.then(function (res) {
+        if (authTimedOut) return; // already showed the timeout message above, don't overwrite it
+        clearTimeout(authTimeoutId);
         submitBtn.disabled = false;
         if (res.error) { errorEl.textContent = res.error.message; return; }
         if (!res.data.session) {
@@ -5596,6 +5651,8 @@
         // Network/request failure (bad connection, or opening this file directly instead of
         // via a real web address, which some mobile browsers block from reaching the internet) —
         // without this, the button would stay stuck disabled forever with no explanation.
+        if (authTimedOut) return;
+        clearTimeout(authTimeoutId);
         submitBtn.disabled = false;
         errorEl.textContent = 'Could not reach the server. Check your internet connection and try again — if you opened this file directly on your phone instead of via its web address, that can also block sign-in.';
       });
@@ -5619,7 +5676,9 @@
       }
     });
   } else {
-    // Supabase script failed to load (e.g. offline on first-ever visit) — fall back to local-only.
+    // Supabase script failed to load (e.g. offline on first-ever visit, or the CDN was blocked)
+    // — fall back to local-only instead of leaving her stuck on an auth screen whose button has
+    // nothing to actually call.
     showApp();
   }
 
