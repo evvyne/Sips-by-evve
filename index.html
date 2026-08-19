@@ -137,7 +137,7 @@
   .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
   .row-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f2f3f7; }
-  .qa-log { max-height: 460px; overflow-y: auto; padding: 4px 2px; margin-bottom: 12px; }
+  .qa-log { padding: 4px 2px; margin-bottom: 12px; }
   .qa-welcome { padding: 20px; }
   .qa-row { display: flex; margin-bottom: 8px; }
   .qa-bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
@@ -602,9 +602,31 @@
         <button class="btn btn-secondary" id="btn-cancel-cost">Cancel</button>
       </div>
     </div>
+    <div class="card" id="cost-filter-bar">
+      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn btn-secondary btn-small" id="btn-costfilter-7d">Last 7 days</button>
+        <button class="btn btn-secondary btn-small" id="btn-costfilter-month">This month</button>
+        <button class="btn btn-secondary btn-small" id="btn-costfilter-clear">Clear dates</button>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
+        <select id="cost-filter-category" style="width:170px;">
+          <option value="">All categories</option>
+          <option value="restock">restock</option>
+          <option value="new_inventory">new inventory</option>
+          <option value="packaging">packaging</option>
+          <option value="shipping">shipping</option>
+          <option value="ads">ads</option>
+          <option value="tiktok_fee">tiktok fee</option>
+          <option value="wastage">wastage / loss</option>
+          <option value="other">other</option>
+        </select>
+        <input id="cost-filter-from" type="date" style="width:150px;">
+        <input id="cost-filter-to" type="date" style="width:150px;">
+      </div>
+    </div>
     <div class="card" style="overflow-x:auto;">
       <table id="cost-table">
-        <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Product</th><th>Amount</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Product</th><th id="cost-amount-header" style="cursor:pointer;">Amount ⇅</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="cost-empty" style="display:none;">No cost entries yet.</div>
@@ -713,12 +735,24 @@
         <button class="btn btn-secondary" id="btn-cancel-order">Cancel</button>
       </div>
     </div>
+    <div class="card" id="order-filter-bar">
+      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn btn-secondary btn-small" id="btn-orderfilter-7d">Last 7 days</button>
+        <button class="btn btn-secondary btn-small" id="btn-orderfilter-month">This month</button>
+        <button class="btn btn-secondary btn-small" id="btn-orderfilter-clear">Clear dates</button>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
+        <input id="order-filter-from" type="date" style="width:150px;">
+        <input id="order-filter-to" type="date" style="width:150px;">
+      </div>
+    </div>
     <div class="card" style="overflow-x:auto;">
       <table id="order-table">
         <thead><tr><th>Date</th><th>Buyer</th><th>TikTok</th><th>Ship to</th><th>Items</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="order-empty" style="display:none;">No orders yet.</div>
+      <div class="total-line" id="order-filter-count"></div>
     </div>
   </section>
 
@@ -937,6 +971,7 @@
   var expandedThemes = {};
   var adjustingStockProductId = null;
   var viewingStockLogProductId = null;
+  var pendingDeleteProductId = null;
   var STOCK_ADJUST_REASONS = {
     wastage: 'Wastage / spillage',
     damaged: 'Damaged',
@@ -1164,9 +1199,12 @@
   }
 
   function deleteProduct(id) {
-    if (!confirm('Delete this product? This cannot be undone.')) return;
-    state.products = state.products.filter(function (p) { return p.id !== id; });
+    var p = state.products.find(function (x) { return x.id === id; });
+    if (!p) return;
+    state.products = state.products.filter(function (x) { return x.id !== id; });
+    pendingDeleteProductId = null;
     save();
+    logDeletionToQuickAdd('Deleted product "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" from Inventory.');
     renderAll();
   }
 
@@ -1208,11 +1246,16 @@
       '<td style="white-space:nowrap;">' + pricingHtml + '</td>' +
       '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see stock history">' + p.stock + (p.unit ? p.unit : '') + (low ? ' ⚠ low' : '') + '</span></td>' +
       '<td style="text-align:right; white-space:nowrap;">' +
-      '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
-      '<span class="row-actions-sep">·</span>' +
-      '<button class="btn-text" data-edit-product="' + p.id + '">Edit</button>' +
-      '<span class="row-actions-sep">·</span>' +
-      '<button class="btn-text danger" data-delete-product="' + p.id + '">Delete</button>' +
+      (pendingDeleteProductId === p.id
+        ? '<span style="color:var(--red); font-size:12px; margin-right:6px;">Delete this product?</span>' +
+          '<button class="btn-text danger" data-confirm-delete-product="' + p.id + '">Yes, delete</button>' +
+          '<span class="row-actions-sep">·</span>' +
+          '<button class="btn-text" data-cancel-delete-product="' + p.id + '">Cancel</button>'
+        : '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
+          '<span class="row-actions-sep">·</span>' +
+          '<button class="btn-text" data-edit-product="' + p.id + '">Edit</button>' +
+          '<span class="row-actions-sep">·</span>' +
+          '<button class="btn-text danger" data-delete-product="' + p.id + '">Delete</button>') +
       '</td></tr>';
     if (adjustingStockProductId === p.id) {
       row += '<tr><td colspan="4" style="background:#fafbfd;">' + renderStockAdjustPanel(p) + '</td></tr>';
@@ -1317,11 +1360,47 @@
     renderAll();
   }
 
-  function renderInventoryTable(title, items, groupByTheme) {
+  // Ephemeral per-type Inventory filter state (product-name dropdown + free-text search) — not
+  // persisted, resets on reload. Only offered on Tumbler/Add ons/Others, the sections that tend
+  // to accumulate many distinct products, unlike Stickers which already groups by theme.
+  var inventoryFilterState = {};
+  function invFilterFor(type) {
+    if (!inventoryFilterState[type]) inventoryFilterState[type] = { name: '', search: '' };
+    return inventoryFilterState[type];
+  }
+  // Trailing "x5"/"x1000" style counts on a product's name are just an internal quantity note
+  // from how it was typed originally (e.g. "rubbish bag x100" really means "rubbish bag", 100 of
+  // them) — strip that for the filter dropdown so it lists clean, groupable product names instead
+  // of a wall of near-duplicate "thing x5" / "thing x1000" entries.
+  function stripQtySuffixForFilter(name) {
+    return String(name || '').replace(/\s*[x×]\s*\d+\s*$/i, '').trim();
+  }
+
+  function renderInventoryTable(title, items, groupByTheme, filterable) {
+    var totalCount = items.length;
+    var filterHtml = '';
+    if (filterable && items.length > 0) {
+      var f = invFilterFor(title);
+      var names = items.map(function (p) { return stripQtySuffixForFilter(p.name); }).filter(function (n, i, a) { return n && a.indexOf(n) === i; }).sort();
+      var opts = '<option value="">All products</option>' + names.map(function (n) {
+        return '<option value="' + escapeHtml(n) + '"' + (n === f.name ? ' selected' : '') + '>' + escapeHtml(n) + '</option>';
+      }).join('');
+      filterHtml = '<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
+        '<input type="text" data-inv-search="' + escapeHtml(title) + '" placeholder="Search products" value="' + escapeHtml(f.search) + '" style="width:160px;">' +
+        '<select data-inv-filter="' + escapeHtml(title) + '" style="width:200px;">' + opts + '</select>' +
+        '</div>';
+      items = items.filter(function (p) {
+        var stripped = stripQtySuffixForFilter(p.name);
+        if (f.name && stripped !== f.name) return false;
+        if (f.search && stripped.toLowerCase().indexOf(f.search.toLowerCase()) === -1) return false;
+        return true;
+      });
+    }
     if (items.length === 0) {
       return '<div class="card" style="margin-bottom:14px;">' +
         '<div style="font-weight:600; margin-bottom:6px;">' + escapeHtml(title) + ' (0)</div>' +
-        '<div class="empty">No ' + escapeHtml(title.toLowerCase()) + ' yet.</div></div>';
+        filterHtml +
+        '<div class="empty">' + (filterHtml ? 'No products match this filter.' : 'No ' + escapeHtml(title.toLowerCase()) + ' yet.') + '</div></div>';
     }
     var sorted = items.slice().sort(function (a, b) {
       var tha = a.theme || '', thb = b.theme || '';
@@ -1354,11 +1433,15 @@
     } else {
       sorted.forEach(function (p) { rowsHtml += productRowHtml(p); });
     }
+    var countLabel = (filterHtml && items.length !== totalCount) ? items.length + ' of ' + totalCount : String(totalCount);
     return '<div class="card" style="margin-bottom:14px; overflow-x:auto;">' +
-      '<div style="font-weight:600; margin-bottom:10px;">' + escapeHtml(title) + ' (' + items.length + ')</div>' +
+      '<div style="font-weight:600; margin-bottom:10px;">' + escapeHtml(title) + ' (' + countLabel + ')</div>' +
+      filterHtml +
       '<table><thead><tr><th>Product</th><th>Pricing</th><th>Stock</th><th></th></tr></thead>' +
       '<tbody>' + rowsHtml + '</tbody></table></div>';
   }
+
+  var INVENTORY_FILTERABLE_TYPES = { 'Tumbler': true, 'Add ons': true, 'Others': true };
 
   function renderInventory() {
     var container = document.getElementById('inventory-content');
@@ -1370,7 +1453,7 @@
     PRODUCT_TYPES.forEach(function (t) { known[t] = true; });
     var html = PRODUCT_TYPES.map(function (type) {
       var items = state.products.filter(function (p) { return p.type === type; });
-      return renderInventoryTable(type, items, type === 'Stickers');
+      return renderInventoryTable(type, items, type === 'Stickers', !!INVENTORY_FILTERABLE_TYPES[type]);
     }).join('');
     var stray = state.products.filter(function (p) { return !known[p.type]; });
     if (stray.length > 0) {
@@ -1379,6 +1462,21 @@
     container.innerHTML = html;
   }
 
+  document.getElementById('inventory-content').addEventListener('change', function (e) {
+    var filterType = e.target.getAttribute('data-inv-filter');
+    if (filterType) {
+      invFilterFor(filterType).name = e.target.value;
+      renderInventory();
+    }
+  });
+  document.getElementById('inventory-content').addEventListener('input', function (e) {
+    var searchType = e.target.getAttribute('data-inv-search');
+    if (searchType) {
+      invFilterFor(searchType).search = e.target.value;
+      renderInventory();
+    }
+  });
+
   document.getElementById('inventory-content').addEventListener('click', function (e) {
     if (e.target.classList.contains('thumb')) {
       openLightbox(e.target.getAttribute('src'));
@@ -1386,6 +1484,8 @@
     }
     var editId = e.target.getAttribute('data-edit-product');
     var delId = e.target.getAttribute('data-delete-product');
+    var confirmDelId = e.target.getAttribute('data-confirm-delete-product');
+    var cancelDelId = e.target.getAttribute('data-cancel-delete-product');
     var adjustId = e.target.getAttribute('data-adjust-stock');
     var saveAdjustId = e.target.getAttribute('data-save-stock-adjust');
     var cancelAdjustId = e.target.getAttribute('data-cancel-stock-adjust');
@@ -1394,7 +1494,15 @@
     var removeLogId = e.target.getAttribute('data-remove-stock-log');
     var toggleBtn = e.target.closest ? e.target.closest('[data-toggle-theme]') : null;
     if (editId) editProduct(editId);
-    if (delId) deleteProduct(delId);
+    if (delId) {
+      pendingDeleteProductId = delId;
+      renderInventory();
+    }
+    if (confirmDelId) deleteProduct(confirmDelId);
+    if (cancelDelId) {
+      pendingDeleteProductId = null;
+      renderInventory();
+    }
     if (adjustId) {
       adjustingStockProductId = (adjustingStockProductId === adjustId) ? null : adjustId;
       renderInventory();
@@ -1955,6 +2063,12 @@
       }
     }
 
+    var deleteLogText = 'Deleted cost entry "' + (cost.description || cost.category || 'entry') + '" (' + money(cost.amount) + ') from Costs.';
+    if (productToRemove) {
+      deleteLogText += ' Also removed "' + productToRemove.name + (productToRemove.variant ? ' — ' + productToRemove.variant : '') + '" from Inventory (no longer referenced).';
+    }
+    logDeletionToQuickAdd(deleteLogText);
+
     save();
     renderAll();
   }
@@ -2055,19 +2169,53 @@
     }
   });
 
+  // Ephemeral Costs-page filter state — not persisted, resets on reload.
+  var costFilterCategory = '';
+  var costFilterFrom = '';
+  var costFilterTo = '';
+  var costSortByAmount = null; // null = default date sort, true = amount desc, false = amount asc
+
+  function renderCostFilterBar() {
+    var sel = document.getElementById('cost-filter-category');
+    var from = document.getElementById('cost-filter-from');
+    var to = document.getElementById('cost-filter-to');
+    if (sel) sel.value = costFilterCategory;
+    if (from) from.value = costFilterFrom;
+    if (to) to.value = costFilterTo;
+  }
+
   function renderCosts() {
     renderCostBreakdown();
+    renderCostFilterBar();
     var tbody = document.querySelector('#cost-table tbody');
     var empty = document.getElementById('cost-empty');
     var totalEl = document.getElementById('cost-total');
+    var filtered = state.costs.filter(function (c) {
+      if (costFilterCategory && c.category !== costFilterCategory) return false;
+      if (costFilterFrom && c.date < costFilterFrom) return false;
+      if (costFilterTo && c.date > costFilterTo) return false;
+      return true;
+    });
     if (state.costs.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
       totalEl.textContent = '';
       return;
     }
+    if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = 'No cost entries match this filter.';
+      totalEl.textContent = 'Total: ' + money(0);
+      return;
+    }
     empty.style.display = 'none';
-    var sorted = state.costs.slice().sort(function (a, b) {
+    empty.textContent = 'No cost entries yet.';
+    var sorted = filtered.slice().sort(function (a, b) {
+      if (costSortByAmount !== null) {
+        var amtCmp = costSortByAmount ? (Number(b.amount) - Number(a.amount)) : (Number(a.amount) - Number(b.amount));
+        if (amtCmp !== 0) return amtCmp;
+      }
       var dateCmp = b.date.localeCompare(a.date);
       if (dateCmp !== 0) return dateCmp;
       // Same day — break ties by when the entry was actually created (id starts with a timestamp),
@@ -2107,8 +2255,9 @@
         '<button class="btn-text danger" data-delete-cost="' + c.id + '">Delete</button>' +
         '</td></tr>';
     }).join('');
-    var total = state.costs.reduce(function (s, c) { return s + Number(c.amount); }, 0);
-    totalEl.textContent = 'Total: ' + money(total);
+    var total = filtered.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+    var isFiltered = filtered.length !== state.costs.length;
+    totalEl.textContent = (isFiltered ? 'Total for this filter: ' : 'Total: ') + money(total);
   }
 
   document.querySelector('#cost-table tbody').addEventListener('click', function (e) {
@@ -2118,9 +2267,66 @@
     if (delId) deleteCost(delId);
   });
 
+  document.getElementById('cost-filter-bar').addEventListener('change', function (e) {
+    if (e.target.id === 'cost-filter-category') { costFilterCategory = e.target.value; renderCosts(); return; }
+    if (e.target.id === 'cost-filter-from') { costFilterFrom = e.target.value; renderCosts(); return; }
+    if (e.target.id === 'cost-filter-to') { costFilterTo = e.target.value; renderCosts(); return; }
+  });
+  document.getElementById('cost-filter-bar').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-costfilter-7d') {
+      var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
+      costFilterFrom = from7.toISOString().slice(0, 10); costFilterTo = todayISO();
+      renderCosts();
+      return;
+    }
+    if (e.target.id === 'btn-costfilter-month') {
+      var nowM = new Date(todayISO() + 'T00:00:00');
+      costFilterFrom = new Date(nowM.getFullYear(), nowM.getMonth(), 1).toISOString().slice(0, 10);
+      costFilterTo = todayISO();
+      renderCosts();
+      return;
+    }
+    if (e.target.id === 'btn-costfilter-clear') {
+      costFilterFrom = ''; costFilterTo = '';
+      renderCosts();
+      return;
+    }
+  });
+  document.getElementById('cost-table').addEventListener('click', function (e) {
+    if (e.target.id === 'cost-amount-header' || e.target.closest('#cost-amount-header')) {
+      costSortByAmount = costSortByAmount === true ? false : true;
+      renderCosts();
+    }
+  });
+
   // ================= ORDERS =================
   var draftItems = [];
   var editingOrderId = null;
+
+  document.getElementById('order-filter-bar').addEventListener('change', function (e) {
+    if (e.target.id === 'order-filter-from') { orderFilterFrom = e.target.value; renderOrders(); return; }
+    if (e.target.id === 'order-filter-to') { orderFilterTo = e.target.value; renderOrders(); return; }
+  });
+  document.getElementById('order-filter-bar').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-orderfilter-7d') {
+      var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
+      orderFilterFrom = from7.toISOString().slice(0, 10); orderFilterTo = todayISO();
+      renderOrders();
+      return;
+    }
+    if (e.target.id === 'btn-orderfilter-month') {
+      var nowM = new Date(todayISO() + 'T00:00:00');
+      orderFilterFrom = new Date(nowM.getFullYear(), nowM.getMonth(), 1).toISOString().slice(0, 10);
+      orderFilterTo = todayISO();
+      renderOrders();
+      return;
+    }
+    if (e.target.id === 'btn-orderfilter-clear') {
+      orderFilterFrom = ''; orderFilterTo = '';
+      renderOrders();
+      return;
+    }
+  });
 
   document.getElementById('btn-add-order').addEventListener('click', function () {
     editingOrderId = null;
@@ -2785,16 +2991,47 @@
     renderAll();
   }
 
+  // Ephemeral Orders date-range filter state — not persisted, resets on reload.
+  var orderFilterFrom = '';
+  var orderFilterTo = '';
+
+  function renderOrderFilterBar() {
+    var from = document.getElementById('order-filter-from');
+    var to = document.getElementById('order-filter-to');
+    if (from) from.value = orderFilterFrom;
+    if (to) to.value = orderFilterTo;
+  }
+
   function renderOrders() {
+    renderOrderFilterBar();
     var tbody = document.querySelector('#order-table tbody');
     var empty = document.getElementById('order-empty');
+    var countEl = document.getElementById('order-filter-count');
     if (state.orders.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
+      if (countEl) countEl.textContent = '';
+      return;
+    }
+    var filteredOrders = state.orders.filter(function (o) {
+      if (orderFilterFrom && o.date < orderFilterFrom) return false;
+      if (orderFilterTo && o.date > orderFilterTo) return false;
+      return true;
+    });
+    if (filteredOrders.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = 'No orders match this date range.';
+      if (countEl) countEl.textContent = '';
       return;
     }
     empty.style.display = 'none';
-    var sorted = state.orders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
+    empty.textContent = 'No orders yet.';
+    if (countEl) {
+      var isFiltered = filteredOrders.length !== state.orders.length;
+      countEl.textContent = isFiltered ? filteredOrders.length + ' order' + (filteredOrders.length === 1 ? '' : 's') + ' in range' : '';
+    }
+    var sorted = filteredOrders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
     var statuses = ['pending', 'shipped', 'delivered', 'cancelled'];
     tbody.innerHTML = sorted.map(function (o) {
       var statusOptions = statuses.map(function (s) {
@@ -3069,14 +3306,56 @@
     var totalAccountValue = cash + invValue;
     return {
       active: active, revenue: revenue, shippingCostsPaid: shippingCostsPaid,
-      inventorySpend: inventorySpend, expense: expense, cash: cash, invValue: invValue,
+      inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, allCostsSpent: allCostsSpent,
+      expense: expense, cash: cash, invValue: invValue,
       netProfit: netProfit, totalAccountValue: totalAccountValue
     };
   }
 
+  // Ephemeral UI state for the Dashboard date-range filter — not persisted, resets on reload,
+  // same pattern as dashboardEditingCash below. Empty string means "no bound" (all-time).
+  var dashboardDateFrom = '';
+  var dashboardDateTo = '';
+
+  // Revenue/Total spent/Net profit scoped to a date range (inclusive) — everything else on
+  // Dashboard (Cash, Inventory value, Total account value, Expense, Awaiting payment) stays
+  // all-time since those are running balances, not period totals, and recomputing them per-range
+  // wouldn't mean anything (e.g. "Cash as of a date range" isn't a coherent number).
+  function financialsForRange(fromDate, toDate) {
+    var inRange = function (d) { return (!fromDate || d >= fromDate) && (!toDate || d <= toDate); };
+    var active = state.orders.filter(function (o) { return o.status !== 'cancelled' && inRange(o.date); });
+    var revenue = active.reduce(function (s, o) { return s + orderTotal(o); }, 0);
+    var inventorySpend = 0, expenseFromCosts = 0;
+    state.costs.forEach(function (c) {
+      if (!inRange(c.date)) return;
+      var isInventoryPurchase = c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0);
+      if (isInventoryPurchase) inventorySpend += Number(c.amount);
+      else expenseFromCosts += Number(c.amount);
+    });
+    var allCostsSpent = inventorySpend + expenseFromCosts;
+    var netProfit = revenue - allCostsSpent;
+    return { revenue: revenue, allCostsSpent: allCostsSpent, netProfit: netProfit, orderCount: active.length };
+  }
+
+  function dashboardDateRangeHtml() {
+    return '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; justify-content:flex-end;">' +
+      '<button class="btn btn-secondary btn-small" id="btn-dash-preset-7d">Last 7 days</button>' +
+      '<button class="btn btn-secondary btn-small" id="btn-dash-preset-month">This month</button>' +
+      '<button class="btn btn-secondary btn-small" id="btn-dash-preset-all">All time</button>' +
+      '<input type="date" id="dash-date-from" value="' + escapeHtml(dashboardDateFrom) + '" style="width:150px;">' +
+      '<input type="date" id="dash-date-to" value="' + escapeHtml(dashboardDateTo) + '" style="width:150px;">' +
+      '</div>';
+  }
+
   function renderDashboard() {
     var fin = financials();
-    var active = fin.active, revenue = fin.revenue, invValue = fin.invValue;
+    var invValue = fin.invValue;
+    var periodFin = (dashboardDateFrom || dashboardDateTo) ? financialsForRange(dashboardDateFrom, dashboardDateTo) : null;
+    var revenue = periodFin ? periodFin.revenue : fin.revenue;
+    var netProfitPeriod = periodFin ? periodFin.netProfit : fin.netProfit;
+    var totalSpentPeriod = periodFin ? periodFin.allCostsSpent : fin.allCostsSpent;
+    var orderCountLabel = periodFin ? periodFin.orderCount + ' orders in range (excl. cancelled)' : fin.active.length + ' orders (excl. cancelled)';
+    var active = fin.active;
     var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
     var lowStock = state.products.filter(function (p) { return p.stock <= p.threshold; });
     var pendingCount = state.orders.filter(function (o) { return o.status === 'pending'; }).length;
@@ -3085,13 +3364,15 @@
     var unpaidTotal = unpaid.reduce(function (s, o) { return s + unpaidAmountFor(o); }, 0);
     var needsDateConfirm = ordersNeedingDateConfirmation();
 
-    var html = '<div class="stat-grid">' +
+    var html = dashboardDateRangeHtml() +
+      '<div class="stat-grid">' +
       statCard('Total account value', money(fin.totalAccountValue), 'Cash + inventory value') +
       cashStatCard(fin.cash, state.startingCash) +
       statCard('Expense', money(fin.expense), 'Ads, shipping, packaging, fees etc. + courier paid') +
       statCard('Inventory value', money(invValue), unitsInStock + ' units in stock') +
-      statCard('Revenue', money(revenue), active.length + ' orders (excl. cancelled)') +
-      statCard('Net profit', money(fin.netProfit), 'Revenue − inventory spend (' + money(fin.inventorySpend) + ') − expense', fin.netProfit >= 0 ? 'var(--green)' : 'var(--red)') +
+      statCard('Revenue', money(revenue), orderCountLabel) +
+      statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
+      statCard('Total spent', money(totalSpentPeriod), (periodFin ? 'For the selected range' : 'Everything ever logged in Costs') + ' — inventory + other') +
       statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
       '</div>' +
       '<div class="panel-grid">' +
@@ -3144,6 +3425,28 @@
       renderDashboard();
       return;
     }
+    if (e.target.id === 'btn-dash-preset-7d') {
+      var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
+      dashboardDateFrom = from7.toISOString().slice(0, 10); dashboardDateTo = todayISO();
+      renderDashboard();
+      return;
+    }
+    if (e.target.id === 'btn-dash-preset-month') {
+      var nowM = new Date(todayISO() + 'T00:00:00');
+      dashboardDateFrom = new Date(nowM.getFullYear(), nowM.getMonth(), 1).toISOString().slice(0, 10);
+      dashboardDateTo = todayISO();
+      renderDashboard();
+      return;
+    }
+    if (e.target.id === 'btn-dash-preset-all') {
+      dashboardDateFrom = ''; dashboardDateTo = '';
+      renderDashboard();
+      return;
+    }
+  });
+  document.getElementById('dashboard-content').addEventListener('change', function (e) {
+    if (e.target.id === 'dash-date-from') { dashboardDateFrom = e.target.value; renderDashboard(); return; }
+    if (e.target.id === 'dash-date-to') { dashboardDateTo = e.target.value; renderDashboard(); return; }
   });
   document.getElementById('dashboard-content').addEventListener('keydown', function (e) {
     if (e.target.id === 'dash-startingcash-input' && e.key === 'Enter') {
@@ -3180,6 +3483,25 @@
   // ================= SCHEDULE =================
   var showCompletedSchedule = false;
 
+  // Ephemeral Schedule date-range filter state — not persisted, resets on reload. Only narrows
+  // the dated groups (and Completed) below — Unscheduled always stays visible regardless of the
+  // range, since those orders need attention no matter what period you're looking at.
+  var scheduleFilterFrom = '';
+  var scheduleFilterTo = '';
+
+  function scheduleFilterBarHtml() {
+    return '<div class="card" id="schedule-filter-bar" style="margin-bottom:14px;">' +
+      '<div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:flex-end;">' +
+        '<button class="btn btn-secondary btn-small" id="btn-schedfilter-7d">Next 7 days</button>' +
+        '<button class="btn btn-secondary btn-small" id="btn-schedfilter-month">This month</button>' +
+        '<button class="btn btn-secondary btn-small" id="btn-schedfilter-clear">Clear dates</button>' +
+      '</div>' +
+      '<div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">' +
+        '<input id="schedule-filter-from" type="date" value="' + escapeHtml(scheduleFilterFrom) + '" style="width:150px;">' +
+        '<input id="schedule-filter-to" type="date" value="' + escapeHtml(scheduleFilterTo) + '" style="width:150px;">' +
+      '</div></div>';
+  }
+
   function renderSchedule() {
     var notCancelled = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
     var active = notCancelled.filter(function (o) { return !o.productionDone; });
@@ -3188,7 +3510,8 @@
     // with a timestamp) — lets you tell a customer "you're #4 in line" without locking a date.
     var unscheduled = active.filter(function (o) { return !o.scheduledDate; })
       .slice().sort(function (a, b) { return (a.id || '').localeCompare(b.id || ''); });
-    var scheduled = active.filter(function (o) { return o.scheduledDate; });
+    var inRange = function (d) { return (!scheduleFilterFrom || d >= scheduleFilterFrom) && (!scheduleFilterTo || d <= scheduleFilterTo); };
+    var scheduled = active.filter(function (o) { return o.scheduledDate && inRange(o.scheduledDate); });
 
     var byDate = {};
     scheduled.forEach(function (o) {
@@ -3196,6 +3519,7 @@
       byDate[o.scheduledDate].push(o);
     });
     var dates = Object.keys(byDate).sort();
+    var isDateFiltered = !!(scheduleFilterFrom || scheduleFilterTo);
 
     function orderRow(o, isDone, queuePos) {
       var itemsSummary = o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ');
@@ -3215,13 +3539,16 @@
         '</div></div>';
     }
 
-    var html = '';
+    var html = scheduleFilterBarHtml();
     if (unscheduled.length > 0) {
       html += '<div class="form-section-title" style="border-top:none; padding-top:0;">Unscheduled (' + unscheduled.length + ')</div>' +
         unscheduled.map(function (o, idx) { return orderRow(o, false, idx + 1); }).join('');
     }
-    if (dates.length === 0 && unscheduled.length === 0 && done.length === 0) {
+    if (dates.length === 0 && unscheduled.length === 0 && done.length === 0 && !isDateFiltered) {
       html += '<div class="empty">No active orders yet.</div>';
+    }
+    if (dates.length === 0 && isDateFiltered) {
+      html += '<div class="empty">Nothing scheduled in this date range.</div>';
     }
     dates.forEach(function (d) {
       html += '<div class="form-section-title">' + formatDateLong(d) + ' (' + byDate[d].length + ')</div>' +
@@ -3248,7 +3575,30 @@
     }
   }
 
+  document.getElementById('schedule-content').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-schedfilter-7d') {
+      var to7 = new Date(todayISO() + 'T00:00:00'); var toEnd = new Date(to7); toEnd.setDate(toEnd.getDate() + 7);
+      scheduleFilterFrom = todayISO(); scheduleFilterTo = toEnd.toISOString().slice(0, 10);
+      renderSchedule();
+      return;
+    }
+    if (e.target.id === 'btn-schedfilter-month') {
+      var nowM = new Date(todayISO() + 'T00:00:00');
+      scheduleFilterFrom = todayISO();
+      scheduleFilterTo = new Date(nowM.getFullYear(), nowM.getMonth() + 1, 0).toISOString().slice(0, 10);
+      renderSchedule();
+      return;
+    }
+    if (e.target.id === 'btn-schedfilter-clear') {
+      scheduleFilterFrom = ''; scheduleFilterTo = '';
+      renderSchedule();
+      return;
+    }
+  });
+
   document.getElementById('schedule-content').addEventListener('change', function (e) {
+    if (e.target.id === 'schedule-filter-from') { scheduleFilterFrom = e.target.value; renderSchedule(); return; }
+    if (e.target.id === 'schedule-filter-to') { scheduleFilterTo = e.target.value; renderSchedule(); return; }
     if (e.target.classList.contains('schedule-date-input')) {
       var id = e.target.getAttribute('data-order-id');
       var order = state.orders.find(function (o) { return o.id === id; });
@@ -3599,6 +3949,13 @@
   function pushChatMsg(role, text) {
     state.chatLog.push({ id: uid(), role: role, text: text, ts: new Date().toISOString() });
     save();
+  }
+
+  // Deleting a product or a Cost entry from Inventory/Costs used to leave no trace anywhere she'd
+  // actually see it — logging a line into the Quick Add chat history means there's always at
+  // least a visible record that something was removed, even outside the Quick Add flow itself.
+  function logDeletionToQuickAdd(text) {
+    pushChatMsg('bot', '🗑 ' + text);
   }
 
   function normalizeDesc(s) {
@@ -4654,6 +5011,17 @@
         '<textarea id="qa-input" rows="1" placeholder="Type a cost… e.g. glitter 8 colours 45"' + (quickAddStage ? ' disabled' : '') + '></textarea>' +
         '<button class="qa-send-btn" id="btn-qa-send"' + (quickAddStage ? ' disabled' : '') + ' title="Send">↑</button>' +
       '</div>';
+
+    // The log used to be its own fixed-height scroll box separate from the input bar (pinned to
+    // the screen), so "Last: …"/the input bar only sat flush against the log when its content
+    // happened to exactly fill that box — any other scroll position left an ugly gap. Now the log
+    // flows in the normal page, so it's always immediately followed by "Last:"/the input bar with
+    // no gap possible — and since the page (not a nested box) is what scrolls, keep it pinned to
+    // the newest message after every re-render, like a normal chat app.
+    var quickAddPage = document.getElementById('page-quickadd');
+    if (quickAddPage && quickAddPage.classList.contains('active')) {
+      window.scrollTo(0, document.body.scrollHeight);
+    }
   }
 
   document.getElementById('quickadd-content').addEventListener('click', function (e) {
