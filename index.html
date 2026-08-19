@@ -3929,7 +3929,26 @@
     // these are real stock, so autoInventory automatically creates a new Inventory product
     // (tagged type 'Tumbler'). They're measured by volume/weight rather than piece count, so
     // unitTracked asks for a total ml/g amount instead of a piece quantity.
-    { category: 'other', words: ['glitter', 'mica', 'mica powder', 'sequin', '亮片', 'glycerin', 'uv glue', 'mineral oil', 'resin', 'candle dye', 'dye', '颜料', '珠光粉', '染料', '软陶'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    // Each entry below is ONE physical material with a fixed canonicalName — no matter which
+    // synonym (English or Chinese) she types, or what colour/label she adds alongside it
+    // (e.g. "mint CM food colouring 20g", "马卡龙闪粉"), the product always gets created under
+    // that same canonical Name with the colour/label pushed into Variant instead. That way
+    // every purchase of the same material lands under one Inventory entry/filter option
+    // instead of splintering into a differently-named product each time she phrases it
+    // differently. 颜料/染料 deliberately left out — she doesn't use those words.
+    { category: 'other', canonicalName: 'Glitter', words: ['glitter', '闪粉'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Sequin', words: ['sequin', 'sequins', '亮片'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Mica Powder', words: ['mica powder', 'mica', '珠光粉', '云母粉'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Food Colouring', words: ['food colouring', 'food coloring', 'edible colouring', 'edible color', '食用色素', '色素'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Candle Dye', words: ['candle dye'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Dye', words: ['dye'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Glycerin', words: ['glycerin', 'glycerine', '甘油'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'UV Glue', words: ['uv glue', 'uv胶', 'uv 胶'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Mineral Oil', words: ['mineral oil', '矿物油'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Resin', words: ['resin', 'epoxy resin', 'epoxy', '树脂'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: '软陶', words: ['软陶', 'polymer clay'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Slime Activator', words: ['slime activator', 'activator', '活化剂'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Alcohol', words: ['isopropyl alcohol', 'rubbing alcohol', 'alcohol', '酒精'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
     // Tools/containers used to make the tumbler — also real stock, but counted in pieces like
     // any normal product (not ml/g).
     { category: 'other', words: ['syringe', 'squeeze bottle', 'oil bottle'], productType: 'Tumbler', autoInventory: true },
@@ -4122,13 +4141,23 @@
 
   function matchQuickAddCategory(desc) {
     var nd = normalizeDesc(desc);
+    // Picks the LONGEST matching keyword across every group, not just the first group in
+    // array order — needed now that some materials share a common substring across separate
+    // groups (e.g. "candle dye" also contains "dye"): a line mentioning "candle dye" must
+    // match the specific Candle Dye group, not the generic Dye group, regardless of which
+    // one happens to come first in the list.
+    var bestGroup = null, bestLen = 0;
     for (var i = 0; i < QUICKADD_CATEGORY_KEYWORDS.length; i++) {
       var grp = QUICKADD_CATEGORY_KEYWORDS[i];
       for (var j = 0; j < grp.words.length; j++) {
-        if (nd.indexOf(normalizeDesc(grp.words[j])) !== -1) return grp;
+        var w = grp.words[j];
+        if (nd.indexOf(normalizeDesc(w)) !== -1 && w.length > bestLen) {
+          bestGroup = grp;
+          bestLen = w.length;
+        }
       }
     }
-    return null;
+    return bestGroup;
   }
 
   // Explicit signal that a line is topping up an EXISTING inventory item rather than
@@ -4172,7 +4201,11 @@
     var esc = matchedWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     var re = new RegExp(esc, 'i');
     var variant = String(desc || '').replace(re, '').replace(/\s+/g, ' ').trim();
-    var name = matchedWord.replace(/(^|\s)\w/g, function (c) { return c.toUpperCase(); });
+    // A fixed canonicalName (e.g. "Glitter" whether she typed "glitter" or "闪粉") keeps every
+    // synonym landing under the SAME Inventory product name — otherwise the matched word itself
+    // (title-cased) becomes the name, which is fine for groups where each word IS its own
+    // distinct item (e.g. syringe vs squeeze bottle), but wrong for true synonym groups.
+    var name = group.canonicalName || matchedWord.replace(/(^|\s)\w/g, function (c) { return c.toUpperCase(); });
     return { name: name, variant: variant };
   }
 
