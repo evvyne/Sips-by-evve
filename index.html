@@ -773,10 +773,11 @@
   if (!state.stockLog) state.stockLog = [];
   if (!state.chatLog) state.chatLog = [];
   if (state.startingCash == null) state.startingCash = 5000;
+  var didMigrate = false;
   if (state.costs) {
     state.costs.forEach(function (c) {
-      if (c.category === 'materials') c.category = 'restock';
-      if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; }
+      if (c.category === 'materials') { c.category = 'restock'; didMigrate = true; }
+      if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; didMigrate = true; }
     });
   }
 
@@ -784,6 +785,11 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     if (typeof scheduleCloudPush === 'function') scheduleCloudPush();
   }
+
+  // Persist the migration immediately — otherwise it only ever lives in memory for this one
+  // session (mutating `state` doesn't touch localStorage), so a fresh reload with no other
+  // save-triggering action in between would still see the old, unmigrated data forever.
+  if (didMigrate) save();
 
   // Every place that changes a product's stock count also calls this, so Inventory can
   // show a full history of why stock moved (restocks, sales, wastage, corrections).
@@ -1714,7 +1720,10 @@
           if (updateCosts) {
             var lineSubtotal = it.qty * it.unitCost;
             var share = itemsSubtotal > 0 ? (lineSubtotal / itemsSubtotal) * (shippingAmount + serviceFeeAmount) : 0;
-            p.cost = Math.round(((lineSubtotal + share) / it.qty) * 100) / 100;
+            // Full precision (see finalizeQuickAddCost/applyShippingSplit) — rounding to 2dp
+            // before storing drifts once qty is largeish, since Inventory's Total number
+            // (cost * stock) redisplays whatever was stored here.
+            p.cost = (lineSubtotal + share) / it.qty;
           }
         });
       }
@@ -1794,7 +1803,9 @@
           linkedProduct.stock += qty2;
           logStock(linkedProduct.id, qty2, 'restock', 'Cost entry (' + document.getElementById('cf-category').value + ')', date, costId);
           if (document.getElementById('cf-updatecost').checked && amount > 0) {
-            linkedProduct.cost = Math.round((amount / qty2) * 100) / 100;
+            // Full precision (see finalizeQuickAddCost/applyShippingSplit) — same reasoning as
+            // the multi-item batch path just above.
+            linkedProduct.cost = amount / qty2;
           }
         }
       }
@@ -1856,9 +1867,56 @@
     var stockChanges = (cost.items && cost.items.length)
       ? cost.items
       : (cost.productId && typeof cost.qty === 'number' && cost.qty !== 0 ? [{ productId: cost.productId, qty: cost.qty }] : []);
+
+    // If this is the last Cost entry referencing a product — no other Cost entry, no Order — and
+    // removing its stock leaves that product at 0, deleting the entry should remove the product
+    // from Inventory too, instead of leaving behind an empty "ghost" product. This applies no
+    // matter what category the entry is (new_inventory OR restock — either can be the sole
+    // remaining link if an earlier entry for the same product was already deleted).
+    var productToRemove = null;
+    if (cost.productId && !(cost.items && cost.items.length)) {
+      var otherCostRefs = state.costs.some(function (c) {
+        if (c.id === id) return false;
+        if (c.productId === cost.productId) return true;
+        return !!(c.items && c.items.some(function (it) { return it.productId === cost.productId; }));
+      });
+      var orderRefs = state.orders.some(function (o) {
+        return o.items && o.items.some(function (it) { return it.productId === cost.productId; });
+      });
+      if (!otherCostRefs && !orderRefs) {
+        var candidateProduct = state.products.find(function (p) { return p.id === cost.productId; }) || null;
+        var qtyThisEntryAdds = typeof cost.qty === 'number' ? cost.qty : 0;
+        if (candidateProduct && (candidateProduct.stock - qtyThisEntryAdds) <= 0) {
+          productToRemove = candidateProduct;
+        }
+      }
+    }
+
+    // Shared-shipping bookkeeping: if this entry was ITSELF the standalone shipping payment
+    // (category "shipping"), every item that was claiming a share of it needs that share
+    // cleared out. If instead this entry was one of the CLAIMANTS (it has a shippingSourceId
+    // from having reused/split a shipping fee), the remaining claimants of that same pool need
+    // their shares re-split across just themselves — otherwise a product that used to share
+    // shipping with something now-deleted stays stuck at its old, smaller per-unit cost forever.
+    var isShippingSource = cost.category === 'shipping';
+    var wasClaimant = !!cost.shippingSourceId;
+    var shipWarn = '';
+    if (isShippingSource) {
+      var affectedClaimants = state.costs.filter(function (c) { return c.shippingSourceId === cost.id; });
+      if (affectedClaimants.length) {
+        shipWarn = ' ' + affectedClaimants.length + ' item(s) sharing this shipping fee will have that share removed from their cost.';
+      }
+    } else if (wasClaimant) {
+      shipWarn = ' The remaining item(s) sharing this shipping fee will have their share recalculated.';
+    }
+
     var warn = stockChanges.length
       ? ' This will also update the matching stock it changed in Inventory (and remove its stock history entries).'
       : '';
+    if (productToRemove) {
+      warn = ' This was the entry that created "' + productToRemove.name + (productToRemove.variant ? ' — ' + productToRemove.variant : '') + '" in Inventory — since nothing else references it, that product will also be removed.';
+    }
+    warn += shipWarn;
     if (!confirm('Delete this cost entry?' + warn)) return;
     stockChanges.forEach(function (it) {
       var p = state.products.find(function (x) { return x.id === it.productId; });
@@ -1866,6 +1924,37 @@
     });
     state.stockLog = state.stockLog.filter(function (l) { return l.costId !== id; });
     state.costs = state.costs.filter(function (c) { return c.id !== id; });
+    if (productToRemove) {
+      state.stockLog = state.stockLog.filter(function (l) { return l.productId !== productToRemove.id; });
+      state.products = state.products.filter(function (p) { return p.id !== productToRemove.id; });
+    }
+
+    if (isShippingSource) {
+      // The pool itself is gone — nothing left to redistribute. Every remaining claimant loses
+      // its shipping share entirely and its linked product's cost falls back to just its own
+      // (unshared) price per unit.
+      state.costs.forEach(function (c) {
+        if (c.shippingSourceId !== cost.id) return;
+        c.shippingAmount = undefined;
+        c.shippingSourceId = undefined;
+        if (c.productId && c.qty) {
+          var p = state.products.find(function (x) { return x.id === c.productId; });
+          if (p) p.cost = Number(c.amount) / c.qty;
+        }
+      });
+      if (quickAddLastShipping && quickAddLastShipping.sourceEntryId === cost.id) quickAddLastShipping = null;
+    } else if (wasClaimant) {
+      var remainingClaimants = state.costs.filter(function (c) { return c.shippingSourceId === cost.shippingSourceId; });
+      var sourceStillExists = state.costs.some(function (c) { return c.id === cost.shippingSourceId; });
+      if (sourceStillExists) {
+        var sourceEntry = state.costs.find(function (c) { return c.id === cost.shippingSourceId; });
+        applyShippingSplit(remainingClaimants, sourceEntry.amount, cost.shippingSourceId);
+      }
+      if (quickAddLastShipping && quickAddLastShipping.sourceEntryId === cost.shippingSourceId && quickAddLastShipping.claimantIds) {
+        quickAddLastShipping.claimantIds = quickAddLastShipping.claimantIds.filter(function (cid) { return cid !== id; });
+      }
+    }
+
     save();
     renderAll();
   }
@@ -3714,8 +3803,13 @@
   function extractMaterialNameVariant(desc, group) {
     var nd = normalizeDesc(desc);
     var matchedWord = null;
+    // Prefer the LONGEST matching keyword, not just the first one in the list — e.g. "mica
+    // powder 36 colours 20ml" should match "mica powder" (specific), not stop at "mica" (which
+    // happens to come first in the word list) and dump "powder 36 colours 20ml" into variant.
     for (var i = 0; i < group.words.length; i++) {
-      if (nd.indexOf(normalizeDesc(group.words[i])) !== -1) { matchedWord = group.words[i]; break; }
+      if (nd.indexOf(normalizeDesc(group.words[i])) !== -1) {
+        if (!matchedWord || group.words[i].length > matchedWord.length) matchedWord = group.words[i];
+      }
     }
     if (!matchedWord) return null;
     var esc = matchedWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -3990,7 +4084,12 @@
     if (item.parsedQty && item.parsedQty > 0) {
       entry.qty = item.parsedQty;
       var landedTotal = entry.amount + (shippingFeeAmount || 0);
-      var perUnit = Math.round((landedTotal / item.parsedQty) * 100) / 100;
+      // Keep full precision when STORING the per-unit cost — only round for the display note
+      // below. Rounding to 2dp before storing drifts noticeably from what she actually typed
+      // once qty is largeish (e.g. 720ml of mica powder: RM87.02/720 rounds to RM0.12, and
+      // RM0.12*720 redisplays as RM86.40 in Inventory — not the RM87.02 she paid).
+      var perUnitExact = landedTotal / item.parsedQty;
+      var perUnit = Math.round(perUnitExact * 100) / 100;
       var linkedPForUnit = productId ? state.products.find(function (p) { return p.id === productId; }) : null;
       var unitLabel = (linkedPForUnit && linkedPForUnit.unit) ? linkedPForUnit.unit : ' pcs';
       perUnitNote = ' · ' + item.parsedQty + unitLabel + ' (~' + money(perUnit) + '/unit)';
@@ -3998,7 +4097,7 @@
         var linkedP = state.products.find(function (p) { return p.id === productId; });
         if (linkedP) {
           linkedP.stock += item.parsedQty;
-          linkedP.cost = perUnit;
+          linkedP.cost = perUnitExact;
           logStock(productId, item.parsedQty, 'restock', 'Cost entry (' + category + ', via Quick Add)', entry.date, entry.id);
         }
       }
@@ -4021,6 +4120,28 @@
   // joins the pool) purely as an informational figure — shown under that item's row and folded
   // into its linked product's per-unit landed cost — so Margin/Net Profit stay accurate even
   // though the money itself is only ever counted once, via the standalone entry.
+  // Splits `poolAmount` proportionally (by each claimant's own base amount) across the given
+  // list of claimant Cost entries, updating each one's informational shippingAmount, its
+  // persisted shippingSourceId (so we can find "who else is sharing this" again later, even
+  // after a reload — see deleteCost), and its linked product's per-unit landed cost.
+  function applyShippingSplit(claimants, poolAmount, sourceEntryId) {
+    if (!claimants.length) return;
+    var subtotal = claimants.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+    claimants.forEach(function (c) {
+      var share = subtotal > 0 ? (Number(c.amount) / subtotal) * poolAmount : poolAmount / claimants.length;
+      share = Math.round(share * 100) / 100;
+      c.shippingAmount = share;
+      c.shippingSourceId = sourceEntryId;
+      if (c.productId && c.qty) {
+        var p = state.products.find(function (x) { return x.id === c.productId; });
+        // Full precision here too (see finalizeQuickAddCost) — only the rounded `share` above
+        // is for display; the stored per-unit cost stays exact so Inventory's Total number
+        // (cost * stock) always matches what was actually paid, even with large quantities.
+        if (p) p.cost = (Number(c.amount) + share) / c.qty;
+      }
+    });
+  }
+
   function redistributeSharedShipping(newClaimEntryId) {
     var pool = quickAddLastShipping;
     if (!pool || !pool.sourceEntryId) return;
@@ -4031,17 +4152,7 @@
     var claimants = pool.claimantIds
       .map(function (id) { return state.costs.find(function (c) { return c.id === id; }); })
       .filter(Boolean);
-    if (!claimants.length) return;
-    var subtotal = claimants.reduce(function (s, c) { return s + Number(c.amount); }, 0);
-    claimants.forEach(function (c) {
-      var share = subtotal > 0 ? (Number(c.amount) / subtotal) * pool.amount : pool.amount / claimants.length;
-      share = Math.round(share * 100) / 100;
-      c.shippingAmount = share;
-      if (c.productId && c.qty) {
-        var p = state.products.find(function (x) { return x.id === c.productId; });
-        if (p) p.cost = Math.round(((Number(c.amount) + share) / c.qty) * 100) / 100;
-      }
-    });
+    applyShippingSplit(claimants, pool.amount, pool.sourceEntryId);
     save();
     renderAll();
   }
