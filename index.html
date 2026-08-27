@@ -297,6 +297,7 @@
       <button data-tab="dashboard" class="active">Dashboard</button>
       <button data-tab="inventory">Inventory</button>
       <button data-tab="costs">Costs</button>
+      <button data-tab="testing">Testing</button>
       <button data-tab="orders">Orders</button>
       <button data-tab="schedule">Schedule</button>
       <button data-tab="calendar">Calendar</button>
@@ -636,6 +637,58 @@
       </table>
       <div class="empty" id="cost-empty" style="display:none;">No cost entries yet.</div>
       <div class="total-line" id="cost-total"></div>
+    </div>
+  </section>
+
+  <!-- TESTING -->
+  <section class="page" id="page-testing">
+    <div class="page-header">
+      <h1>Testing / R&D</h1>
+      <button class="btn btn-primary" id="btn-add-testing">+ Add</button>
+    </div>
+    <div class="muted" style="font-size:12px; margin:-8px 0 14px;">For materials/samples bought to test or try out — not for resale, so it never touches Inventory stock. Still counted in Dashboard's Total spent.</div>
+    <div class="card" id="testing-form-wrap" style="display:none; margin-bottom:16px;">
+      <div class="form-grid">
+        <div style="grid-column: 1 / -1;">
+          <label class="field-label">Description</label>
+          <input id="tf-description" placeholder="e.g. mica powder sample batch">
+        </div>
+        <div>
+          <label class="field-label">Date</label>
+          <input id="tf-date" type="date">
+        </div>
+        <div>
+          <label class="field-label">Amount (in RM)</label>
+          <input id="tf-amount" type="number" step="0.01" min="0">
+        </div>
+        <div>
+          <label class="field-label">Qty (optional)</label>
+          <input id="tf-qty" type="number" step="0.01" min="0">
+        </div>
+        <div>
+          <label class="field-label">Unit</label>
+          <select id="tf-unit">
+            <option value="">—</option>
+            <option value="ml">ml</option>
+            <option value="L">L</option>
+            <option value="g">g</option>
+            <option value="rolls">rolls</option>
+            <option value="pcs">pcs</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-testing">Save</button>
+        <button class="btn btn-secondary" id="btn-cancel-testing">Cancel</button>
+      </div>
+    </div>
+    <div class="card" style="overflow-x:auto;">
+      <table id="testing-table">
+        <thead><tr><th>Date</th><th>Description</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="testing-empty" style="display:none;">No testing/R&D entries yet.</div>
+      <div class="total-line" id="testing-total"></div>
     </div>
   </section>
 
@@ -1416,9 +1469,14 @@
           var label = STOCK_LOG_LABELS[l.type] || l.type;
           var sign = l.qty > 0 ? '+' : '';
           var color = l.qty > 0 ? 'var(--green)' : 'var(--red)';
+          // Show what she actually paid for this movement, when it has one (restocks/new
+          // inventory linked to a Cost entry) — e.g. "Restock — RM999". Sales, wastage, and
+          // manual corrections generally don't carry an amount, so they're left as-is.
+          var linkedCost = l.costId ? state.costs.find(function (c) { return c.id === l.costId; }) : null;
+          var amountSuffix = linkedCost ? ' — ' + money(linkedCost.amount) : '';
           return '<tr style="background:#fafbfd;">' +
             '<td style="font-size:13px; color:var(--muted);">' + escapeHtml(formatDateCompact(l.date)) + '</td>' +
-            '<td style="font-size:13px;">' + escapeHtml(label) + (l.note ? ' — ' + escapeHtml(l.note) : '') + '</td>' +
+            '<td style="font-size:13px;">' + escapeHtml(label) + amountSuffix + (l.note ? ' — ' + escapeHtml(l.note) : '') + '</td>' +
             '<td style="font-size:13px; color:' + color + '; font-weight:600;">' + sign + l.qty + '</td>' +
             '<td style="text-align:right;"><button class="btn-text danger" data-remove-stock-log="' + l.id + '" title="Remove this history entry (does not change the stock count)" style="font-size:11px;">Remove</button></td>' +
           '</tr>';
@@ -2403,6 +2461,9 @@
     var empty = document.getElementById('cost-empty');
     var totalEl = document.getElementById('cost-total');
     var filtered = state.costs.filter(function (c) {
+      // Testing/R&D entries live on their own page (see renderTesting) — keep them out of
+      // the main Costs list so it isn't cluttered with non-resale purchases.
+      if (c.category === 'testing') return false;
       if (costFilterCategory && c.category !== costFilterCategory) return false;
       if (costFilterFrom && c.date < costFilterFrom) return false;
       if (costFilterTo && c.date > costFilterTo) return false;
@@ -2509,6 +2570,114 @@
       costSortByAmount = costSortByAmount === true ? false : true;
       renderCosts();
     }
+  });
+
+  // ================= TESTING / R&D =================
+  // Its own simple page, kept deliberately separate from Costs so it's obvious at a glance —
+  // for materials/samples bought to try out, not for resale. Stored under the hood as ordinary
+  // Cost entries with category:'testing' (so they still count in Dashboard's Total spent and
+  // can reuse deleteCost's existing safety checks), but never linked to a productId, so they
+  // never touch Inventory stock, and renderCosts() above filters them out of its own list.
+  var editingTestingId = null;
+
+  function clearTestingForm() {
+    editingTestingId = null;
+    document.getElementById('tf-description').value = '';
+    document.getElementById('tf-date').value = todayISO();
+    document.getElementById('tf-amount').value = '';
+    document.getElementById('tf-qty').value = '';
+    document.getElementById('tf-unit').value = '';
+  }
+
+  function editTestingEntry(id) {
+    var c = state.costs.find(function (x) { return x.id === id; });
+    if (!c) return;
+    editingTestingId = id;
+    document.getElementById('tf-description').value = c.description || '';
+    document.getElementById('tf-date').value = c.date || todayISO();
+    document.getElementById('tf-amount').value = c.amount || '';
+    document.getElementById('tf-qty').value = (typeof c.qty === 'number') ? c.qty : '';
+    document.getElementById('tf-unit').value = c.unit || '';
+    document.getElementById('testing-form-wrap').style.display = 'block';
+  }
+
+  document.getElementById('btn-add-testing').addEventListener('click', function () {
+    clearTestingForm();
+    document.getElementById('testing-form-wrap').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-testing').addEventListener('click', function () {
+    document.getElementById('testing-form-wrap').style.display = 'none';
+  });
+
+  document.getElementById('btn-save-testing').addEventListener('click', function () {
+    var amount = Number(document.getElementById('tf-amount').value) || 0;
+    var description = document.getElementById('tf-description').value.trim();
+    if (!description) { alert('Description is required.'); return; }
+    var date = document.getElementById('tf-date').value || todayISO();
+    var qtyRaw = document.getElementById('tf-qty').value;
+    var qty = qtyRaw !== '' ? Number(qtyRaw) : null;
+    var unit = document.getElementById('tf-unit').value;
+    if (editingTestingId) {
+      var c = state.costs.find(function (x) { return x.id === editingTestingId; });
+      if (c) {
+        c.description = description;
+        c.date = date;
+        c.amount = amount;
+        if (qty !== null) { c.qty = qty; } else { delete c.qty; }
+        if (unit) { c.unit = unit; } else { delete c.unit; }
+      }
+    } else {
+      var entry = { id: uid(), category: 'testing', date: date, amount: amount, description: description };
+      if (qty !== null) entry.qty = qty;
+      if (unit) entry.unit = unit;
+      state.costs.push(entry);
+    }
+    try {
+      save();
+    } catch (err) {
+      // save() already alerted why. Leave the form open with her data intact, matching the
+      // same recover-don't-lose-her-work behaviour as the Add Product save failure fix.
+      return;
+    }
+    document.getElementById('testing-form-wrap').style.display = 'none';
+    renderAll();
+  });
+
+  function renderTesting() {
+    var tbody = document.querySelector('#testing-table tbody');
+    var empty = document.getElementById('testing-empty');
+    var totalEl = document.getElementById('testing-total');
+    var entries = state.costs.filter(function (c) { return c.category === 'testing'; })
+      .slice()
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.id || '').localeCompare(a.id || ''); });
+    if (!entries.length) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      totalEl.textContent = '';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = entries.map(function (c) {
+      var qtyCell = (typeof c.qty === 'number') ? (c.qty + (c.unit ? c.unit : '')) : '—';
+      return '<tr>' +
+        '<td style="white-space:nowrap;">' + formatDate(c.date) + '</td>' +
+        '<td class="muted">' + escapeHtml(c.description || '—') + '</td>' +
+        '<td class="muted">' + escapeHtml(qtyCell) + '</td>' +
+        '<td>' + money(c.amount) + '</td>' +
+        '<td style="text-align:right; white-space:nowrap;">' +
+        '<button class="btn-text" data-edit-testing="' + c.id + '">Edit</button> ' +
+        '<button class="btn-text danger" data-delete-testing="' + c.id + '">Delete</button>' +
+        '</td></tr>';
+    }).join('');
+    var total = entries.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+    totalEl.textContent = 'Total: ' + money(total);
+  }
+
+  document.querySelector('#testing-table tbody').addEventListener('click', function (e) {
+    var editId = e.target.getAttribute('data-edit-testing');
+    var delId = e.target.getAttribute('data-delete-testing');
+    if (editId) editTestingEntry(editId);
+    if (delId) deleteCost(delId);
   });
 
   // ================= ORDERS =================
@@ -3500,13 +3669,18 @@
     // reporting tag for the Costs breakdown, not what decides Expense vs Inventory here.
     // Qty <= 0 (e.g. a wastage write-off, which also links to a product) is excluded — that
     // money was already counted once when the stock was originally purchased.
-    var inventorySpend = 0, expenseFromCosts = 0;
+    // Testing/R&D entries (category:'testing') are tracked separately from both — she doesn't
+    // want them lumped into "Expense" (that card is meant for ongoing operating costs like ads/
+    // shipping/packaging), but the money is still genuinely spent, so it still counts toward
+    // Total spent and still reduces Net profit, just via its own testingSpend bucket instead.
+    var inventorySpend = 0, expenseFromCosts = 0, testingSpend = 0;
     state.costs.forEach(function (c) {
+      if (c.category === 'testing') { testingSpend += Number(c.amount); return; }
       var isInventoryPurchase = c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0);
       if (isInventoryPurchase) inventorySpend += Number(c.amount);
       else expenseFromCosts += Number(c.amount);
     });
-    var allCostsSpent = inventorySpend + expenseFromCosts;
+    var allCostsSpent = inventorySpend + expenseFromCosts + testingSpend;
     var expense = expenseFromCosts + shippingCostsPaid;
     // Money actually collected: an order only counts once it's marked Paid (add-ons are
     // tracked/paid separately), not the moment it's logged — matches the app's existing
@@ -3514,11 +3688,11 @@
     var cashCollected = active.reduce(function (s, o) { return s + (orderTotal(o) - unpaidAmountFor(o)); }, 0);
     var cash = Number(state.startingCash || 0) - allCostsSpent - shippingCostsPaid + cashCollected;
     var invValue = state.products.reduce(function (s, p) { return s + p.stock * p.cost; }, 0);
-    var netProfit = revenue - inventorySpend - expense;
+    var netProfit = revenue - inventorySpend - expense - testingSpend;
     var totalAccountValue = cash + invValue;
     return {
       active: active, revenue: revenue, shippingCostsPaid: shippingCostsPaid,
-      inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, allCostsSpent: allCostsSpent,
+      inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, testingSpend: testingSpend, allCostsSpent: allCostsSpent,
       expense: expense, cash: cash, invValue: invValue,
       netProfit: netProfit, totalAccountValue: totalAccountValue
     };
@@ -3528,6 +3702,10 @@
   // same pattern as dashboardEditingCash below. Empty string means "no bound" (all-time).
   var dashboardDateFrom = '';
   var dashboardDateTo = '';
+  // Ephemeral display-only toggle on the "Total spent" card — lets her preview the total with
+  // testing spend subtracted out, without touching the underlying Net profit/Expense math or
+  // any stored data (those still always include testing, per her earlier confirmation).
+  var dashboardTotalSpentExcludeTesting = false;
 
   // Revenue/Total spent/Net profit scoped to a date range (inclusive) — everything else on
   // Dashboard (Cash, Inventory value, Total account value, Expense, Awaiting payment) stays
@@ -3537,16 +3715,17 @@
     var inRange = function (d) { return (!fromDate || d >= fromDate) && (!toDate || d <= toDate); };
     var active = state.orders.filter(function (o) { return o.status !== 'cancelled' && inRange(o.date); });
     var revenue = active.reduce(function (s, o) { return s + orderTotal(o); }, 0);
-    var inventorySpend = 0, expenseFromCosts = 0;
+    var inventorySpend = 0, expenseFromCosts = 0, testingSpend = 0;
     state.costs.forEach(function (c) {
       if (!inRange(c.date)) return;
+      if (c.category === 'testing') { testingSpend += Number(c.amount); return; }
       var isInventoryPurchase = c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0);
       if (isInventoryPurchase) inventorySpend += Number(c.amount);
       else expenseFromCosts += Number(c.amount);
     });
-    var allCostsSpent = inventorySpend + expenseFromCosts;
+    var allCostsSpent = inventorySpend + expenseFromCosts + testingSpend;
     var netProfit = revenue - allCostsSpent;
-    return { revenue: revenue, allCostsSpent: allCostsSpent, netProfit: netProfit, orderCount: active.length };
+    return { revenue: revenue, allCostsSpent: allCostsSpent, testingSpend: testingSpend, netProfit: netProfit, orderCount: active.length };
   }
 
   function dashboardDateRangeHtml() {
@@ -3566,6 +3745,7 @@
     var revenue = periodFin ? periodFin.revenue : fin.revenue;
     var netProfitPeriod = periodFin ? periodFin.netProfit : fin.netProfit;
     var totalSpentPeriod = periodFin ? periodFin.allCostsSpent : fin.allCostsSpent;
+    var testingSpendPeriod = periodFin ? periodFin.testingSpend : fin.testingSpend;
     var orderCountLabel = periodFin ? periodFin.orderCount + ' orders in range (excl. cancelled)' : fin.active.length + ' orders (excl. cancelled)';
     var active = fin.active;
     var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
@@ -3583,8 +3763,9 @@
       statCard('Expense', money(fin.expense), 'Ads, shipping, packaging, fees etc. + courier paid') +
       statCard('Inventory value', money(invValue), unitsInStock + ' units in stock') +
       statCard('Revenue', money(revenue), orderCountLabel) +
-      statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
-      statCard('Total spent', money(totalSpentPeriod), (periodFin ? 'For the selected range' : 'Everything ever logged in Costs') + ' — inventory + other') +
+      statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense − testing' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
+      totalSpentStatCard(totalSpentPeriod, testingSpendPeriod, !!periodFin) +
+      statCard('Testing spent', money(fin.testingSpend), 'Samples/materials for testing — not counted as Expense') +
       statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
       '</div>' +
       '<div class="panel-grid">' +
@@ -3659,6 +3840,7 @@
   document.getElementById('dashboard-content').addEventListener('change', function (e) {
     if (e.target.id === 'dash-date-from') { dashboardDateFrom = e.target.value; renderDashboard(); return; }
     if (e.target.id === 'dash-date-to') { dashboardDateTo = e.target.value; renderDashboard(); return; }
+    if (e.target.id === 'dash-totalspent-mode') { dashboardTotalSpentExcludeTesting = (e.target.value === 'exclude'); renderDashboard(); return; }
   });
   document.getElementById('dashboard-content').addEventListener('keydown', function (e) {
     if (e.target.id === 'dash-startingcash-input' && e.key === 'Enter') {
@@ -3670,6 +3852,24 @@
     return '<div class="stat-card"><div class="stat-label">' + label + '</div>' +
       '<div class="stat-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' + value + '</div>' +
       (sub ? '<div class="stat-sub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  // "Total spent" gets a small display-only dropdown so she can preview the number with testing
+  // spend subtracted out, without that choice touching Net profit, Expense, or any stored data —
+  // purely a "what would this look like without testing" view on this one card.
+  function totalSpentStatCard(rawTotal, testingAmt, isPeriod) {
+    var displayed = dashboardTotalSpentExcludeTesting ? (rawTotal - testingAmt) : rawTotal;
+    return '<div class="stat-card">' +
+      '<div style="display:flex; align-items:center; justify-content:space-between; gap:6px;">' +
+        '<div class="stat-label">Total spent</div>' +
+        '<select id="dash-totalspent-mode" style="width:auto; font-size:11px; padding:2px 4px; height:auto;">' +
+          '<option value="include"' + (!dashboardTotalSpentExcludeTesting ? ' selected' : '') + '>Incl. testing</option>' +
+          '<option value="exclude"' + (dashboardTotalSpentExcludeTesting ? ' selected' : '') + '>Excl. testing</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="stat-value">' + money(displayed) + '</div>' +
+      '<div class="stat-sub">' + (isPeriod ? 'For the selected range' : 'Everything ever logged in Costs') + ' — inventory + other' + (dashboardTotalSpentExcludeTesting ? ' (testing excluded here only)' : '') + '</div>' +
+    '</div>';
   }
 
   // Cash is the one figure she can correct by hand (e.g. if her real bank balance drifts
@@ -4197,19 +4397,22 @@
   // amount in EACH of several colours — the real total is count x amount, not just the
   // amount on its own. Applies to any loose-fill material (glitter, mica powder, 软陶, resin,
   // dye, etc.) since none of them are tied to one specific keyword for this pattern.
-  var UNIT_QTY_COLOUR_RE = /(\d+)\s*colou?rs?\s*[x×,]?\s*(\d+(?:\.\d+)?)\s*(ml|g)\b/i;
-  // Covers volume/weight (ml/g, for loose-fill materials) AND count-based packaging supplies
-  // (rolls of bubble wrap; pieces for parcel/trash bags) with the same mechanism.
-  var UNIT_QTY_PLAIN_RE = /(\d+(?:\.\d+)?)\s*(ml|g|rolls?|卷|pcs?|pieces?|个|件)\b/i;
+  var UNIT_QTY_COLOUR_RE = /(\d+)\s*colou?rs?\s*[x×,]?\s*(\d+(?:\.\d+)?)\s*(ml|g|l|litres?|liters?|公升|升)\b/i;
+  // Covers volume/weight (ml/g/L, for loose-fill materials and liquids) AND count-based
+  // packaging supplies (rolls of bubble wrap; pieces for parcel/trash bags) with the same
+  // mechanism. "l"/"litre"/"liter"/公升/升 all normalize down to 'L' below.
+  var UNIT_QTY_PLAIN_RE = /(\d+(?:\.\d+)?)\s*(ml|l|litres?|liters?|公升|升|g|rolls?|卷|pcs?|pieces?|个|件)\b/i;
   // A bare "x5" (or "x 5") with no unit word at all — she knows the count but the unit still
   // needs picking from the dropdown (e.g. "bubble wrap x5 100rmb": 5 what? rolls or pieces?).
   var COUNT_ONLY_RE = /(?:^|\s)x\s*(\d+)\b/i;
 
-  // Collapses whatever unit word was actually typed ("roll", "rolls", "卷", "pcs", "piece", "个"...)
-  // down to the one canonical value used internally and in the dropdown ('ml' | 'g' | 'rolls' | 'pcs').
+  // Collapses whatever unit word was actually typed ("roll", "rolls", "卷", "pcs", "piece", "个",
+  // "litre", "liter", "L", "升", "公升"...) down to the one canonical value used internally and
+  // in the dropdown ('ml' | 'L' | 'g' | 'rolls' | 'pcs').
   function normalizeUnitWord(raw) {
     var w = String(raw || '').toLowerCase();
     if (w === 'ml') return 'ml';
+    if (w === 'l' || w.indexOf('litre') !== -1 || w.indexOf('liter') !== -1 || w === '公升' || w === '升') return 'L';
     if (w === 'g') return 'g';
     if (w.indexOf('roll') !== -1 || w === '卷') return 'rolls';
     return 'pcs';
@@ -4317,12 +4520,24 @@
       hasCurrencyMarker = true;
       tokens = tokens.slice(0, tokens.length - 1);
       last = tokens[tokens.length - 1];
+    } else if (/^myr$/i.test(last)) {
+      // Explicit "myr" marker — already the base currency, so no FX conversion is needed,
+      // just record that a currency WAS specified (skips the "is this MYR or RMB?" ask below).
+      hasCurrencyMarker = true;
+      tokens = tokens.slice(0, tokens.length - 1);
+      last = tokens[tokens.length - 1];
     } else {
       var glued = last.match(/^(?:rm)?(\d+(?:\.\d+)?)(rmb|cny|人民币)$/i);
       if (glued) {
         currencyHint = 'rmb';
         hasCurrencyMarker = true;
         last = glued[1];
+      } else {
+        var gluedMyr = last.match(/^(\d+(?:\.\d+)?)myr$/i);
+        if (gluedMyr) {
+          hasCurrencyMarker = true;
+          last = gluedMyr[1];
+        }
       }
     }
     if (!last) return null;
@@ -4398,6 +4613,20 @@
     if (mc) return { qty: Number(mc[1]) * Number(mc[2]), unit: mc[3].toLowerCase() };
     var m = s.match(UNIT_QTY_PLAIN_RE);
     return m ? { qty: Number(m[1]), unit: normalizeUnitWord(m[2]) } : null;
+  }
+
+  // Testing/R&D batch lines (see "testing items" header in the Quick Add send handler): a bare
+  // "xN" count means N pieces — the leading size mention, if any (e.g. "700ml" in "700ml x3"),
+  // stays purely descriptive rather than being read as the quantity itself. Checked BEFORE a
+  // plain volume/weight match for that exact reason. Falls back to a direct volume/weight
+  // mention (e.g. "mineral oil 500ml") when there's no "xN" at all.
+  function extractTestingLineQty(desc) {
+    var s = String(desc || '');
+    var mx = s.match(COUNT_ONLY_RE);
+    if (mx) return { qty: Number(mx[1]), unit: 'pcs' };
+    var uq = parseUnitQtyFromDesc(s);
+    if (uq) return { qty: uq.qty, unit: uq.unit };
+    return null;
   }
 
   // Recognizes a bare mention of a product Type (Tumbler / Stickers / Others) in a line
@@ -4598,6 +4827,11 @@
       return;
     }
     var item = quickAddPending[0];
+    if (item.needsAmountAsk) {
+      quickAddStage = { type: 'amountask', item: item };
+      renderQuickAdd();
+      return;
+    }
     if (item.needsFx) {
       quickAddStage = { type: 'fxconvert', item: item };
       renderQuickAdd();
@@ -4606,6 +4840,18 @@
     if (item.currencyUnconfirmed) {
       quickAddStage = { type: 'currencyask', item: item };
       renderQuickAdd();
+      return;
+    }
+    // Testing/R&D lines skip category matching, seller/shipping asks, and Inventory entirely —
+    // they're never anything but a Testing entry. Only the qty/unit is still possibly unknown
+    // at this point (amount/currency are already resolved above like any other line).
+    if (item.isTesting) {
+      if (item.testingQty == null && !item.testingQtySkipped) {
+        quickAddStage = { type: 'testingqtyask', item: item };
+        renderQuickAdd();
+        return;
+      }
+      finalizeQuickAddTesting(item);
       return;
     }
     var dup = findDuplicateQuickAddCost(item.description, item.amount);
@@ -4622,19 +4868,26 @@
     if (product) {
       var matchedQty = parseQtyFromDesc(item.description);
       if (matchedQty) item.parsedQty = matchedQty;
-      // Materials that were originally tagged with a specific Cost category override (e.g.
-      // packaging supplies filed under "packaging" instead of the generic restock label) should
-      // keep showing up under that same category on every later restock too, not just the first
-      // purchase — otherwise the Packaging breakdown would miss all but the very first buy.
-      quickAddStage = { type: 'sellercheck', item: item, productId: product.id, mode: (product.sourcePlatform || product.sourceLink) ? 'ask' : 'input', category: product.costCategoryOverride || 'restock' };
+      // Matching an existing product by name used to silently mean "this is a restock of it" —
+      // but a name match can be wrong (e.g. she has "Mineral Oil" already, but this purchase is
+      // actually a different new item that happens to share that text). Always confirm with her
+      // instead of deciding on her behalf.
+      quickAddStage = { type: 'restockconfirm', item: item, productId: product.id };
       renderQuickAdd();
       return;
     }
+    resolveQuickAddCategoryNoMatch(item);
+  }
+
+  // Reached either when no existing product name matched the line at all, OR when one did
+  // match but she said "no, this isn't a restock of that" at the restockconfirm stage — in
+  // both cases, treat it exactly like a fresh line with no known product.
+  function resolveQuickAddCategoryNoMatch(item) {
     // Explicit "restock"/补货/进货 keyword on a line that didn't already match an existing
     // product by name -> let her pick which inventory item this tops up, instead of guessing
     // or (worse) accidentally spinning up a duplicate product for it.
     if (isRestockKeyword(item.description)) {
-      quickAddStage = { type: 'productpicker', item: item };
+      quickAddStage = { type: 'productpickertype', item: item };
       renderQuickAdd();
       return;
     }
@@ -4690,6 +4943,24 @@
     }
     quickAddStage = { type: 'category', item: item };
     renderQuickAdd();
+  }
+
+  // She confirmed the name match IS a restock of that existing product — proceed exactly the
+  // way a matched line used to proceed automatically.
+  function confirmQuickAddRestock() {
+    var stage = quickAddStage;
+    var item = stage.item;
+    var product = state.products.find(function (p) { return p.id === stage.productId; });
+    quickAddStage = { type: 'sellercheck', item: item, productId: stage.productId, mode: (product && (product.sourcePlatform || product.sourceLink)) ? 'ask' : 'input', category: (product && product.costCategoryOverride) || 'restock' };
+    renderQuickAdd();
+  }
+
+  // She said the name match is NOT what this line is about (e.g. a different item that just
+  // happens to share text with something already in Inventory) — fall back to treating it like
+  // a fresh line with no known product at all.
+  function declineQuickAddRestock() {
+    var stage = quickAddStage;
+    resolveQuickAddCategoryNoMatch(stage.item);
   }
 
   // Gate before finalizing: in a single-line send, ask whether a separate shipping
@@ -4779,6 +5050,53 @@
     renderAll();
   }
 
+  // Reads the qty/unit she just typed into the testingqtyask stage. Requires a positive number —
+  // if she wants to leave qty blank entirely, that's what the separate Skip button is for.
+  function saveQuickAddTestingQty() {
+    var item = quickAddPending[0];
+    var qty = Number(document.getElementById('qa-testingqty-amount').value) || 0;
+    if (qty <= 0) { alert('Enter a quantity, or tap Skip if there isn\'t one.'); return; }
+    item.testingQty = qty;
+    item.testingUnit = document.getElementById('qa-testingqty-unit').value || 'pcs';
+    processNextQuickAdd();
+  }
+
+  function skipQuickAddTestingQty() {
+    var item = quickAddPending[0];
+    item.testingQtySkipped = true;
+    processNextQuickAdd();
+  }
+
+  // Testing/R&D entries are always plain Cost entries in the 'testing' category — no seller,
+  // no shipping, no linked product, no Inventory stock change — matching the standalone
+  // Testing page's own manual "+ Add" form exactly (see clearTestingForm/btn-save-testing).
+  function finalizeQuickAddTesting(item) {
+    var entry = {
+      id: uid(),
+      category: 'testing',
+      date: item.date || todayISO(),
+      amount: Math.round(item.amount * 100) / 100,
+      description: item.description
+    };
+    if (item.testingQty != null) {
+      entry.qty = item.testingQty;
+      entry.unit = item.testingUnit || 'pcs';
+    }
+    if (item.fxOriginalAmount) {
+      entry.originalAmount = item.fxOriginalAmount;
+      entry.originalCurrency = item.fxCurrency || 'CNY';
+      entry.exchangeRate = item.fxRate;
+    }
+    state.costs.push(entry);
+    quickAddLastEntryId = entry.id;
+    if (quickAddBatchMode) quickAddBatchIds.push(entry.id);
+    var qtyNote = (entry.qty != null) ? ' · ' + entry.qty + entry.unit : '';
+    pushChatMsg('bot', '✓ Logged testing/R&D: ' + item.description + ' — ' + money(entry.amount) + qtyNote);
+    quickAddPending.shift();
+    processNextQuickAdd();
+    renderAll();
+  }
+
   // A shared shipping fee lives in its own standalone Cost entry ("shipping 145") and STAYS
   // there — it's never split off into or deleted in favour of the items that reuse it. This
   // just works out each claiming item's proportional SHARE (recomputed every time a new item
@@ -4854,7 +5172,7 @@
   function chooseQuickAddCategory(category) {
     var item = quickAddPending[0];
     if (category === 'restock') {
-      quickAddStage = { type: 'productpicker', item: item };
+      quickAddStage = { type: 'productpickertype', item: item };
       renderQuickAdd();
       return;
     }
@@ -4955,6 +5273,21 @@
     item.rawAmount = item.amount;
     item.amount = null;
     item.needsFx = true;
+    processNextQuickAdd();
+  }
+
+  // She typed a line with no detectable amount (forgot it, or used a format not recognized) —
+  // rather than silently dropping the whole line, ask for the amount and carry on with
+  // whatever else she already typed as the description.
+  function saveQuickAddAmountAsk() {
+    var item = quickAddPending[0];
+    var amt = Number(document.getElementById('qa-amountask-amount').value) || 0;
+    if (amt <= 0) { alert('Enter a valid amount.'); return; }
+    item.amount = amt;
+    item.needsAmountAsk = false;
+    // No currency marker was typed (it was a bare amount she just entered here) — same as any
+    // other bare-number line, confirm MYR vs RMB before finalizing.
+    item.currencyUnconfirmed = true;
     processNextQuickAdd();
   }
 
@@ -5110,6 +5443,12 @@
         '<div>phone case 100 rmb</div>' +
       '</div>' +
       '<div class="muted" style="margin-top:10px; font-size:12px;">Mention "RMB" and I\'ll ask for the exchange rate and convert it to RM for you. Made a typo? There\'s always a Cancel button when I ask you something.</div>' +
+      '<div class="muted" style="margin-top:6px; font-size:12px;">Start a line with "testing items" to log samples/materials as Testing/R&D instead — e.g.:</div>' +
+      '<div style="font-family:monospace; font-size:12px; line-height:1.9; background:#f7f8fb; border-radius:8px; padding:10px 12px; margin-top:6px;">' +
+        '<div>testing items</div>' +
+        '<div>700ml x3 50rmb</div>' +
+        '<div>400ml x5 100myr</div>' +
+      '</div>' +
     '</div>';
 
     var logHtml = state.chatLog.length
@@ -5122,7 +5461,28 @@
       : welcomeHtml;
 
     var stageHtml = '';
-    if (quickAddStage && quickAddStage.type === 'fxconvert') {
+    if (quickAddStage && quickAddStage.type === 'amountask') {
+      var itAA = quickAddStage.item;
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">Couldn\'t find an amount in "' + escapeHtml(itAA.description) + '" — how much was it (in RM)?</div>' +
+        '<input id="qa-amountask-amount" type="number" step="0.01" min="0" placeholder="e.g. 20" style="width:140px;">' +
+        '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-amountask-save">Continue</button> ' + QUICKADD_CANCEL_BTN + '</div>' +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'testingqtyask') {
+      var itTQ = quickAddStage.item;
+      var tqUnitOpts = [
+        { v: 'ml', l: 'ml' }, { v: 'L', l: 'L' }, { v: 'g', l: 'g' }, { v: 'rolls', l: 'rolls' }, { v: 'pcs', l: 'pcs' }
+      ].map(function (u) { return '<option value="' + u.v + '">' + u.l + '</option>'; }).join('');
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(itTQ.description) + '" — ' + money(itTQ.amount) + '. How much (qty), if any?</div>' +
+        '<div class="form-grid" style="margin-bottom:8px;">' +
+          '<div><label class="field-label">Qty</label><input id="qa-testingqty-amount" type="number" step="0.01" min="0"></div>' +
+          '<div><label class="field-label">Unit</label><select id="qa-testingqty-unit">' + tqUnitOpts + '</select></div>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-testingqty-save">Continue</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-qa-testingqty-skip">Skip</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'fxconvert') {
       var itF = quickAddStage.item;
       stageHtml = '<div class="card qa-stage">' +
         '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(itF.description) + '" looks like it\'s in RMB — RMB ' + itF.rawAmount.toFixed(2) + '. What\'s the exchange rate (RMB → RM)?</div>' +
@@ -5168,13 +5528,27 @@
         '<div style="margin-top:8px;"><button class="btn btn-secondary btn-small" data-qa-treat-as-cost="1">💰 This is a cost</button></div>' +
         '<div style="margin-top:8px;">' + QUICKADD_CANCEL_BTN + '</div>' +
       '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'productpickertype') {
+      var itPT = quickAddStage.item;
+      var typeBtns = PRODUCT_TYPES.map(function (t) {
+        return '<button class="btn btn-secondary btn-small" data-qa-restock-type="' + escapeHtml(t) + '">' + escapeHtml(t) + '</button>';
+      }).join(' ');
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">Which product is this restock for?' + (itPT.amount != null ? ' "' + escapeHtml(itPT.description) + '" — ' + money(itPT.amount) : '') + ' Pick a Type first:</div>' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' + typeBtns + '<button class="btn btn-secondary btn-small" data-qa-restock-type="__all__">Show all</button></div>' +
+        QUICKADD_CANCEL_BTN +
+      '</div>';
     } else if (quickAddStage && quickAddStage.type === 'productpicker') {
       var itP = quickAddStage.item;
+      var filterType = quickAddStage.filterType;
+      var itemsForPicker = (filterType && filterType !== '__all__') ? state.products.filter(function (p) { return p.type === filterType; }) : state.products;
       var productOpts = '<option value="">— none / not linked to a specific product —</option>' +
-        state.products.map(function (p) { return '<option value="' + p.id + '">' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : '')) + '</option>'; }).join('') +
+        itemsForPicker.map(function (p) { return '<option value="' + p.id + '">' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : '')) + '</option>'; }).join('') +
         '<option value="__new__">+ Add new product</option>';
       stageHtml = '<div class="card qa-stage">' +
-        '<div style="font-size:13px; margin-bottom:8px;">Which product is this restock for?' + (itP.amount != null ? ' "' + escapeHtml(itP.description) + '" — ' + money(itP.amount) : '') + '</div>' +
+        '<div style="font-size:13px; margin-bottom:8px;">Which product is this restock for?' + (itP.amount != null ? ' "' + escapeHtml(itP.description) + '" — ' + money(itP.amount) : '') +
+          (filterType && filterType !== '__all__' ? ' (' + escapeHtml(filterType) + ')' : '') + '</div>' +
+        (itemsForPicker.length === 0 ? '<div class="muted" style="font-size:12px; margin-bottom:8px;">No ' + escapeHtml(filterType || '') + ' items in Inventory yet.</div>' : '') +
         '<select id="qa-product-select">' + productOpts + '</select>' +
         '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-product-confirm">Confirm</button> ' + QUICKADD_CANCEL_BTN + '</div>' +
       '</div>';
@@ -5194,7 +5568,7 @@
       var mqDefaultUnit = stMQ.item.defaultUnit || 'ml';
       var mqCountHint = stMQ.item.countHint || '';
       var mqUnitOpts = [
-        { v: 'ml', l: 'ml' }, { v: 'g', l: 'g' }, { v: 'rolls', l: 'rolls' }, { v: 'pcs', l: 'pcs' }
+        { v: 'ml', l: 'ml' }, { v: 'L', l: 'L' }, { v: 'g', l: 'g' }, { v: 'rolls', l: 'rolls' }, { v: 'pcs', l: 'pcs' }
       ].map(function (u) {
         return '<option value="' + u.v + '"' + (u.v === mqDefaultUnit ? ' selected' : '') + '>' + u.l + '</option>';
       }).join('');
@@ -5232,6 +5606,14 @@
           '</div>' +
         '</div>' +
         '<button class="btn btn-primary btn-small" id="btn-qa-save-newproduct">Save</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'restockconfirm') {
+      var stRC = quickAddStage;
+      var prodRC = state.products.find(function (p) { return p.id === stRC.productId; });
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(stRC.item.description) + '" matches "' + escapeHtml(prodRC ? (prodRC.name + (prodRC.variant ? ' — ' + prodRC.variant : '')) : '?') + '" already in Inventory — is this restocking it?</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-qa-restock-confirm-yes">Yes, restock this</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-qa-restock-confirm-no">No, something else</button> ' + QUICKADD_CANCEL_BTN +
       '</div>';
     } else if (quickAddStage && quickAddStage.type === 'sellercheck') {
       var stC = quickAddStage;
@@ -5339,15 +5721,26 @@
       var lines = val.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
       if (!lines.length) return;
       pushChatMsg('user', val.trim());
+      // A leading "testing items" (or bare "testing") header line means every line after it is
+      // a Testing/R&D entry (samples/materials bought just to try, not for resale) — she never
+      // wants these auto-detected as a normal cost/restock, so they skip that whole pipeline
+      // and go straight to a Testing Cost entry once amount/qty are known.
+      var testingBatch = /^testing(\s+items?)?\s*[:\-]?$/i.test(lines[0]);
+      if (testingBatch) lines = lines.slice(1);
+      if (testingBatch && !lines.length) {
+        pushChatMsg('bot', 'Type each testing/sample item on its own line after "testing items", e.g. "700ml x3 50rmb".');
+        document.getElementById('qa-input').value = '';
+        renderQuickAdd();
+        return;
+      }
       var parsedLines = [];
-      var skipped = [];
       lines.forEach(function (line) {
         // A typed date (any supported format) means she's logging something that actually
         // happened on a different day — pull it out first so it doesn't get mistaken for part
         // of the amount/description, and carry it through to whatever Cost entry results.
         var dateMatch = extractDateFromLine(line);
         var workingLine = dateMatch ? dateMatch.rest : line;
-        if (isBareRestockLine(workingLine)) {
+        if (!testingBatch && isBareRestockLine(workingLine)) {
           var bareItem = { description: workingLine.trim(), amount: null };
           if (dateMatch) bareItem.date = dateMatch.date;
           parsedLines.push(bareItem);
@@ -5363,19 +5756,39 @@
           } else if (!parsed.hasCurrencyMarker) {
             parsed.currencyUnconfirmed = true;
           }
+          if (testingBatch) {
+            parsed.isTesting = true;
+            var tq = extractTestingLineQty(parsed.description);
+            if (tq) { parsed.testingQty = tq.qty; parsed.testingUnit = tq.unit; }
+          }
           parsedLines.push(parsed);
-        } else skipped.push(line);
+        } else {
+          // Couldn't find an amount (e.g. she forgot to type one, or typed it in a format not
+          // recognized) — ask for it instead of silently discarding the whole line and making
+          // her retype everything from scratch.
+          var askItem = { description: workingLine.trim(), amount: null, needsAmountAsk: true };
+          if (dateMatch) askItem.date = dateMatch.date;
+          if (testingBatch) {
+            askItem.isTesting = true;
+            var tq2 = extractTestingLineQty(askItem.description);
+            if (tq2) { askItem.testingQty = tq2.qty; askItem.testingUnit = tq2.unit; }
+          }
+          parsedLines.push(askItem);
+        }
       });
-      if (skipped.length) {
-        pushChatMsg('bot', 'Could not find an amount in: ' + skipped.join(' / ') + ' — skipped. Make sure each line ends with a number.');
-      }
-      quickAddBatchMode = parsedLines.length > 1;
+      // Testing/R&D lines never have a shared shipping fee to split across them (that concept
+      // doesn't apply — see finalizeQuickAddTesting), so they don't participate in "batch mode"
+      // at all, regardless of how many lines she typed after the header.
+      quickAddBatchMode = testingBatch ? false : (parsedLines.length > 1);
       quickAddBatchIds = [];
       quickAddPending = quickAddPending.concat(parsedLines);
       processNextQuickAdd();
       return;
     }
     if (e.target.getAttribute('data-qa-cancel')) { cancelQuickAddPending(); return; }
+    if (e.target.id === 'btn-qa-amountask-save') { saveQuickAddAmountAsk(); return; }
+    if (e.target.id === 'btn-qa-testingqty-save') { saveQuickAddTestingQty(); return; }
+    if (e.target.id === 'btn-qa-testingqty-skip') { skipQuickAddTestingQty(); return; }
     if (e.target.id === 'btn-qa-fx-confirm') { confirmQuickAddFx(); return; }
     if (e.target.id === 'btn-qa-fx-uselast') { confirmQuickAddFx(quickAddLastFxRate); return; }
     if (e.target.id === 'btn-qa-currency-myr') { confirmQuickAddCurrencyMyr(); return; }
@@ -5425,6 +5838,14 @@
     }
     if (e.target.getAttribute('data-qa-newproduct')) {
       quickAddStage = { type: 'newproduct', item: quickAddPending[0] };
+      renderQuickAdd();
+      return;
+    }
+    if (e.target.id === 'btn-qa-restock-confirm-yes') { confirmQuickAddRestock(); return; }
+    if (e.target.id === 'btn-qa-restock-confirm-no') { declineQuickAddRestock(); return; }
+    var restockType = e.target.getAttribute('data-qa-restock-type');
+    if (restockType) {
+      quickAddStage = { type: 'productpicker', item: quickAddStage.item, filterType: restockType };
       renderQuickAdd();
       return;
     }
@@ -5490,6 +5911,7 @@
     renderDashboard();
     renderInventory();
     renderCosts();
+    renderTesting();
     renderOrders();
     renderSchedule();
     renderCalendar();
