@@ -17,6 +17,8 @@
     --red-bg: #fee2e2;
     --green: #059669;
     --green-bg: #d1fae5;
+    --amber: #b45309;
+    --amber-bg: #fef3c7;
   }
   * { box-sizing: border-box; }
   body {
@@ -143,6 +145,9 @@
   .qa-bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
   .qa-bubble-user { background: var(--blue); color: #fff; border-bottom-right-radius: 4px; }
   .qa-bubble-bot { background: #f1f3f8; color: var(--text); border-bottom-left-radius: 4px; }
+  .qa-bubble-delete { background: var(--red-bg); color: var(--red); border-bottom-left-radius: 4px; }
+  .qa-bubble-move { background: var(--amber-bg); color: var(--amber); border-bottom-left-radius: 4px; }
+  .qa-bubble-cancel { background: transparent; color: var(--muted); border: 1px dashed var(--border); border-bottom-left-radius: 4px; }
   .qa-stage { background: #eef4ff; margin-bottom: 12px; }
   #quickadd-content { padding-bottom: 84px; }
   main:has(#page-quickadd.active) ~ footer { display: none; }
@@ -240,6 +245,7 @@
 <body>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <div id="auth-screen" class="auth-screen">
   <div class="card auth-card">
@@ -399,7 +405,7 @@
         </div>
         <div>
           <label class="field-label">Low stock alert threshold</label>
-          <input id="pf-threshold" type="number" min="0" value="5">
+          <input id="pf-threshold" type="number" min="0" value="2">
         </div>
         <div style="grid-column: 1 / -1;">
           <label class="field-label">Photo (optional — helps you recognize sticker designs at a glance)</label>
@@ -539,7 +545,7 @@
               </div>
               <div>
                 <label class="field-label">Low-stock threshold</label>
-                <input id="cf-newp-threshold" type="number" min="0" value="5">
+                <input id="cf-newp-threshold" type="number" min="0" value="2">
               </div>
             </div>
           </div>
@@ -615,6 +621,10 @@
         <button class="btn btn-secondary btn-small" id="btn-costfilter-clear">Clear dates</button>
       </div>
       <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
+        <span style="display:inline-flex; gap:4px;">
+          <input type="text" id="cost-filter-search" placeholder="Search description/product" style="width:170px;">
+          <button type="button" class="btn btn-secondary btn-small" id="btn-costfilter-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>
+        </span>
         <select id="cost-filter-category" style="width:170px;">
           <option value="">All categories</option>
           <option value="restock">restock</option>
@@ -680,6 +690,15 @@
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-testing">Save</button>
         <button class="btn btn-secondary" id="btn-cancel-testing">Cancel</button>
+      </div>
+      <div id="testing-move-actions" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);"></div>
+    </div>
+    <div class="card" id="testing-filter-bar">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
+        <span style="display:inline-flex; gap:4px;">
+          <input type="text" id="testing-filter-search" placeholder="Search description" style="width:170px;">
+          <button type="button" class="btn btn-secondary btn-small" id="btn-testingfilter-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>
+        </span>
       </div>
     </div>
     <div class="card" style="overflow-x:auto;">
@@ -1194,7 +1213,7 @@
     document.getElementById('pf-cost').value = '';
     document.getElementById('pf-price').value = '';
     document.getElementById('pf-stock').value = '';
-    document.getElementById('pf-threshold').value = 5;
+    document.getElementById('pf-threshold').value = 2;
     document.getElementById('pf-photo-file').value = '';
     pfPhotoData = '';
     hidePhotoPreview();
@@ -1586,7 +1605,10 @@
         return '<option value="' + escapeHtml(n) + '"' + (n === f.name ? ' selected' : '') + '>' + escapeHtml(n) + '</option>';
       }).join('');
       filterHtml = '<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
-        '<input type="text" data-inv-search="' + escapeHtml(title) + '" placeholder="Search products" value="' + escapeHtml(f.search) + '" style="width:160px;">' +
+        '<span style="display:inline-flex; gap:4px;">' +
+        '<input type="text" data-inv-search="' + escapeHtml(title) + '" placeholder="Search products" value="' + escapeHtml(f.search) + '" style="width:140px;">' +
+        '<button type="button" class="btn btn-secondary btn-small" data-inv-search-go="' + escapeHtml(title) + '" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
+        '</span>' +
         '<select data-inv-filter="' + escapeHtml(title) + '" style="width:200px;">' + opts + '</select>' +
         '</div>';
       items = items.filter(function (p) {
@@ -1602,7 +1624,10 @@
     // grouping/dropdown itself.
     if (groupByTheme && items.length > 0) {
       filterHtml = '<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
-        '<input type="text" id="sticker-search" placeholder="Search name or SKU" value="' + escapeHtml(stickerSearchText) + '" style="width:170px;">' +
+        '<span style="display:inline-flex; gap:4px;">' +
+        '<input type="text" id="sticker-search" placeholder="Search name or SKU" value="' + escapeHtml(stickerSearchText) + '" style="width:150px;">' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-sticker-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
+        '</span>' +
         '<select id="sticker-sort">' +
           '<option value="name"' + (stickerSortMode === 'name' ? ' selected' : '') + '>Sort: Name</option>' +
           '<option value="sku"' + (stickerSortMode === 'sku' ? ' selected' : '') + '>Sort: SKU</option>' +
@@ -1697,14 +1722,22 @@
       renderInventory();
     }
   });
-  document.getElementById('inventory-content').addEventListener('input', function (e) {
+  // Searching used to re-filter on every keystroke ('input' event), which forces a full
+  // re-render — and since that rebuilds the search box's own <input> from scratch each time,
+  // the browser loses focus after the very first letter (looks like "can only type one letter
+  // at a time"). Fixed by only committing the search text on Enter or the small search button,
+  // so nothing re-renders while she's still typing.
+  document.getElementById('inventory-content').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
     var searchType = e.target.getAttribute('data-inv-search');
     if (searchType) {
+      e.preventDefault();
       invFilterFor(searchType).search = e.target.value;
       renderInventory();
       return;
     }
     if (e.target.id === 'sticker-search') {
+      e.preventDefault();
       stickerSearchText = e.target.value;
       renderInventory();
     }
@@ -1713,6 +1746,19 @@
   document.getElementById('inventory-content').addEventListener('click', function (e) {
     if (e.target.classList.contains('thumb')) {
       openLightbox(e.target.getAttribute('src'));
+      return;
+    }
+    var searchGoType = e.target.getAttribute('data-inv-search-go');
+    if (searchGoType) {
+      var searchInp = e.target.previousElementSibling;
+      invFilterFor(searchGoType).search = searchInp ? searchInp.value : '';
+      renderInventory();
+      return;
+    }
+    if (e.target.id === 'btn-sticker-search-go') {
+      var stickerInp = e.target.previousElementSibling;
+      stickerSearchText = stickerInp ? stickerInp.value : '';
+      renderInventory();
       return;
     }
     var editId = e.target.getAttribute('data-edit-product');
@@ -1809,7 +1855,7 @@
     document.getElementById('cf-newp-variant').value = '';
     document.getElementById('cf-newp-sku').value = '';
     document.getElementById('cf-newp-price').value = '';
-    document.getElementById('cf-newp-threshold').value = 5;
+    document.getElementById('cf-newp-threshold').value = 2;
     document.getElementById('cf-extra-goods').value = '';
     document.getElementById('cf-extra-shipping').value = '';
     document.getElementById('cf-extra-fee').value = '';
@@ -1975,7 +2021,7 @@
     if (e.target.classList.contains('ci-product')) {
       item.productId = e.target.value;
       if (item.productId === '__new__') {
-        item.newProduct = { name: '', type: 'Tumbler', theme: '', themeNew: '', variant: '', sku: '', price: '', threshold: 5 };
+        item.newProduct = { name: '', type: 'Tumbler', theme: '', themeNew: '', variant: '', sku: '', price: '', threshold: 2 };
       } else {
         item.newProduct = null;
         if (item.productId) {
@@ -2042,7 +2088,7 @@
           var newProd = {
             id: uid(), name: name, variant: (np.variant || '').trim(), sku: (np.sku || '').trim(),
             type: np.type, theme: theme, image: '', cost: 0,
-            price: Number(np.price) || 0, stock: 0, threshold: Number(np.threshold) || 5,
+            price: Number(np.price) || 0, stock: 0, threshold: Number(np.threshold) || 2,
             sourcePlatform: '', sourceLink: ''
           };
           state.products.push(newProd);
@@ -2097,7 +2143,7 @@
           cost: 0,
           price: Number(document.getElementById('cf-newp-price').value) || 0,
           stock: 0,
-          threshold: Number(document.getElementById('cf-newp-threshold').value) || 5,
+          threshold: Number(document.getElementById('cf-newp-threshold').value) || 2,
           sourcePlatform: '',
           sourceLink: ''
         };
@@ -2333,7 +2379,8 @@
       }
     }
 
-    var deleteLogText = 'Deleted cost entry "' + (cost.description || cost.category || 'entry') + '" (' + money(cost.amount) + ') from Costs.';
+    var deletedFromLabel = cost.category === 'testing' ? 'Testing' : 'Costs';
+    var deleteLogText = 'Deleted cost entry "' + (cost.description || cost.category || 'entry') + '" (' + money(cost.amount) + ') from ' + deletedFromLabel + '.';
     if (productToRemove) {
       deleteLogText += ' Also removed "' + productToRemove.name + (productToRemove.variant ? ' — ' + productToRemove.variant : '') + '" from Inventory (no longer referenced).';
     }
@@ -2443,15 +2490,21 @@
   var costFilterCategory = '';
   var costFilterFrom = '';
   var costFilterTo = '';
+  // Committed only on Enter/the search button (not live-as-you-type) — same reasoning as the
+  // Inventory search fix: this bar's own inputs aren't rebuilt on every render, but staying
+  // consistent with how every other search box in the app behaves now avoids a surprise.
+  var costSearchText = '';
   var costSortByAmount = null; // null = default date sort, true = amount desc, false = amount asc
 
   function renderCostFilterBar() {
     var sel = document.getElementById('cost-filter-category');
     var from = document.getElementById('cost-filter-from');
     var to = document.getElementById('cost-filter-to');
+    var search = document.getElementById('cost-filter-search');
     if (sel) sel.value = costFilterCategory;
     if (from) from.value = costFilterFrom;
     if (to) to.value = costFilterTo;
+    if (search) search.value = costSearchText;
   }
 
   function renderCosts() {
@@ -2467,6 +2520,17 @@
       if (costFilterCategory && c.category !== costFilterCategory) return false;
       if (costFilterFrom && c.date < costFilterFrom) return false;
       if (costFilterTo && c.date > costFilterTo) return false;
+      if (costSearchText) {
+        var needle = costSearchText.toLowerCase();
+        var descMatch = (c.description || '').toLowerCase().indexOf(needle) !== -1;
+        var singleProduct = c.productId ? state.products.find(function (p) { return p.id === c.productId; }) : null;
+        var productMatch = !!(singleProduct && singleProduct.name.toLowerCase().indexOf(needle) !== -1);
+        var batchMatch = !!(c.items && c.items.length && c.items.some(function (it) {
+          var p = state.products.find(function (x) { return x.id === it.productId; });
+          return p && p.name.toLowerCase().indexOf(needle) !== -1;
+        }));
+        if (!descMatch && !productMatch && !batchMatch) return false;
+      }
       return true;
     });
     if (state.costs.length === 0) {
@@ -2545,7 +2609,23 @@
     if (e.target.id === 'cost-filter-from') { costFilterFrom = e.target.value; renderCosts(); return; }
     if (e.target.id === 'cost-filter-to') { costFilterTo = e.target.value; renderCosts(); return; }
   });
+  // Same Enter/button-to-search pattern as the Inventory search fix, kept consistent across
+  // the app even though this particular bar isn't rebuilt on every keystroke (so it wasn't
+  // hitting the focus-loss bug) — no surprises switching between pages.
+  document.getElementById('cost-filter-bar').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id === 'cost-filter-search') {
+      e.preventDefault();
+      costSearchText = e.target.value;
+      renderCosts();
+    }
+  });
   document.getElementById('cost-filter-bar').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-costfilter-search-go') {
+      var searchInp = document.getElementById('cost-filter-search');
+      costSearchText = searchInp ? searchInp.value : '';
+      renderCosts();
+      return;
+    }
     if (e.target.id === 'btn-costfilter-7d') {
       var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
       costFilterFrom = from7.toISOString().slice(0, 10); costFilterTo = todayISO();
@@ -2579,26 +2659,150 @@
   // can reuse deleteCost's existing safety checks), but never linked to a productId, so they
   // never touch Inventory stock, and renderCosts() above filters them out of its own list.
   var editingTestingId = null;
+  // Drives the "Filed under the wrong place?" panel at the bottom of the edit form — only
+  // shown while editing an existing entry (never while adding a brand new one). null = the two
+  // starting buttons; 'costing' = category picker; 'inventorytype' = ask which Type for a
+  // brand-new product; 'inventoryconfirm' = confirm restocking a name-matched existing product.
+  var testingMoveStage = null;
+  var testingMoveMatchedProductId = null;
 
   function clearTestingForm() {
     editingTestingId = null;
+    testingMoveStage = null;
+    testingMoveMatchedProductId = null;
     document.getElementById('tf-description').value = '';
     document.getElementById('tf-date').value = todayISO();
     document.getElementById('tf-amount').value = '';
     document.getElementById('tf-qty').value = '';
     document.getElementById('tf-unit').value = '';
+    renderTestingMoveActions();
   }
 
   function editTestingEntry(id) {
     var c = state.costs.find(function (x) { return x.id === id; });
     if (!c) return;
     editingTestingId = id;
+    testingMoveStage = null;
+    testingMoveMatchedProductId = null;
     document.getElementById('tf-description').value = c.description || '';
     document.getElementById('tf-date').value = c.date || todayISO();
     document.getElementById('tf-amount').value = c.amount || '';
     document.getElementById('tf-qty').value = (typeof c.qty === 'number') ? c.qty : '';
     document.getElementById('tf-unit').value = c.unit || '';
     document.getElementById('testing-form-wrap').style.display = 'block';
+    renderTestingMoveActions();
+  }
+
+  // Rebuilds the "Filed under the wrong place?" panel from testingMoveStage. Only present while
+  // editing an existing entry — Adding a new one has nothing to "move" yet.
+  function renderTestingMoveActions() {
+    var wrap = document.getElementById('testing-move-actions');
+    if (!editingTestingId) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+    wrap.style.display = 'block';
+    var TESTING_MOVE_CATEGORIES = ['packaging', 'shipping', 'ads', 'tiktok_fee', 'wastage', 'other'];
+    if (testingMoveStage === 'costing') {
+      wrap.innerHTML =
+        '<div class="muted" style="font-size:12px; margin-bottom:6px;">Move to Costing — which category?</div>' +
+        '<select id="testing-move-category" style="width:180px; margin-right:6px;">' +
+          TESTING_MOVE_CATEGORIES.map(function (c) { return '<option value="' + c + '">' + c.replace('_', ' ') + '</option>'; }).join('') +
+        '</select>' +
+        '<button class="btn btn-primary btn-small" id="btn-testing-move-costing-confirm">Confirm</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-testing-move-cancel">Cancel</button>';
+    } else if (testingMoveStage === 'inventorytype') {
+      wrap.innerHTML =
+        '<div class="muted" style="font-size:12px; margin-bottom:6px;">No existing product matches this name — which Type is it?</div>' +
+        PRODUCT_TYPES.map(function (t) { return '<button class="btn btn-secondary btn-small" data-testing-move-type="' + escapeHtml(t) + '" style="margin:2px;">' + escapeHtml(t) + '</button>'; }).join('') +
+        '<div style="margin-top:8px;"><button class="btn btn-secondary btn-small" id="btn-testing-move-cancel">Cancel</button></div>';
+    } else if (testingMoveStage === 'inventoryconfirm') {
+      var prod = state.products.find(function (p) { return p.id === testingMoveMatchedProductId; });
+      wrap.innerHTML =
+        '<div class="muted" style="font-size:12px; margin-bottom:6px;">Matches "' + escapeHtml(prod ? prod.name : '?') + '" already in Inventory — restock that one?</div>' +
+        '<button class="btn btn-primary btn-small" id="btn-testing-move-inventory-yes">Yes, restock this</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-testing-move-inventory-no">No, it\'s different</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-testing-move-cancel">Cancel</button>';
+    } else {
+      wrap.innerHTML =
+        '<div class="muted" style="font-size:12px; margin-bottom:6px;">Filed under the wrong place?</div>' +
+        '<button class="btn btn-secondary btn-small" id="btn-testing-move-costing">Move to Costing</button> ' +
+        '<button class="btn btn-secondary btn-small" id="btn-testing-move-inventory">Move to New Inventory</button>';
+    }
+  }
+
+  // Moves the entry out of category:'testing' into a normal expense category — it starts
+  // showing up in the main Costs list right away. Deliberately excludes restock/new_inventory
+  // from the picker (those need a real productId to mean anything — that's what "Move to New
+  // Inventory" is for instead, so this stays a plain, unlinked expense).
+  function doMoveTestingToCosting(category) {
+    var c = state.costs.find(function (x) { return x.id === editingTestingId; });
+    if (!c) return;
+    var origDesc = c.description || '';
+    var origAmount = c.amount;
+    if (typeof c.qty === 'number') {
+      // Costs entries don't render a raw qty/unit anywhere, so fold it into the description
+      // first rather than silently losing what she recorded.
+      c.description = (c.description || '') + ' (' + c.qty + (c.unit || '') + ')';
+      delete c.qty;
+      delete c.unit;
+    }
+    c.category = category;
+    save();
+    logMoveToQuickAdd('Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Costing (' + category.replace('_', ' ') + ').');
+    testingMoveStage = null;
+    testingMoveMatchedProductId = null;
+    editingTestingId = null;
+    document.getElementById('testing-form-wrap').style.display = 'none';
+    renderAll();
+  }
+
+  // Moves the entry into Inventory — either restocking a name-matched existing product, or
+  // creating a brand new one (of the Type she picked) with this as its initial stock. Either
+  // way it becomes a real restock/new_inventory Cost entry (so it also shows up in Costs, same
+  // as any other restock) and a matching stock movement is logged.
+  function doMoveTestingToInventory(existingProductId, newType) {
+    var c = state.costs.find(function (x) { return x.id === editingTestingId; });
+    if (!c) return;
+    var origDesc = c.description || '';
+    var origAmount = c.amount;
+    var qty = (typeof c.qty === 'number' && c.qty > 0) ? c.qty : 1;
+    var unit = c.unit || '';
+    var productId, category, logMsg;
+    if (existingProductId) {
+      var p = state.products.find(function (x) { return x.id === existingProductId; });
+      if (p) {
+        var perUnitExact = c.amount / qty;
+        p.stock += qty;
+        p.cost = perUnitExact;
+        category = p.costCategoryOverride || 'restock';
+        logMsg = 'Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Inventory — restocked ' + p.name + ' (+' + qty + (unit || '') + ').';
+      } else {
+        category = 'restock';
+        logMsg = 'Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Inventory (restock).';
+      }
+      productId = existingProductId;
+    } else {
+      var newProduct = {
+        id: uid(), name: c.description, variant: '', sku: '', type: newType, theme: '',
+        image: '', cost: c.amount / qty, price: 0, stock: qty, threshold: 2,
+        sourcePlatform: '', sourceLink: ''
+      };
+      if (unit) newProduct.unit = unit;
+      state.products.push(newProduct);
+      productId = newProduct.id;
+      category = 'new_inventory';
+      logMsg = 'Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Inventory — created new ' + newType + ' product "' + newProduct.name + '".';
+    }
+    c.category = category;
+    c.productId = productId;
+    c.qty = qty;
+    delete c.unit;
+    logStock(productId, qty, 'restock', 'Moved from Testing/R&D', c.date || todayISO(), c.id);
+    save();
+    logMoveToQuickAdd(logMsg);
+    testingMoveStage = null;
+    testingMoveMatchedProductId = null;
+    editingTestingId = null;
+    document.getElementById('testing-form-wrap').style.display = 'none';
+    renderAll();
   }
 
   document.getElementById('btn-add-testing').addEventListener('click', function () {
@@ -2607,6 +2811,56 @@
   });
   document.getElementById('btn-cancel-testing').addEventListener('click', function () {
     document.getElementById('testing-form-wrap').style.display = 'none';
+  });
+
+  document.getElementById('testing-form-wrap').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-testing-move-costing') {
+      testingMoveStage = 'costing';
+      renderTestingMoveActions();
+      return;
+    }
+    if (e.target.id === 'btn-testing-move-inventory') {
+      var c0 = state.costs.find(function (x) { return x.id === editingTestingId; });
+      var match = c0 ? matchProductByName(c0.description) : null;
+      if (match) {
+        testingMoveMatchedProductId = match.id;
+        testingMoveStage = 'inventoryconfirm';
+      } else {
+        testingMoveStage = 'inventorytype';
+      }
+      renderTestingMoveActions();
+      return;
+    }
+    if (e.target.id === 'btn-testing-move-cancel') {
+      testingMoveStage = null;
+      testingMoveMatchedProductId = null;
+      renderTestingMoveActions();
+      return;
+    }
+    if (e.target.id === 'btn-testing-move-costing-confirm') {
+      var cat = document.getElementById('testing-move-category').value;
+      if (!confirm('Move this entry to Costing under "' + cat.replace('_', ' ') + '"? It will no longer show on the Testing page.')) return;
+      doMoveTestingToCosting(cat);
+      return;
+    }
+    if (e.target.id === 'btn-testing-move-inventory-yes') {
+      var matchedProd = state.products.find(function (p) { return p.id === testingMoveMatchedProductId; });
+      if (!confirm('Restock "' + (matchedProd ? matchedProd.name : '?') + '" with this entry? It will move to Costing (as a restock) and add stock.')) return;
+      doMoveTestingToInventory(testingMoveMatchedProductId, null);
+      return;
+    }
+    if (e.target.id === 'btn-testing-move-inventory-no') {
+      testingMoveStage = 'inventorytype';
+      testingMoveMatchedProductId = null;
+      renderTestingMoveActions();
+      return;
+    }
+    var typeBtn = e.target.getAttribute('data-testing-move-type');
+    if (typeBtn) {
+      if (!confirm('Create a new ' + typeBtn + ' Inventory item from this entry and move it to Costing? It will add stock.')) return;
+      doMoveTestingToInventory(null, typeBtn);
+      return;
+    }
   });
 
   document.getElementById('btn-save-testing').addEventListener('click', function () {
@@ -2643,11 +2897,22 @@
     renderAll();
   });
 
+  // Ephemeral Testing-page search — not persisted, resets on reload. Same commit-on-Enter/button
+  // pattern as Inventory/Costs (typing alone doesn't filter, to avoid the focus-loss bug).
+  var testingSearchText = '';
+
   function renderTesting() {
+    var searchInp = document.getElementById('testing-filter-search');
+    if (searchInp) searchInp.value = testingSearchText;
     var tbody = document.querySelector('#testing-table tbody');
     var empty = document.getElementById('testing-empty');
     var totalEl = document.getElementById('testing-total');
     var entries = state.costs.filter(function (c) { return c.category === 'testing'; })
+      .filter(function (c) {
+        if (!testingSearchText) return true;
+        var needle = testingSearchText.toLowerCase();
+        return (c.description || '').toLowerCase().indexOf(needle) !== -1;
+      })
       .slice()
       .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.id || '').localeCompare(a.id || ''); });
     if (!entries.length) {
@@ -2678,6 +2943,22 @@
     var delId = e.target.getAttribute('data-delete-testing');
     if (editId) editTestingEntry(editId);
     if (delId) deleteCost(delId);
+  });
+
+  document.getElementById('testing-filter-bar').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id === 'testing-filter-search') {
+      e.preventDefault();
+      testingSearchText = e.target.value;
+      renderTesting();
+    }
+  });
+
+  document.getElementById('testing-filter-bar').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-testingfilter-search-go') {
+      var searchInp = document.getElementById('testing-filter-search');
+      testingSearchText = searchInp ? searchInp.value : '';
+      renderTesting();
+    }
   });
 
   // ================= ORDERS =================
@@ -3698,6 +3979,230 @@
     };
   }
 
+  // ================= INVESTOR REPORT EXPORT (Excel) =================
+  // Builds a 5-tab investor-facing Excel workbook, entirely from the app's own real numbers
+  // (reusing financials(), never a separate recalculation, so this can never disagree with what
+  // the Dashboard shows on screen). Split into a pure data-building function (buildInvestorReportData,
+  // no XLSX calls — safe to unit-test without the CDN library present) and a thin writer
+  // (exportInvestorReport) that actually needs the SheetJS library loaded.
+  //
+  // Row-tracking helper: pushes a row onto an aoa array and returns its 1-based Excel row number
+  // (aoa.length after the push), so formula cell references never have to be hand-counted.
+  function addSheetRow(aoa, row) {
+    aoa.push(row);
+    return aoa.length;
+  }
+
+  // A formula cell needs a cached value alongside the formula string, or it gets silently dropped
+  // when the file is read back (confirmed against the real SheetJS library, not just assumed) —
+  // real Excel/Google Sheets recalculate on open regardless, but the cache still has to be there
+  // and of the right type for the cell to round-trip at all. numVal is the number the formula
+  // would evaluate to; pass isBlank:true for formulas whose IF(...,"",...) branch is currently
+  // blank (e.g. a margin that depends on a cell she hasn't filled in yet).
+  function setFormula(formulas, ref, f, numVal, isBlank) {
+    formulas[ref] = isBlank ? { f: f, v: '', t: 'str' } : { f: f, v: numVal, t: 'n' };
+  }
+
+  // A "TOTAL" row's SUM formula only makes sense when there's at least one data row above it.
+  // With zero matching entries, firstRow > lastRow, and — because the TOTAL row itself sits at
+  // firstRow — a naive SUM(firstRow:lastRow) would actually span firstRow-1:firstRow, which
+  // INCLUDES the TOTAL cell itself: a self-referencing circular formula (confirmed by directly
+  // generating a workbook from empty categories and inspecting the formulas). Writing a plain
+  // literal 0 instead sidesteps that entirely, and is numerically identical to "sum of nothing".
+  function setSumTotal(formulas, aoa, rowIdx1, colIdx0, colLetter, firstRow, lastRow, computedSum) {
+    if (lastRow >= firstRow) {
+      setFormula(formulas, colLetter + rowIdx1, 'SUM(' + colLetter + firstRow + ':' + colLetter + lastRow + ')', computedSum);
+    } else {
+      aoa[rowIdx1 - 1][colIdx0] = computedSum;
+    }
+  }
+
+  function buildInvestorReportData() {
+    var fin = financials();
+    var today = todayISO();
+
+    // ---------- Cost per Product ----------
+    var cpAoa = [];
+    var cpFormulas = {};
+    addSheetRow(cpAoa, ['Product', 'Type', 'Theme', 'Stock', 'Cost per unit (RM)', 'Sell price (RM)', 'Margin per unit (RM)', 'Margin %', 'Inventory value (RM)']);
+    var sortedProducts = state.products.slice().sort(function (a, b) {
+      return (a.type || '').localeCompare(b.type || '') || (a.name || '').localeCompare(b.name || '');
+    });
+    var cpFirstDataRow = cpAoa.length + 1;
+    var invValueSum = 0;
+    sortedProducts.forEach(function (p) {
+      var displayName = p.name + (p.variant ? ' (' + p.variant + ')' : '');
+      var rowNum = addSheetRow(cpAoa, [displayName, p.type || '', p.theme || '', p.stock, p.cost, p.price, null, null, null]);
+      var marginPerUnit = Number(p.price) - Number(p.cost);
+      var invValueRow = Number(p.stock) * Number(p.cost);
+      invValueSum += invValueRow;
+      setFormula(cpFormulas, 'G' + rowNum, 'F' + rowNum + '-E' + rowNum, marginPerUnit);
+      if (Number(p.price) === 0) {
+        setFormula(cpFormulas, 'H' + rowNum, 'IF(F' + rowNum + '=0,"",G' + rowNum + '/F' + rowNum + ')', 0, true);
+      } else {
+        setFormula(cpFormulas, 'H' + rowNum, 'IF(F' + rowNum + '=0,"",G' + rowNum + '/F' + rowNum + ')', marginPerUnit / Number(p.price));
+      }
+      setFormula(cpFormulas, 'I' + rowNum, 'D' + rowNum + '*E' + rowNum, invValueRow);
+    });
+    var cpLastDataRow = cpAoa.length;
+    var cpTotalRow = addSheetRow(cpAoa, ['TOTAL', '', '', '', '', '', '', '', null]);
+    setSumTotal(cpFormulas, cpAoa, cpTotalRow, 8, 'I', cpFirstDataRow, cpLastDataRow, invValueSum);
+
+    // ---------- Packaging & Shipping ----------
+    var psAoa = [];
+    var psFormulas = {};
+    addSheetRow(psAoa, ['Date', 'Category', 'Description', 'Amount (RM)']);
+    var packagingShippingCosts = state.costs.filter(function (c) { return c.category === 'packaging' || c.category === 'shipping'; })
+      .slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    var psInboundFirstRow = psAoa.length + 1;
+    var psInboundSum = 0;
+    packagingShippingCosts.forEach(function (c) {
+      addSheetRow(psAoa, [c.date || '', c.category, c.description || '', c.amount]);
+      psInboundSum += Number(c.amount);
+    });
+    var psInboundLastRow = psAoa.length;
+    var psInboundTotalRow = addSheetRow(psAoa, ['TOTAL inbound (packaging + shipping)', '', '', null]);
+    setSumTotal(psFormulas, psAoa, psInboundTotalRow, 3, 'D', psInboundFirstRow, psInboundLastRow, psInboundSum);
+    addSheetRow(psAoa, []);
+    addSheetRow(psAoa, ['Outbound shipping paid to customers', '', '', '']);
+    addSheetRow(psAoa, ['Date', 'Buyer', '', 'Shipping cost paid (RM)']);
+    var shippedOrders = fin.active.filter(function (o) { return Number(o.shippingCostActual || 0) > 0; })
+      .slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    var psOutboundFirstRow = psAoa.length + 1;
+    var psOutboundSum = 0;
+    shippedOrders.forEach(function (o) {
+      var shipCost = Number(o.shippingCostActual || 0);
+      addSheetRow(psAoa, [o.date || '', o.buyerName || '', '', shipCost]);
+      psOutboundSum += shipCost;
+    });
+    var psOutboundLastRow = psAoa.length;
+    var psOutboundTotalRow = addSheetRow(psAoa, ['TOTAL outbound shipping paid', '', '', null]);
+    setSumTotal(psFormulas, psAoa, psOutboundTotalRow, 3, 'D', psOutboundFirstRow, psOutboundLastRow, psOutboundSum);
+    addSheetRow(psAoa, []);
+    var psGrandTotalRow = addSheetRow(psAoa, ['TOTAL packaging + shipping (RM)', '', '', null]);
+    setFormula(psFormulas, 'D' + psGrandTotalRow, 'D' + psInboundTotalRow + '+D' + psOutboundTotalRow, psInboundSum + psOutboundSum);
+
+    // ---------- Testing Pipeline ----------
+    var tpAoa = [];
+    var tpFormulas = {};
+    addSheetRow(tpAoa, ['Date', 'Description', 'Qty', 'Unit', 'Amount (RM)', 'Cost per unit (RM)', 'Suggested sell price (RM) — fill in', 'Margin per unit (RM)']);
+    var testingEntries = state.costs.filter(function (c) { return c.category === 'testing'; })
+      .slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    var tpFirstDataRow = tpAoa.length + 1;
+    var testingSum = 0;
+    testingEntries.forEach(function (c) {
+      var hasQty = typeof c.qty === 'number' && c.qty > 0;
+      var qtyVal = (typeof c.qty === 'number') ? c.qty : '';
+      var rowNum = addSheetRow(tpAoa, [c.date || '', c.description || '', qtyVal, c.unit || '', c.amount, null, null, null]);
+      testingSum += Number(c.amount);
+      var fCostPerUnit = 'IF(AND(ISNUMBER(C' + rowNum + '),C' + rowNum + '>0),E' + rowNum + '/C' + rowNum + ',"")';
+      if (hasQty) {
+        setFormula(tpFormulas, 'F' + rowNum, fCostPerUnit, Number(c.amount) / Number(c.qty));
+      } else {
+        setFormula(tpFormulas, 'F' + rowNum, fCostPerUnit, 0, true);
+      }
+      // Margin always starts blank — the "Suggested sell price" cell (G) is intentionally left
+      // empty for her to fill in, so ISNUMBER(G) is false until she does.
+      setFormula(tpFormulas, 'H' + rowNum, 'IF(AND(ISNUMBER(G' + rowNum + '),ISNUMBER(F' + rowNum + ')),G' + rowNum + '-F' + rowNum + ',"")', 0, true);
+    });
+    var tpLastDataRow = tpAoa.length;
+    var tpTotalRow = addSheetRow(tpAoa, ['TOTAL testing spend', '', '', '', null, '', '', '']);
+    setSumTotal(tpFormulas, tpAoa, tpTotalRow, 4, 'E', tpFirstDataRow, tpLastDataRow, testingSum);
+
+    // ---------- Summary ----------
+    // Revenue/Inventory spend/Operating expense/Outbound shipping/Cash are literal actuals pulled
+    // straight from financials() (the same source the Dashboard reads) — these are historical cash
+    // facts, not something a formula should ever recompute differently. Testing spend and Inventory
+    // value ARE formulas referencing the other tabs, so opening this file doubles as a consistency
+    // check: if those don't match the literal figures, something in the sheet was edited.
+    var sumAoa = [];
+    var sumFormulas = {};
+    addSheetRow(sumAoa, ['Sips by Evve — Investor Summary', '', '']);
+    addSheetRow(sumAoa, ['Generated', today, '']);
+    addSheetRow(sumAoa, []);
+    addSheetRow(sumAoa, ['Metric', 'Value (RM)', 'Notes']);
+    var rRevenue = addSheetRow(sumAoa, ['Total revenue', fin.revenue, 'All-time, cancelled orders excluded']);
+    var rInvSpend = addSheetRow(sumAoa, ['Inventory spend', fin.inventorySpend, 'Restocks + new inventory purchases']);
+    var rOpEx = addSheetRow(sumAoa, ['Operating expense', fin.expenseFromCosts, 'Ads, packaging, fees etc. (excl. outbound shipping)']);
+    var rOutShip = addSheetRow(sumAoa, ['Outbound shipping paid', fin.shippingCostsPaid, 'Shipping paid to send orders to customers']);
+    var rTesting = addSheetRow(sumAoa, ['Testing / R&D spend', null, '= Testing Pipeline tab total']);
+    // References the Testing Pipeline tab's own TOTAL cell (rather than re-summing its raw row
+    // range here) so this always points at a valid cell, even when there are zero testing entries.
+    setFormula(sumFormulas, 'B' + rTesting, '\'Testing Pipeline\'!E' + tpTotalRow, fin.testingSpend);
+    var rTotalSpent = addSheetRow(sumAoa, ['Total spent', null, '= Inventory spend + Operating expense + Testing spend']);
+    setFormula(sumFormulas, 'B' + rTotalSpent, 'B' + rInvSpend + '+B' + rOpEx + '+B' + rTesting, fin.inventorySpend + fin.expenseFromCosts + fin.testingSpend);
+    var rNetProfit = addSheetRow(sumAoa, ['Net profit', null, '= Revenue − Inventory spend − Operating expense − Outbound shipping − Testing spend']);
+    setFormula(sumFormulas, 'B' + rNetProfit, 'B' + rRevenue + '-B' + rInvSpend + '-B' + rOpEx + '-B' + rOutShip + '-B' + rTesting, fin.netProfit);
+    var rCash = addSheetRow(sumAoa, ['Cash position', fin.cash, 'Starting cash − all spend + revenue actually collected']);
+    var rInvValue = addSheetRow(sumAoa, ['Inventory value (at cost)', null, '= Cost per Product tab total']);
+    // Same reasoning as Testing spend above: references the Cost per Product tab's own TOTAL
+    // cell instead of re-summing its row range, so this is always valid even with zero products.
+    setFormula(sumFormulas, 'B' + rInvValue, '\'Cost per Product\'!I' + cpTotalRow, fin.invValue);
+    var rTotalAccountValue = addSheetRow(sumAoa, ['Total account value', null, '= Cash position + Inventory value']);
+    setFormula(sumFormulas, 'B' + rTotalAccountValue, 'B' + rCash + '+B' + rInvValue, fin.totalAccountValue);
+
+    // ---------- Investment to Date ----------
+    var idAoa = [];
+    var idFormulas = {};
+    addSheetRow(idAoa, ['Investment to Date', '', '']);
+    addSheetRow(idAoa, []);
+    addSheetRow(idAoa, ['Metric', 'Value', 'Notes']);
+    var rTotalInvested = addSheetRow(idAoa, ['Total invested to date (RM)', null, 'Inventory + Operating expense + Outbound shipping + Testing']);
+    var totalInvested = fin.inventorySpend + fin.expenseFromCosts + fin.shippingCostsPaid + fin.testingSpend;
+    setFormula(idFormulas, 'B' + rTotalInvested, 'Summary!B' + rInvSpend + '+Summary!B' + rOpEx + '+Summary!B' + rOutShip + '+Summary!B' + rTesting, totalInvested);
+    var rTotalRevenue = addSheetRow(idAoa, ['Total revenue to date (RM)', null, '']);
+    setFormula(idFormulas, 'B' + rTotalRevenue, 'Summary!B' + rRevenue, fin.revenue);
+    var rGrossProfit = addSheetRow(idAoa, ['Gross profit (Revenue − Inventory spend) (RM)', null, '']);
+    setFormula(idFormulas, 'B' + rGrossProfit, 'Summary!B' + rRevenue + '-Summary!B' + rInvSpend, fin.revenue - fin.inventorySpend);
+    var rNetProfit2 = addSheetRow(idAoa, ['Net profit (RM)', null, '']);
+    setFormula(idFormulas, 'B' + rNetProfit2, 'Summary!B' + rNetProfit, fin.netProfit);
+    var rOrderCount = addSheetRow(idAoa, ['Number of orders (excl. cancelled)', fin.active.length, '']);
+    var rAvgProfit = addSheetRow(idAoa, ['Average profit per order (RM)', null, '']);
+    if (fin.active.length === 0) {
+      setFormula(idFormulas, 'B' + rAvgProfit, 'IF(B' + rOrderCount + '=0,"",B' + rNetProfit2 + '/B' + rOrderCount + ')', 0, true);
+    } else {
+      setFormula(idFormulas, 'B' + rAvgProfit, 'IF(B' + rOrderCount + '=0,"",B' + rNetProfit2 + '/B' + rOrderCount + ')', fin.netProfit / fin.active.length);
+    }
+    var rCash2 = addSheetRow(idAoa, ['Cash position (RM)', null, '']);
+    setFormula(idFormulas, 'B' + rCash2, 'Summary!B' + rCash, fin.cash);
+    var rTotalAccountValue2 = addSheetRow(idAoa, ['Total account value (RM)', null, '']);
+    setFormula(idFormulas, 'B' + rTotalAccountValue2, 'Summary!B' + rTotalAccountValue, fin.totalAccountValue);
+
+    return [
+      { name: 'Summary', aoa: sumAoa, formulas: sumFormulas },
+      { name: 'Cost per Product', aoa: cpAoa, formulas: cpFormulas },
+      { name: 'Packaging & Shipping', aoa: psAoa, formulas: psFormulas },
+      { name: 'Testing Pipeline', aoa: tpAoa, formulas: tpFormulas },
+      { name: 'Investment to Date', aoa: idAoa, formulas: idFormulas }
+    ];
+  }
+
+  function exportInvestorReport() {
+    if (typeof XLSX === 'undefined') {
+      alert('Could not load the Excel export library — check your internet connection and try again.');
+      return;
+    }
+    var sheets = buildInvestorReportData();
+    var wb = XLSX.utils.book_new();
+    sheets.forEach(function (sh) {
+      var ws = XLSX.utils.aoa_to_sheet(sh.aoa);
+      Object.keys(sh.formulas).forEach(function (cellRef) {
+        var entry = sh.formulas[cellRef];
+        // Every formula cell carries a pre-computed cache value (entry.v) alongside the formula
+        // (entry.f) — without it, SheetJS's own reader drops the cell entirely on read-back
+        // (confirmed by direct testing). Real Excel/Google Sheets recalculate on open regardless.
+        ws[cellRef] = { t: entry.t || 'n', f: entry.f, v: entry.v };
+      });
+      XLSX.utils.book_append_sheet(wb, ws, sh.name);
+    });
+    XLSX.writeFile(wb, 'sips-by-evve-investor-report-' + todayISO() + '.xlsx');
+  }
+
+  // Test-only hook: lets the regression suite inspect the exact sheet/formula data this builds,
+  // without needing the SheetJS CDN script to actually load (it never loads in the jsdom test
+  // sandbox, same as the Supabase script). Harmless for real users — just an extra property.
+  window.__buildInvestorReportData = buildInvestorReportData;
+
   // Ephemeral UI state for the Dashboard date-range filter — not persisted, resets on reload,
   // same pattern as dashboardEditingCash below. Empty string means "no bound" (all-time).
   var dashboardDateFrom = '';
@@ -3729,7 +4234,8 @@
   }
 
   function dashboardDateRangeHtml() {
-    return '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; justify-content:flex-end;">' +
+    return '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; justify-content:flex-end; align-items:center;">' +
+      '<button class="btn btn-secondary btn-small" id="btn-export-investor-report" style="margin-right:auto;">📊 Export Investor Report</button>' +
       '<button class="btn btn-secondary btn-small" id="btn-dash-preset-7d">Last 7 days</button>' +
       '<button class="btn btn-secondary btn-small" id="btn-dash-preset-month">This month</button>' +
       '<button class="btn btn-secondary btn-small" id="btn-dash-preset-all">All time</button>' +
@@ -3809,6 +4315,7 @@
   document.getElementById('dashboard-content').addEventListener('click', function (e) {
     var el = e.target.closest ? e.target.closest('[data-dash-order]') : null;
     if (el) { goToOrder(el.getAttribute('data-dash-order')); return; }
+    if (e.target.id === 'btn-export-investor-report') { exportInvestorReport(); return; }
     if (e.target.id === 'btn-dash-edit-startingcash') { dashboardEditingCash = true; renderDashboard(); return; }
     if (e.target.id === 'btn-dash-startingcash-cancel') { dashboardEditingCash = false; renderDashboard(); return; }
     if (e.target.id === 'btn-dash-startingcash-save') {
@@ -4377,16 +4884,26 @@
     { category: 'other', words: ['course', 'training', 'workshop', '课程', '培训', '工作坊'] }
   ];
 
-  function pushChatMsg(role, text) {
-    state.chatLog.push({ id: uid(), role: role, text: text, ts: new Date().toISOString() });
+  // Optional third arg tags what KIND of message this is (delete/move/cancel/etc.) purely for
+  // the chat bubble's color in renderQuickAdd — every bubble used to look identical grey
+  // regardless of whether it was a successful add, a deletion, or a cancellation, which made a
+  // long chat history hard to scan back through.
+  function pushChatMsg(role, text, kind) {
+    state.chatLog.push({ id: uid(), role: role, text: text, ts: new Date().toISOString(), kind: kind || null });
     save();
   }
 
-  // Deleting a product or a Cost entry from Inventory/Costs used to leave no trace anywhere she'd
-  // actually see it — logging a line into the Quick Add chat history means there's always at
-  // least a visible record that something was removed, even outside the Quick Add flow itself.
+  // Deleting a product or a Cost entry from Inventory/Costs/Testing used to leave no trace
+  // anywhere she'd actually see it — logging a line into the Quick Add chat history means
+  // there's always at least a visible record that something was removed, even outside the
+  // Quick Add flow itself.
   function logDeletionToQuickAdd(text) {
-    pushChatMsg('bot', '🗑 ' + text);
+    pushChatMsg('bot', '🗑 ' + text, 'delete');
+  }
+
+  // Same idea for moving a Testing/R&D entry into Costing or New Inventory.
+  function logMoveToQuickAdd(text) {
+    pushChatMsg('bot', '🔀 ' + text, 'move');
   }
 
   function normalizeDesc(s) {
@@ -4785,7 +5302,7 @@
     var newProduct = {
       id: uid(), name: nm, variant: vr, sku: '',
       type: type || 'Others', theme: '', image: '',
-      cost: 0, price: price || 0, stock: 0, threshold: 5,
+      cost: 0, price: price || 0, stock: 0, threshold: 2,
       sourcePlatform: '', sourceLink: '', unit: unit || '',
       // Remembered so every future restock of this same product also lands in the right Cost
       // category (e.g. "packaging" for bubble wrap/bags) instead of the generic default.
@@ -5311,7 +5828,7 @@
   function cancelQuickAddPending() {
     var item = quickAddPending[0];
     var amountText = (item.amount != null) ? ' — ' + money(item.amount) : (item.rawAmount != null ? ' — RMB ' + item.rawAmount.toFixed(2) : '');
-    pushChatMsg('bot', '✕ Cancelled: "' + item.description + '"' + amountText + ' — nothing was saved.');
+    pushChatMsg('bot', '✕ Cancelled: "' + item.description + '"' + amountText + ' — nothing was saved.', 'cancel');
     quickAddPending.shift();
     processNextQuickAdd();
   }
@@ -5328,7 +5845,7 @@
     var sellerEl = document.getElementById('qa-np-seller');
     var newProduct = {
       id: uid(), name: name, variant: '', sku: '', type: type, theme: '',
-      image: '', cost: cost, price: price, stock: stock, threshold: 5,
+      image: '', cost: cost, price: price, stock: stock, threshold: 2,
       sourcePlatform: (type !== 'Stickers' && platformEl) ? platformEl.value.trim() : '',
       sourceLink: (type !== 'Stickers' && sellerEl) ? sellerEl.value.trim() : ''
     };
@@ -5430,6 +5947,23 @@
 
   var QUICKADD_CANCEL_BTN = '<button class="btn btn-secondary btn-small" data-qa-cancel="1">Cancel</button>';
 
+  // Chat log grouped by month so it doesn't just grow into one endless scroll — same collapsible
+  // pattern as the Sticker theme groups. Not persisted: which months are expanded resets on
+  // reload, but the newest month always opens by default regardless.
+  var expandedChatMonths = {};
+  var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function chatMonthLabel(key) {
+    var parts = key.split('-');
+    return MONTH_NAMES[Number(parts[1]) - 1] + ' ' + parts[0];
+  }
+  function chatBubbleHtml(m) {
+    var isUser = m.role === 'user';
+    var bubbleClass = isUser ? 'qa-bubble-user' : (m.kind === 'delete' ? 'qa-bubble-delete' : m.kind === 'move' ? 'qa-bubble-move' : m.kind === 'cancel' ? 'qa-bubble-cancel' : 'qa-bubble-bot');
+    return '<div class="qa-row" style="justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';">' +
+      '<div class="qa-bubble ' + bubbleClass + '">' + escapeHtml(m.text) + '</div>' +
+    '</div>';
+  }
+
   function renderQuickAdd() {
     var container = document.getElementById('quickadd-content');
     if (!container) return;
@@ -5451,14 +5985,36 @@
       '</div>' +
     '</div>';
 
-    var logHtml = state.chatLog.length
-      ? state.chatLog.map(function (m) {
-          var isUser = m.role === 'user';
-          return '<div class="qa-row" style="justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';">' +
-            '<div class="qa-bubble ' + (isUser ? 'qa-bubble-user' : 'qa-bubble-bot') + '">' + escapeHtml(m.text) + '</div>' +
-          '</div>';
-        }).join('')
-      : welcomeHtml;
+    var logHtml;
+    var currentMonthKey = todayISO().slice(0, 7);
+    var hasOldMessages = false;
+    if (!state.chatLog.length) {
+      logHtml = welcomeHtml;
+    } else {
+      var monthGroups = [];
+      var monthIndex = {};
+      state.chatLog.forEach(function (m) {
+        var key = (m.ts || '').slice(0, 7) || currentMonthKey;
+        if (!(key in monthIndex)) {
+          monthIndex[key] = monthGroups.length;
+          monthGroups.push({ key: key, messages: [] });
+        }
+        monthGroups[monthIndex[key]].messages.push(m);
+        if (key !== currentMonthKey) hasOldMessages = true;
+      });
+      var newestKey = monthGroups[monthGroups.length - 1].key;
+      logHtml = monthGroups.map(function (g) {
+        var isOpen = (g.key in expandedChatMonths) ? expandedChatMonths[g.key] : (g.key === newestKey);
+        var groupHtml = '<button type="button" class="theme-toggle" data-toggle-chatmonth="' + escapeHtml(g.key) + '">' +
+          '<span>' + (isOpen ? '▾' : '▸') + ' ' + escapeHtml(chatMonthLabel(g.key)) + '</span>' +
+          '<span class="muted">' + g.messages.length + '</span>' +
+          '</button>';
+        if (isOpen) {
+          groupHtml += g.messages.map(chatBubbleHtml).join('');
+        }
+        return groupHtml;
+      }).join('');
+    }
 
     var stageHtml = '';
     if (quickAddStage && quickAddStage.type === 'amountask') {
@@ -5694,7 +6250,12 @@
       }
     }
 
+    var clearOldHtml = hasOldMessages
+      ? '<div style="text-align:right; margin-bottom:6px;"><button class="btn-text danger" id="btn-qa-clear-old" style="font-size:12px;">Clear old messages</button></div>'
+      : '';
+
     container.innerHTML =
+      clearOldHtml +
       '<div class="qa-log">' + logHtml + '</div>' +
       stageHtml +
       lastEntryHtml +
@@ -5716,6 +6277,23 @@
   }
 
   document.getElementById('quickadd-content').addEventListener('click', function (e) {
+    var chatMonthToggle = e.target.closest ? e.target.closest('[data-toggle-chatmonth]') : null;
+    if (chatMonthToggle) {
+      var monthKey = chatMonthToggle.getAttribute('data-toggle-chatmonth');
+      var newestLogKey = state.chatLog.length ? (state.chatLog[state.chatLog.length - 1].ts || '').slice(0, 7) : todayISO().slice(0, 7);
+      var currentlyOpen = (monthKey in expandedChatMonths) ? expandedChatMonths[monthKey] : (monthKey === newestLogKey);
+      expandedChatMonths[monthKey] = !currentlyOpen;
+      renderQuickAdd();
+      return;
+    }
+    if (e.target.id === 'btn-qa-clear-old') {
+      if (!confirm('Permanently delete all Quick Add messages older than this month? This cannot be undone.')) return;
+      var keepMonthKey = todayISO().slice(0, 7);
+      state.chatLog = state.chatLog.filter(function (m) { return (m.ts || '').slice(0, 7) === keepMonthKey; });
+      save();
+      renderQuickAdd();
+      return;
+    }
     if (e.target.id === 'btn-qa-send') {
       var val = document.getElementById('qa-input').value;
       var lines = val.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
@@ -5811,7 +6389,7 @@
         var stillExists = state.costs.some(function (c) { return c.id === idToDelete; });
         if (!stillExists) {
           quickAddLastEntryId = null;
-          pushChatMsg('bot', '🗑 Deleted your last entry.');
+          pushChatMsg('bot', '🗑 Deleted your last entry.', 'delete');
           renderQuickAdd();
         }
       }
