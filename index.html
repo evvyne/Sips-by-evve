@@ -2176,9 +2176,11 @@
     // through to Inventory. Capture the OLD qty before we overwrite it, so the edit path below
     // can work out the delta to apply to Stock instead of re-adding the whole new amount.
     var oldQtyBeforeEdit = null;
+    var oldCategoryBeforeEdit = null;
     if (editingCostId) {
       var existingCostForEdit = state.costs.find(function (x) { return x.id === editingCostId; });
       oldQtyBeforeEdit = existingCostForEdit ? (Number(existingCostForEdit.qty) || 0) : 0;
+      oldCategoryBeforeEdit = existingCostForEdit ? existingCostForEdit.category : null;
     }
     if (!isMulti && linkedProductId) {
       data.qty = Number(document.getElementById('cf-qty').value) || 0;
@@ -2186,6 +2188,14 @@
     if (editingCostId) {
       var c = state.costs.find(function (x) { return x.id === editingCostId; });
       Object.assign(c, data);
+      // Recategorizing an existing entry (e.g. restock -> new inventory) is a meaningful change
+      // to how it's tracked — log it to Quick Add the same way deletes/moves already are, so the
+      // chat log stays a complete record of everything that happened to the data, not just
+      // additions.
+      if (oldCategoryBeforeEdit && oldCategoryBeforeEdit !== c.category) {
+        logMoveToQuickAdd('Changed "' + (c.description || c.category) + '" (' + money(c.amount) +
+          ') category from ' + oldCategoryBeforeEdit.replace('_', ' ') + ' to ' + c.category.replace('_', ' ') + '.');
+      }
     } else {
       data.id = costId;
       state.costs.push(data);
@@ -2588,6 +2598,7 @@
           (((c.shippingAmount || c.sstAmount) || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">+ ' + [(c.shippingAmount || c.sstAmount) ? 'shipping ' + money(c.shippingAmount || c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + ' (not in price above)</div>' : '') +
         '</td>' +
         '<td style="text-align:right; white-space:nowrap;">' +
+        (c.movedFromTesting ? '<button class="btn-text" data-undo-testing-move="' + c.id + '" title="Move back to Testing">↩ Undo move</button> ' : '') +
         '<button class="btn-text" data-edit-cost="' + c.id + '">Edit</button> ' +
         '<button class="btn-text danger" data-delete-cost="' + c.id + '">Delete</button>' +
         '</td></tr>';
@@ -2600,8 +2611,10 @@
   document.querySelector('#cost-table tbody').addEventListener('click', function (e) {
     var editId = e.target.getAttribute('data-edit-cost');
     var delId = e.target.getAttribute('data-delete-cost');
+    var undoId = e.target.getAttribute('data-undo-testing-move');
     if (editId) editCost(editId);
     if (delId) deleteCost(delId);
+    if (undoId) reverseTestingMove(undoId);
   });
 
   document.getElementById('cost-filter-bar').addEventListener('change', function (e) {
@@ -2737,6 +2750,10 @@
     if (!c) return;
     var origDesc = c.description || '';
     var origAmount = c.amount;
+    // Snapshot everything needed to put this entry back exactly as it was — see
+    // reverseTestingMove — before any of it gets folded into the description or deleted.
+    var origQty = (typeof c.qty === 'number') ? c.qty : null;
+    var origUnit = c.unit || null;
     if (typeof c.qty === 'number') {
       // Costs entries don't render a raw qty/unit anywhere, so fold it into the description
       // first rather than silently losing what she recorded.
@@ -2744,6 +2761,7 @@
       delete c.qty;
       delete c.unit;
     }
+    c.movedFromTesting = { originalDescription: origDesc, originalQty: origQty, originalUnit: origUnit, toProductId: null, createdNewProduct: false };
     c.category = category;
     save();
     logMoveToQuickAdd('Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Costing (' + category.replace('_', ' ') + ').');
@@ -2766,14 +2784,21 @@
     var qty = (typeof c.qty === 'number' && c.qty > 0) ? c.qty : 1;
     var unit = c.unit || '';
     var productId, category, logMsg;
+    // Snapshot for reverseTestingMove: which product this touched, how much stock/cost it
+    // added, and whether the product itself was newly created (in which case reversing means
+    // removing the product entirely, not just subtracting stock).
+    var moveMeta = { addedQty: qty, originalUnit: unit || null, createdNewProduct: false, toProductId: null };
     if (existingProductId) {
       var p = state.products.find(function (x) { return x.id === existingProductId; });
       if (p) {
+        var prevCost = p.cost;
         var perUnitExact = c.amount / qty;
         p.stock += qty;
         p.cost = perUnitExact;
         category = p.costCategoryOverride || 'restock';
         logMsg = 'Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Inventory — restocked ' + p.name + ' (+' + qty + (unit || '') + ').';
+        moveMeta.toProductId = p.id;
+        moveMeta.prevCost = prevCost;
       } else {
         category = 'restock';
         logMsg = 'Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Inventory (restock).';
@@ -2790,7 +2815,10 @@
       productId = newProduct.id;
       category = 'new_inventory';
       logMsg = 'Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Inventory — created new ' + newType + ' product "' + newProduct.name + '".';
+      moveMeta.toProductId = newProduct.id;
+      moveMeta.createdNewProduct = true;
     }
+    c.movedFromTesting = moveMeta;
     c.category = category;
     c.productId = productId;
     c.qty = qty;
@@ -2802,6 +2830,53 @@
     testingMoveMatchedProductId = null;
     editingTestingId = null;
     document.getElementById('testing-form-wrap').style.display = 'none';
+    renderAll();
+  }
+
+  // Undoes a Move to Costing / Move to New Inventory, using the snapshot stashed on the entry
+  // at move time (c.movedFromTesting) — only entries that actually went through one of those two
+  // moves carry that snapshot, so this is only ever offered (and only ever works) for those.
+  function reverseTestingMove(costId) {
+    var c = state.costs.find(function (x) { return x.id === costId; });
+    if (!c || !c.movedFromTesting) return;
+    var meta = c.movedFromTesting;
+    var warnExtra = meta.createdNewProduct
+      ? ' This will also remove the Inventory product it created.'
+      : (meta.toProductId ? ' This will undo the stock/cost it added to that product.' : '');
+    if (!confirm('Move this entry back to Testing?' + warnExtra)) return;
+    if (meta.toProductId) {
+      var p = state.products.find(function (x) { return x.id === meta.toProductId; });
+      if (p) {
+        if (meta.createdNewProduct) {
+          // Only safe to delete the product outright if nothing ELSE has touched it since the
+          // move (no other Cost entries linked to it) — otherwise she's used it for real
+          // purchases/sales since, and deleting it would destroy that history. In that case,
+          // just undo the stock this move added and leave the product in place.
+          var otherLinked = state.costs.filter(function (x) { return x.productId === p.id && x.id !== c.id; });
+          if (!otherLinked.length) {
+            state.products = state.products.filter(function (x) { return x.id !== p.id; });
+          } else {
+            p.stock = Math.max(0, p.stock - meta.addedQty);
+          }
+        } else {
+          p.stock = Math.max(0, p.stock - meta.addedQty);
+          if (typeof meta.prevCost === 'number') p.cost = meta.prevCost;
+        }
+      }
+      // Remove the stock-history row this move created (matched by costId) either way, so
+      // Inventory's movement history doesn't keep showing a movement that's been undone.
+      state.stockLog = state.stockLog.filter(function (l) { return l.costId !== c.id; });
+      c.productId = null;
+    }
+    c.category = 'testing';
+    if (typeof meta.originalQty === 'number') c.qty = meta.originalQty; else delete c.qty;
+    if (meta.originalUnit) c.unit = meta.originalUnit; else delete c.unit;
+    if (meta.originalDescription) c.description = meta.originalDescription;
+    var backDesc = c.description || '';
+    var backAmount = c.amount;
+    delete c.movedFromTesting;
+    save();
+    logMoveToQuickAdd('Moved "' + backDesc + '" (' + money(backAmount) + ') back to Testing.');
     renderAll();
   }
 
@@ -4923,6 +4998,14 @@
   // needs picking from the dropdown (e.g. "bubble wrap x5 100rmb": 5 what? rolls or pieces?).
   var COUNT_ONLY_RE = /(?:^|\s)x\s*(\d+)\b/i;
 
+  // Deliberately narrower than UNIT_QTY_PLAIN_RE — only volume/weight (ml/L/g), never
+  // rolls/pcs — used to spot a brand-new, not-yet-keyworded material that's clearly measured
+  // by volume or weight (e.g. "Elmers magical liquid 946ml x1 RM81") so it can default to
+  // per-ml/g cost tracking instead of always falling back to per-piece count. Container/packaging
+  // items (bottles, boxes) are still piece-counted by design — those are pre-registered keywords
+  // (syringe, squeeze bottle, bubble wrap, etc.) and never reach this fallback path.
+  var VOLUME_WEIGHT_ONLY_RE = /(\d+(?:\.\d+)?)\s*(ml|l|litres?|liters?|公升|升|g)\b/i;
+
   // Collapses whatever unit word was actually typed ("roll", "rolls", "卷", "pcs", "piece", "个",
   // "litre", "liter", "L", "升", "公升"...) down to the one canonical value used internally and
   // in the dropdown ('ml' | 'L' | 'g' | 'rolls' | 'pcs').
@@ -6411,7 +6494,17 @@
       return;
     }
     if (e.target.getAttribute('data-qa-newinventory')) {
-      askQuickAddProductType(quickAddPending[0], null, false, null);
+      // Not a pre-registered keyword (those already carry their own unitTracked flag) — but if
+      // she wrote a ml/L/g amount anywhere in the line, it's clearly a liquid/loose-fill material
+      // that should be tracked (and its cost divided) by volume/weight, same as glitter or mica
+      // powder, rather than always defaulting to a flat per-piece cost.
+      var niItem = quickAddPending[0];
+      var volMatch = !niItem.unitQty && String(niItem.description || '').match(VOLUME_WEIGHT_ONLY_RE);
+      if (volMatch) {
+        niItem.unitQty = Number(volMatch[1]);
+        niItem.unitQtyUnit = normalizeUnitWord(volMatch[2]);
+      }
+      askQuickAddProductType(niItem, null, !!(niItem.unitQty), null);
       return;
     }
     if (e.target.getAttribute('data-qa-newproduct')) {
