@@ -147,6 +147,7 @@
   .qa-bubble-bot { background: #f1f3f8; color: var(--text); border-bottom-left-radius: 4px; }
   .qa-bubble-delete { background: var(--red-bg); color: var(--red); border-bottom-left-radius: 4px; }
   .qa-bubble-move { background: var(--amber-bg); color: var(--amber); border-bottom-left-radius: 4px; }
+  .qa-bubble-externaladd { background: var(--green-bg); color: var(--green); border-bottom-left-radius: 4px; }
   .qa-bubble-cancel { background: transparent; color: var(--muted); border: 1px dashed var(--border); border-bottom-left-radius: 4px; }
   .qa-stage { background: #eef4ff; margin-bottom: 12px; }
   #quickadd-content { padding-bottom: 84px; }
@@ -428,8 +429,8 @@
         </div>
       </div>
       <div class="checkbox-row" id="pf-also-cost-wrap" style="padding-top:0; margin-bottom:14px;">
-        <input type="checkbox" id="pf-also-cost">
-        <label for="pf-also-cost">Also log this as a Cost entry (restock, cost × stock, dated today) — for the batch you just bought to start this stock</label>
+        <input type="checkbox" id="pf-skip-cost">
+        <label for="pf-skip-cost">Don't log this as a Cost entry (by default it's logged as a restock — cost × stock, dated today — for the batch you just bought to start this stock)</label>
       </div>
       <div id="pf-duplicate-warning" class="card" style="display:none; background:#fff8e6; border-color:#f0c674; margin-bottom:12px; padding:10px 12px;">
         <div style="font-size:13px; margin-bottom:8px;">You already have a product with this same name/type/variant. Add it again anyway, or cancel?</div>
@@ -642,7 +643,7 @@
     </div>
     <div class="card" style="overflow-x:auto;">
       <table id="cost-table">
-        <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Product</th><th id="cost-amount-header" style="cursor:pointer;">Amount ⇅</th><th></th></tr></thead>
+        <thead><tr><th id="cost-date-header" style="cursor:pointer;">Date ⇅</th><th>Category</th><th>Description</th><th>Product</th><th id="cost-amount-header" style="cursor:pointer;">Amount ⇅</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="cost-empty" style="display:none;">No cost entries yet.</div>
@@ -1231,7 +1232,10 @@
     document.getElementById('pf-photo-file').value = '';
     pfPhotoData = '';
     hidePhotoPreview();
-    document.getElementById('pf-also-cost').checked = false;
+    // Unchecked by default means it WILL be logged as a Cost entry — she asked to flip this
+    // from an opt-in to an opt-out, since she kept forgetting to tick it and having to delete
+    // + redo the product afterward. Only ticking "Don't log" skips it now.
+    document.getElementById('pf-skip-cost').checked = false;
     document.getElementById('pf-fx-amount').value = '';
     document.getElementById('pf-fx-currency').value = 'CNY';
     document.getElementById('pf-fx-rate').value = '';
@@ -1348,7 +1352,7 @@
     }
     var initialStockCostId = null;
     var addedCostEntry = null;
-    if (newProductId && document.getElementById('pf-also-cost').checked && cost > 0 && stock > 0) {
+    if (newProductId && !document.getElementById('pf-skip-cost').checked && cost > 0 && stock > 0) {
       initialStockCostId = uid();
       addedCostEntry = {
         // "new_inventory" (not "restock") — this is the FIRST-time creation of this product,
@@ -1385,6 +1389,12 @@
       if (addedStockLog) state.stockLog = state.stockLog.filter(function (l) { return l !== addedStockLog; });
       resetProductSaveGuard();
       return;
+    }
+    // Same gap as Costs above: adding a brand-new product from Inventory used to leave zero
+    // trace in the Quick Add chat log, even though editing/deleting one already does.
+    if (newProductId) {
+      logAddToQuickAdd('Added new product "' + name + (data.variant ? ' — ' + data.variant : '') + '" to Inventory' +
+        (addedCostEntry ? ' and logged ' + money(addedCostEntry.amount) + ' as new inventory cost' : '') + '.');
     }
     document.getElementById('product-form-wrap').style.display = 'none';
     renderAll();
@@ -1611,8 +1621,13 @@
         description: (STOCK_ADJUST_REASONS[reason] || reason) + ' — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + lost + ' units)'
       });
       logStock(p.id, diff, 'wastage', STOCK_ADJUST_REASONS[reason] || reason, null, wastageCostId);
+      // Same gap as Costs/Inventory adds above: an Adjust write-off used to leave zero trace in
+      // the Quick Add chat log.
+      logAddToQuickAdd('Reported ' + lost + ' unit(s) of "' + p.name + (p.variant ? ' — ' + p.variant : '') +
+        '" as ' + (STOCK_ADJUST_REASONS[reason] || reason).toLowerCase() + ' — logged ' + money(lost * p.cost) + ' as wastage.');
     } else if (diff > 0) {
       logStock(p.id, diff, 'correction', STOCK_ADJUST_REASONS[reason] || reason || 'Manual correction');
+      logAddToQuickAdd('Corrected stock for "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" from ' + oldStock + ' to ' + newStock + ' (no cost logged).');
     }
     adjustingStockProductId = null;
     save();
@@ -2283,6 +2298,21 @@
         }
       }
     }
+    // A brand-new Cost entry logged directly from this page (not through Quick Add) used to
+    // leave zero trace in the Quick Add chat history — she noticed this gap: only edits,
+    // deletes, and moves were showing up there. Log it the same way Quick Add logs its own
+    // entries, so the chat log stays a complete record no matter where something was added.
+    if (isNewEntry) {
+      if (isMulti) {
+        logAddToQuickAdd('Logged cost: ' + (data.description || data.category.replace('_', ' ')) + ' — ' + money(amount) + ' (' + dataItems.length + ' products, via Costs page)');
+      } else {
+        var addedProductNote = linkedProductId ? (function () {
+          var lp = state.products.find(function (x) { return x.id === linkedProductId; });
+          return lp ? ' · linked to ' + lp.name : '';
+        })() : '';
+        logAddToQuickAdd('Logged cost: ' + (data.description || data.category.replace('_', ' ')) + ' — ' + money(amount) + addedProductNote + ' (via Costs page)');
+      }
+    }
     save();
     document.getElementById('cost-form-wrap').style.display = 'none';
     renderAll();
@@ -2548,6 +2578,7 @@
   // consistent with how every other search box in the app behaves now avoids a surprise.
   var costSearchText = '';
   var costSortByAmount = null; // null = default date sort, true = amount desc, false = amount asc
+  var costSortByDate = null; // null = default (latest first), true = earliest first, false = latest first (explicit)
 
   function renderCostFilterBar() {
     var sel = document.getElementById('cost-filter-category');
@@ -2606,7 +2637,9 @@
         var amtCmp = costSortByAmount ? (Number(b.amount) - Number(a.amount)) : (Number(a.amount) - Number(b.amount));
         if (amtCmp !== 0) return amtCmp;
       }
-      var dateCmp = b.date.localeCompare(a.date);
+      // Earliest-first when she's explicitly toggled the Date header that way; latest-first
+      // otherwise (both the default, unsorted state and her explicit "latest first" toggle).
+      var dateCmp = costSortByDate === true ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date);
       if (dateCmp !== 0) return dateCmp;
       // Same day — break ties by when the entry was actually created (id starts with a timestamp),
       // so the most recently added entry (including ones logged from Inventory restock/adjust) shows first.
@@ -2704,6 +2737,15 @@
   document.getElementById('cost-table').addEventListener('click', function (e) {
     if (e.target.id === 'cost-amount-header' || e.target.closest('#cost-amount-header')) {
       costSortByAmount = costSortByAmount === true ? false : true;
+      costSortByDate = null; // only one column sort active at a time
+      renderCosts();
+      return;
+    }
+    if (e.target.id === 'cost-date-header' || e.target.closest('#cost-date-header')) {
+      // First click: earliest -> latest. Second click: latest -> earliest (same as the default,
+      // but now an explicit choice rather than the unsorted state).
+      costSortByDate = costSortByDate === true ? false : true;
+      costSortByAmount = null; // only one column sort active at a time
       renderCosts();
     }
   });
@@ -5040,6 +5082,15 @@
     pushChatMsg('bot', '🔀 ' + text, 'move');
   }
 
+  // Adding a new product (Inventory), a new Cost entry (Costs page), or an Adjust/wastage
+  // correction all happen completely outside the Quick Add flow, so — same reasoning as
+  // deletions/moves above — they used to leave no trace in the chat log at all. Its own green
+  // bubble colour (distinct from delete=red, move=amber, and Quick Add's own grey successful
+  // adds) plus a ➕ marker makes it clear at a glance the entry came from somewhere else in the app.
+  function logAddToQuickAdd(text) {
+    pushChatMsg('bot', '➕ ' + text, 'externaladd');
+  }
+
   function normalizeDesc(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9一-鿿]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
@@ -6098,11 +6149,23 @@
     var parts = key.split('-');
     return MONTH_NAMES[Number(parts[1]) - 1] + ' ' + parts[0];
   }
+  // WhatsApp-style timestamp under each bubble — she asked for this specifically to make old
+  // messages easier to find when scrolling/searching back through a long chat history.
+  function formatChatTimestamp(ts) {
+    if (!ts) return '';
+    var dt = new Date(ts);
+    if (isNaN(dt.getTime())) return '';
+    var datePart = dt.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    var timePart = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return datePart + ', ' + timePart;
+  }
   function chatBubbleHtml(m) {
     var isUser = m.role === 'user';
-    var bubbleClass = isUser ? 'qa-bubble-user' : (m.kind === 'delete' ? 'qa-bubble-delete' : m.kind === 'move' ? 'qa-bubble-move' : m.kind === 'cancel' ? 'qa-bubble-cancel' : 'qa-bubble-bot');
-    return '<div class="qa-row" style="justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';">' +
+    var bubbleClass = isUser ? 'qa-bubble-user' : (m.kind === 'delete' ? 'qa-bubble-delete' : m.kind === 'move' ? 'qa-bubble-move' : m.kind === 'externaladd' ? 'qa-bubble-externaladd' : m.kind === 'cancel' ? 'qa-bubble-cancel' : 'qa-bubble-bot');
+    var tsLabel = formatChatTimestamp(m.ts);
+    return '<div class="qa-row" style="justify-content:' + (isUser ? 'flex-end' : 'flex-start') + '; flex-direction:column; align-items:' + (isUser ? 'flex-end' : 'flex-start') + ';">' +
       '<div class="qa-bubble ' + bubbleClass + '">' + escapeHtml(m.text) + '</div>' +
+      (tsLabel ? '<div class="muted qa-bubble-ts" style="font-size:10px; margin:1px 4px 4px;">' + escapeHtml(tsLabel) + '</div>' : '') +
     '</div>';
   }
 
