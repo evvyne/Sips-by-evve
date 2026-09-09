@@ -1296,6 +1296,22 @@
         newInvCostRef = newInvCost;
         prevNewInvAmount = newInvCost.amount;
         var newInvQty = (typeof newInvCost.qty === 'number' && newInvCost.qty > 0) ? newInvCost.qty : stock;
+        // If nothing else has ever been logged against this product, a Stock change here is
+        // most likely her correcting a quantity she mistyped when first creating it — not a
+        // separate restock (a real restock always adds its OWN Cost entry, which is what makes
+        // "other costs exist" the safe signal to leave this alone instead). Offer to keep that
+        // one purchase record in sync instead of silently leaving it stuck at the old quantity.
+        var otherCostsForProduct = state.costs.some(function (c) { return c.productId === editingProductId && c.id !== newInvCost.id; });
+        if (!otherCostsForProduct && stock !== newInvQty) {
+          var syncConfirmed = confirm('Stock changed from ' + newInvQty + ' to ' + stock + '. Also update the linked Cost entry ("' +
+            (newInvCost.description || 'Initial stock') + '") to match — qty ' + stock + ', amount ' + money(cost * stock) + '?');
+          if (syncConfirmed) {
+            newInvQty = stock;
+            newInvCost.qty = stock;
+            var matchingInitLog = state.stockLog.find(function (l) { return l.costId === newInvCost.id; });
+            if (matchingInitLog) matchingInitLog.qty = stock;
+          }
+        }
         newInvCost.amount = cost * newInvQty;
       }
     } else {
