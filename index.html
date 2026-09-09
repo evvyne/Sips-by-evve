@@ -6833,6 +6833,7 @@
     setSyncStatus('syncing');
     clearTimeout(cloudPushTimer);
     cloudPushTimer = setTimeout(pushStateToCloud, 800);
+    syncPhotosToCloud();
   }
 
   function pushStateToCloud() {
@@ -6873,6 +6874,61 @@
       }
       setSyncStatus('synced');
     });
+  }
+
+  // ================= PHOTO CLOUD STORAGE =================
+  // Product photos are compressed (task #160) but still stored inline as base64 data: URLs in
+  // state, which counts against THIS device's local storage quota — the more photos she adds,
+  // the closer she gets to the limit. Once signed in, any photo still sitting as a data: URL is
+  // uploaded in the background to a Supabase Storage bucket and swapped for its public URL
+  // instead, so local storage stays small no matter how many photos she adds over time.
+  // Runs quietly: if it fails (offline, or the bucket/policies below haven't been set up in her
+  // Supabase project yet), the photo just stays as a local data: URL and it tries again next
+  // time (next save, next reconnect, or next sign-in) — nothing breaks either way.
+  var PHOTO_BUCKET = 'product-photos';
+  var photoSyncInFlight = false;
+
+  function dataUrlToBlob(dataUrl) {
+    var parts = dataUrl.split(',');
+    var mimeMatch = parts[0].match(/:(.*?);/);
+    var mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    var binary = atob(parts[1]);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+
+  function syncPhotosToCloud() {
+    if (!sb || photoSyncInFlight) return;
+    var pending = state.products.filter(function (p) { return p.image && p.image.indexOf('data:') === 0; });
+    if (!pending.length) return;
+    photoSyncInFlight = true;
+    sb.auth.getUser().then(function (res) {
+      var user = res.data && res.data.user;
+      if (!user) { photoSyncInFlight = false; return; }
+      // One at a time, so a single failure (e.g. the bucket hasn't been created in her Supabase
+      // project yet) doesn't fire a burst of doomed parallel uploads.
+      var chain = Promise.resolve();
+      pending.forEach(function (p) {
+        chain = chain.then(function () {
+          var blob = dataUrlToBlob(p.image);
+          var path = user.id + '/' + p.id + '.jpg';
+          return sb.storage.from(PHOTO_BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' }).then(function (uploadRes) {
+            if (uploadRes.error) return; // leave the local photo as-is, try again later
+            var pub = sb.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+            var url = pub && pub.data && pub.data.publicUrl;
+            if (!url) return;
+            var stillThere = state.products.find(function (x) { return x.id === p.id; });
+            if (stillThere && stillThere.image && stillThere.image.indexOf('data:') === 0) {
+              stillThere.image = url;
+              save();
+              if (typeof renderInventory === 'function') renderInventory();
+            }
+          }).catch(function () {});
+        });
+      });
+      chain.then(function () { photoSyncInFlight = false; }).catch(function () { photoSyncInFlight = false; });
+    }).catch(function () { photoSyncInFlight = false; });
   }
 
   function showApp() {
@@ -6950,6 +7006,7 @@
         }).then(function () {
           cloudSyncSuspended = false;
           showApp();
+          syncPhotosToCloud(); // pick up any photo still sitting locally from before this feature existed
         });
       } else {
         showAuthScreen();
