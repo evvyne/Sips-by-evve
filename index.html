@@ -948,6 +948,20 @@
     return v.toLocaleString('en-MY', { style: 'currency', currency: 'MYR' });
   }
 
+  // Keeps a "new_inventory" Cost entry's "(qty × unit cost)" tail in sync whenever its numbers
+  // are corrected (price edit, or the Stock-sync confirm) — that tail is only ever WRITTEN once,
+  // at creation, so without this it silently goes stale and shows old figures next to a
+  // since-corrected amount. Only rewrites the text after the last "(" — if she's replaced the
+  // description entirely (no "(" left at all), leave it alone rather than guessing. This never
+  // touches `amount` itself (that's set separately, right where this is called), so it can't
+  // affect Total spent/Total cost either way — purely a display-text fix.
+  function syncNewInvCostDescription(entry, qty, unitCost) {
+    var desc = entry.description || '';
+    var lastParen = desc.lastIndexOf('(');
+    if (lastParen === -1) return;
+    entry.description = desc.slice(0, lastParen) + '(' + qty + ' × ' + money(unitCost) + ')';
+  }
+
   // Same as money() but keeps 4 decimal places instead of rounding to 2 — used for per-unit
   // costs that are genuinely fractions of a cent (e.g. 1000 units bought for RM14.73 -> RM0.0147
   // each), so the exact figure is visible instead of getting rounded away to RM0.01.
@@ -1286,23 +1300,30 @@
       prevProductSnapshot = Object.assign({}, p);
       Object.assign(p, data);
       // A price correction here (she typed the wrong Cost when first creating this product)
-      // should also fix the one-and-only "new_inventory" Cost entry that recorded it — restock
-      // entries are deliberately NOT touched here (she corrects those directly on the Costs
-      // page instead, which is its own sync path). Use the cost entry's OWN qty (not the
-      // product's current stock) so this stays correct even if stock has since grown via
-      // separate restocks after the product was first created.
+      // should also fix the one-and-only "new_inventory" Cost entry that recorded it — but ONLY
+      // when that's still the ONLY cost history this product has. Once a real, separate restock
+      // exists, the product's own Cost/Stock fields represent a BLENDED aggregate (and a restock
+      // can even fully overwrite the per-unit cost via "Update this product's cost price" — see
+      // the Costs-page save handler), which no longer reliably maps back to what THIS ONE historic
+      // entry originally cost. Recomputing it from that blended number was silently corrupting
+      // already-correct historical amounts on completely unrelated edits (e.g. just fixing a
+      // miscounted Stock) — confirmed by directly testing it: a pure stock correction after a
+      // restock inflated an untouched RM81 entry to RM83.33 with no real money behind the
+      // difference. So once other cost history exists for this product, this whole block is
+      // skipped entirely — Inventory edits then only ever touch the product's own aggregate
+      // fields, never rewrite old Cost entries.
       var newInvCost = state.costs.find(function (c) { return c.productId === editingProductId && c.category === 'new_inventory'; });
       if (newInvCost) {
         newInvCostRef = newInvCost;
         prevNewInvAmount = newInvCost.amount;
-        var newInvQty = (typeof newInvCost.qty === 'number' && newInvCost.qty > 0) ? newInvCost.qty : stock;
-        // If nothing else has ever been logged against this product, a Stock change here is
-        // most likely her correcting a quantity she mistyped when first creating it — not a
-        // separate restock (a real restock always adds its OWN Cost entry, which is what makes
-        // "other costs exist" the safe signal to leave this alone instead). Offer to keep that
-        // one purchase record in sync instead of silently leaving it stuck at the old quantity.
         var otherCostsForProduct = state.costs.some(function (c) { return c.productId === editingProductId && c.id !== newInvCost.id; });
-        if (!otherCostsForProduct && stock !== newInvQty) {
+      }
+      if (newInvCost && !otherCostsForProduct) {
+        var newInvQty = (typeof newInvCost.qty === 'number' && newInvCost.qty > 0) ? newInvCost.qty : stock;
+        // A Stock change here (with no other cost history yet) is most likely her correcting a
+        // quantity she mistyped when first creating this product. Offer to keep that one
+        // purchase record in sync instead of silently leaving it stuck at the old quantity.
+        if (stock !== newInvQty) {
           var syncConfirmed = confirm('Stock changed from ' + newInvQty + ' to ' + stock + '. Also update the linked Cost entry ("' +
             (newInvCost.description || 'Initial stock') + '") to match — qty ' + stock + ', amount ' + money(cost * stock) + '?');
           if (syncConfirmed) {
@@ -1313,6 +1334,12 @@
           }
         }
         newInvCost.amount = cost * newInvQty;
+        // The "(qty × unit cost)" tail was only ever written once, at creation — keep it in sync
+        // whenever the underlying numbers change (price correction, or the Stock-sync above),
+        // so it never shows stale figures next to a since-corrected amount. This only rewrites
+        // that display text; amount (what Total spent actually sums) is set on the line above,
+        // completely unaffected — so this can never cause a double-count.
+        syncNewInvCostDescription(newInvCost, newInvQty, cost);
       }
     } else {
       data.id = uid();
