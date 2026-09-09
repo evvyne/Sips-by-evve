@@ -4066,15 +4066,23 @@
     // qty (i.e. it actually added stock) counts as inventory too even if it's tagged under a
     // different label like "packaging" (bubble wrap, parcel bags) — the category is just a
     // reporting tag for the Costs breakdown, not what decides Expense vs Inventory here.
-    // Qty <= 0 (e.g. a wastage write-off, which also links to a product) is excluded — that
-    // money was already counted once when the stock was originally purchased.
+    // Qty <= 0 (e.g. a wastage write-off, which also links to a product) is excluded from
+    // inventorySpend — that money was already counted once when the stock was originally
+    // purchased. It must ALSO be kept OUT of expenseFromCosts/Total spent/Cash for the exact
+    // same reason (found via direct testing: it was previously falling into the "else" branch
+    // below, silently double-counting that same money a second time as an "expense" — which
+    // would have inflated Total spent, the number she claims from her company, beyond what she
+    // actually paid out). It's tracked in its own wastageLoss bucket instead: still subtracted
+    // from Net profit (the inventory really is worth less now), but never added to Total spent,
+    // Expense, or Cash (no new cash actually left the bank when something broke/was lost).
     // Testing/R&D entries (category:'testing') are tracked separately from both — she doesn't
     // want them lumped into "Expense" (that card is meant for ongoing operating costs like ads/
     // shipping/packaging), but the money is still genuinely spent, so it still counts toward
     // Total spent and still reduces Net profit, just via its own testingSpend bucket instead.
-    var inventorySpend = 0, expenseFromCosts = 0, testingSpend = 0;
+    var inventorySpend = 0, expenseFromCosts = 0, testingSpend = 0, wastageLoss = 0;
     state.costs.forEach(function (c) {
       if (c.category === 'testing') { testingSpend += Number(c.amount); return; }
+      if (c.category === 'wastage') { wastageLoss += Number(c.amount); return; }
       var isInventoryPurchase = c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0);
       if (isInventoryPurchase) inventorySpend += Number(c.amount);
       else expenseFromCosts += Number(c.amount);
@@ -4087,11 +4095,11 @@
     var cashCollected = active.reduce(function (s, o) { return s + (orderTotal(o) - unpaidAmountFor(o)); }, 0);
     var cash = Number(state.startingCash || 0) - allCostsSpent - shippingCostsPaid + cashCollected;
     var invValue = state.products.reduce(function (s, p) { return s + p.stock * p.cost; }, 0);
-    var netProfit = revenue - inventorySpend - expense - testingSpend;
+    var netProfit = revenue - inventorySpend - expense - testingSpend - wastageLoss;
     var totalAccountValue = cash + invValue;
     return {
       active: active, revenue: revenue, shippingCostsPaid: shippingCostsPaid,
-      inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, testingSpend: testingSpend, allCostsSpent: allCostsSpent,
+      inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, testingSpend: testingSpend, wastageLoss: wastageLoss, allCostsSpent: allCostsSpent,
       expense: expense, cash: cash, invValue: invValue,
       netProfit: netProfit, totalAccountValue: totalAccountValue
     };
@@ -4249,8 +4257,13 @@
     setFormula(sumFormulas, 'B' + rTesting, '\'Testing Pipeline\'!E' + tpTotalRow, fin.testingSpend);
     var rTotalSpent = addSheetRow(sumAoa, ['Total spent', null, '= Inventory spend + Operating expense + Testing spend']);
     setFormula(sumFormulas, 'B' + rTotalSpent, 'B' + rInvSpend + '+B' + rOpEx + '+B' + rTesting, fin.inventorySpend + fin.expenseFromCosts + fin.testingSpend);
-    var rNetProfit = addSheetRow(sumAoa, ['Net profit', null, '= Revenue − Inventory spend − Operating expense − Outbound shipping − Testing spend']);
-    setFormula(sumFormulas, 'B' + rNetProfit, 'B' + rRevenue + '-B' + rInvSpend + '-B' + rOpEx + '-B' + rOutShip + '-B' + rTesting, fin.netProfit);
+    // Wastage/loss is deliberately its own line, separate from Total spent — that money was
+    // already counted once in Inventory spend when the stock was originally purchased, so adding
+    // it to Total spent again would double-count it. It still reduces Net profit below, since the
+    // inventory really is worth less now.
+    var rWastage = addSheetRow(sumAoa, ['Wastage / loss', fin.wastageLoss, 'Broken/lost stock, at cost — excluded from Total spent (already counted at purchase)']);
+    var rNetProfit = addSheetRow(sumAoa, ['Net profit', null, '= Revenue − Inventory spend − Operating expense − Outbound shipping − Testing spend − Wastage/loss']);
+    setFormula(sumFormulas, 'B' + rNetProfit, 'B' + rRevenue + '-B' + rInvSpend + '-B' + rOpEx + '-B' + rOutShip + '-B' + rTesting + '-B' + rWastage, fin.netProfit);
     var rCash = addSheetRow(sumAoa, ['Cash position', fin.cash, 'Starting cash − all spend + revenue actually collected']);
     var rInvValue = addSheetRow(sumAoa, ['Inventory value (at cost)', null, '= Cost per Product tab total']);
     // Same reasoning as Testing spend above: references the Cost per Product tab's own TOTAL
@@ -4338,17 +4351,20 @@
     var inRange = function (d) { return (!fromDate || d >= fromDate) && (!toDate || d <= toDate); };
     var active = state.orders.filter(function (o) { return o.status !== 'cancelled' && inRange(o.date); });
     var revenue = active.reduce(function (s, o) { return s + orderTotal(o); }, 0);
-    var inventorySpend = 0, expenseFromCosts = 0, testingSpend = 0;
+    var inventorySpend = 0, expenseFromCosts = 0, testingSpend = 0, wastageLoss = 0;
     state.costs.forEach(function (c) {
       if (!inRange(c.date)) return;
       if (c.category === 'testing') { testingSpend += Number(c.amount); return; }
+      if (c.category === 'wastage') { wastageLoss += Number(c.amount); return; }
       var isInventoryPurchase = c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0);
       if (isInventoryPurchase) inventorySpend += Number(c.amount);
       else expenseFromCosts += Number(c.amount);
     });
+    // wastageLoss is deliberately excluded from allCostsSpent (Total spent) — see financials()
+    // above for the full reasoning — but still reduces Net profit.
     var allCostsSpent = inventorySpend + expenseFromCosts + testingSpend;
-    var netProfit = revenue - allCostsSpent;
-    return { revenue: revenue, allCostsSpent: allCostsSpent, testingSpend: testingSpend, netProfit: netProfit, orderCount: active.length };
+    var netProfit = revenue - allCostsSpent - wastageLoss;
+    return { revenue: revenue, allCostsSpent: allCostsSpent, testingSpend: testingSpend, wastageLoss: wastageLoss, netProfit: netProfit, orderCount: active.length };
   }
 
   function dashboardDateRangeHtml() {
