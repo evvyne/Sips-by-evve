@@ -4420,6 +4420,68 @@
       '</div>';
   }
 
+  // She asked to be able to see her own storage usage directly, instead of needing to export her
+  // data and send it over for me to check every time. Every save() writes to localStorage FIRST
+  // (Supabase is just a cloud backup on top of that — it never bypasses this local write), so
+  // this local size is what actually determines whether a save will succeed. Product photos are
+  // by far the biggest driver of size (they're compressed on upload, but she has many of them),
+  // so this splits photos out from everything else so she can see exactly where the space goes.
+  // The reference budget (5MB) is deliberately the more conservative end of what real browsers
+  // allow (Safari/iOS tends to be tighter than Chrome/Android) — better to warn her early than late.
+  var STORAGE_REFERENCE_BYTES = 5 * 1024 * 1024;
+  function computeStorageStats() {
+    var raw = '';
+    try { raw = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) { raw = JSON.stringify(state); }
+    var totalChars = raw.length;
+    var photoChars = state.products.reduce(function (s, p) { return s + (p.image ? p.image.length : 0); }, 0);
+    var otherChars = Math.max(0, totalChars - photoChars);
+    var photosCount = state.products.filter(function (p) { return !!p.image; }).length;
+    // Browsers generally store JS strings as UTF-16 (2 bytes/char) for quota-accounting purposes,
+    // so the character count alone understates real usage — doubling gives a closer real estimate.
+    var estimatedBytes = totalChars * 2;
+    return { totalChars: totalChars, photoChars: photoChars, otherChars: otherChars, photosCount: photosCount, estimatedBytes: estimatedBytes };
+  }
+  function fmtMB(bytes) { return (bytes / (1024 * 1024)).toFixed(2) + ' MB'; }
+  function storageUsedCardHtml() {
+    var s = computeStorageStats();
+    var pct = Math.min(100, Math.round((s.estimatedBytes / STORAGE_REFERENCE_BYTES) * 100));
+    var barColor = pct >= 80 ? 'var(--red)' : (pct >= 50 ? 'var(--amber)' : 'var(--green)');
+    return '<div class="card">' +
+      '<div style="font-weight:500; margin-bottom:10px;">📦 Storage used</div>' +
+      '<div style="background:#eef0f5; border-radius:6px; height:8px; overflow:hidden; margin-bottom:8px;">' +
+        '<div style="background:' + barColor + '; height:100%; width:' + pct + '%;"></div>' +
+      '</div>' +
+      '<div class="row-line"><span>Estimated used</span><span style="font-weight:500;">' + fmtMB(s.estimatedBytes) + ' <span class="muted">(~' + pct + '% of a typical 5MB phone limit)</span></span></div>' +
+      '<div class="row-line"><span>— Photos (' + s.photosCount + ' products)</span><span class="muted">' + fmtMB(s.photoChars * 2) + '</span></div>' +
+      '<div class="row-line"><span>— Everything else</span><span class="muted">' + fmtMB(s.otherChars * 2) + '</span></div>' +
+      '<div id="dash-storage-quota-note" class="muted" style="font-size:11px; margin-top:6px;">Checking your actual browser storage limit…</div>' +
+    '</div>';
+  }
+  // navigator.storage.estimate() gives the REAL quota/usage for this browser when supported
+  // (most modern Chrome/Android; partial/inconsistent on Safari/iOS) — a more accurate number
+  // than the fixed 5MB reference above, so swap it in once it resolves.
+  function enhanceStorageCardWithRealQuota() {
+    var note = document.getElementById('dash-storage-quota-note');
+    if (!note) return;
+    if (!(navigator.storage && navigator.storage.estimate)) {
+      note.textContent = 'Your browser doesn\'t report an exact storage limit — the 5MB above is just a rough reference.';
+      return;
+    }
+    navigator.storage.estimate().then(function (est) {
+      var noteEl = document.getElementById('dash-storage-quota-note');
+      if (!noteEl) return; // she may have navigated away before this resolved
+      if (typeof est.quota === 'number' && typeof est.usage === 'number' && est.quota > 0) {
+        var realPct = Math.round((est.usage / est.quota) * 100);
+        noteEl.textContent = 'Your browser reports ' + fmtMB(est.usage) + ' used of ' + fmtMB(est.quota) + ' available (' + realPct + '%) — this covers everything this site stores, not just this app\'s data.';
+      } else {
+        noteEl.textContent = 'Your browser didn\'t return a usable storage estimate — the 5MB above is just a rough reference.';
+      }
+    }).catch(function () {
+      var noteEl = document.getElementById('dash-storage-quota-note');
+      if (noteEl) noteEl.textContent = 'Couldn\'t check your browser\'s real storage limit — the 5MB above is just a rough reference.';
+    });
+  }
+
   function renderDashboard() {
     var fin = financials();
     var invValue = fin.invValue;
@@ -4483,9 +4545,12 @@
           return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + '</span>' +
             '<span style="display:flex; align-items:center; gap:8px;"><span class="pill ' + cls + '">' + o.status + '</span><span style="font-weight:500;">' + money(orderTotal(o)) + '</span></span></div>';
         }).join('')) +
-      '</div></div>';
+      '</div>' +
+      storageUsedCardHtml() +
+      '</div>';
 
     document.getElementById('dashboard-content').innerHTML = html;
+    enhanceStorageCardWithRealQuota();
   }
 
   document.getElementById('dashboard-content').addEventListener('click', function (e) {
