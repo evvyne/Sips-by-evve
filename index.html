@@ -131,6 +131,7 @@
   .pill-red { background: var(--red-bg); color: var(--red); }
   .pill-green { background: var(--green-bg); color: var(--green); }
   .pill-gray { background: #eef0f4; color: var(--muted); }
+  .pill-amber { background: var(--amber-bg); color: var(--amber); }
   .empty { color: var(--muted); font-size: 14px; padding: 10px 0; }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
@@ -306,6 +307,7 @@
       <button data-tab="costs">Costs</button>
       <button data-tab="testing">Testing</button>
       <button data-tab="orders">Orders</button>
+      <button data-tab="shipping">Shipping</button>
       <button data-tab="schedule">Schedule</button>
       <button data-tab="calendar">Calendar</button>
       <button data-tab="quickadd">Quick Add</button>
@@ -741,7 +743,8 @@
         <div>
           <label class="field-label">Status</label>
           <select id="of-status">
-            <option value="pending">pending</option>
+            <option value="queueing">queueing</option>
+            <option value="ready to ship">ready to ship</option>
             <option value="shipped">shipped</option>
             <option value="delivered">delivered</option>
             <option value="cancelled">cancelled</option>
@@ -761,6 +764,10 @@
 
       <div class="form-section-title">Shipping</div>
       <div class="form-grid">
+        <div style="grid-column: 1 / -1;">
+          <label class="field-label">Recipient name <span class="muted">(who's receiving the delivery — may differ from Buyer name)</span></label>
+          <input id="of-recipient-name" placeholder="e.g. name on the parcel/courier label">
+        </div>
         <div style="grid-column: 1 / -1;">
           <label class="field-label">Ship to <span class="muted">(customer's delivery address)</span></label>
           <textarea id="of-ship-to" rows="2" placeholder="e.g. 12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor" style="resize:vertical;"></textarea>
@@ -837,6 +844,13 @@
     </div>
   </section>
 
+  <!-- SHIPPING -->
+  <section class="page" id="page-shipping">
+    <div class="page-header"><h1>Shipping</h1></div>
+    <p class="muted" style="margin-top:-8px;">Orders marked "ready to ship" — everything you need to book a courier, in one place.</p>
+    <div id="shipping-content"></div>
+  </section>
+
   <!-- SCHEDULE -->
   <section class="page" id="page-schedule">
     <div class="page-header"><h1>Schedule</h1></div>
@@ -900,6 +914,9 @@
   if (state.orders) {
     state.orders.forEach(function (o) {
       if (o.buyerTelegram && !o.buyerWhatsapp) { o.buyerWhatsapp = o.buyerTelegram; didMigrate = true; }
+      // The "pending" order status was renamed to "queueing" (clearer — means "still needs to
+      // be made"), alongside a new "ready to ship" stage added before "shipped".
+      if (o.status === 'pending') { o.status = 'queueing'; didMigrate = true; }
     });
   }
 
@@ -3188,11 +3205,12 @@
     document.getElementById('of-buyer-handle').value = '';
     document.getElementById('of-buyer-whatsapp').value = '';
     document.getElementById('of-date').value = todayISO();
-    document.getElementById('of-status').value = 'pending';
+    document.getElementById('of-status').value = 'queueing';
     document.getElementById('of-estimated-date').value = '';
     document.getElementById('of-estimated-date').disabled = false;
     document.getElementById('of-estimated-date-clear').disabled = false;
     document.getElementById('of-immediate').checked = false;
+    document.getElementById('of-recipient-name').value = '';
     document.getElementById('of-ship-to').value = '';
     document.getElementById('of-postcode').value = '';
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
@@ -3425,6 +3443,7 @@
         return;
       }
     }
+    var recipientName = document.getElementById('of-recipient-name').value.trim();
     var shipTo = document.getElementById('of-ship-to').value.trim();
     var postcode = document.getElementById('of-postcode').value.trim();
     var shippingZone = document.getElementById('of-shipping-zone').value;
@@ -3464,6 +3483,7 @@
         order.buyerWhatsapp = buyerWhatsapp;
         order.date = date;
         order.status = status;
+        order.recipientName = recipientName;
         order.shipTo = shipTo;
         order.postcode = postcode;
         order.shippingZone = shippingZone;
@@ -3492,6 +3512,7 @@
         paymentDate: '',
         paymentRef: '',
         paymentBankName: '',
+        recipientName: recipientName,
         shipTo: shipTo,
         postcode: postcode,
         shippingZone: shippingZone,
@@ -3611,6 +3632,23 @@
     order.status = newStatus;
     save();
     renderAll();
+  }
+
+  // Shared by the Orders table's status dropdown and the Shipping tab's "Mark as shipped"
+  // button: warns before marking shipped/delivered if the order (or an add-on) isn't fully
+  // paid yet, since that's easy to miss once a parcel is already on its way out.
+  function confirmAndChangeOrderStatus(orderId, newStatus, onDecline) {
+    var order = state.orders.find(function (o) { return o.id === orderId; });
+    if (order && (newStatus === 'shipped' || newStatus === 'delivered') && !orderFullyPaid(order)) {
+      var msg = !order.paid
+        ? 'This order has not been marked as paid yet. Mark as ' + newStatus + ' anyway?'
+        : 'This order still has an unpaid add-on (' + money(unpaidAmountFor(order)) + '). Mark as ' + newStatus + ' anyway?';
+      if (!confirm(msg)) {
+        if (onDecline) onDecline(order);
+        return;
+      }
+    }
+    changeOrderStatus(orderId, newStatus);
   }
 
   function deleteOrder(id) {
@@ -3821,6 +3859,7 @@
           '<div class="field-block"><label class="field-label">Payment date</label><input type="date" id="def-paymentDate-' + o.id + '" value="' + escapeHtml(o.paymentDate || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Reference no.</label><input id="def-paymentRef-' + o.id + '" value="' + escapeHtml(o.paymentRef || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Payer account name</label><input id="def-paymentBankName-' + o.id + '" value="' + escapeHtml(o.paymentBankName || '') + '"></div>' +
+          '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Recipient name</label><input id="def-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '"></div>' +
           '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Ship to (address)</label><textarea id="def-shipTo-' + o.id + '" rows="2" style="resize:vertical;">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
           '<div class="field-block"><label class="field-label">Postcode</label><input id="def-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostActual || 0) + '"></div>' +
@@ -3836,6 +3875,7 @@
         detailRow('Payment date', o.paymentDate || '—') +
         detailRow('Reference no.', o.paymentRef || '—') +
         detailRow('Payer account name', o.paymentBankName || '—') +
+        detailRow('Recipient name', o.recipientName || '—') +
         detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
         detailRow('Shipping cost paid', money(o.shippingCostActual || 0)) +
         detailRow('Tracking number', o.trackingNumber || '—') +
@@ -3851,6 +3891,7 @@
     order.paymentDate = document.getElementById('def-paymentDate-' + id).value;
     order.paymentRef = document.getElementById('def-paymentRef-' + id).value.trim();
     order.paymentBankName = document.getElementById('def-paymentBankName-' + id).value.trim();
+    order.recipientName = document.getElementById('def-recipientName-' + id).value.trim();
     order.shipTo = document.getElementById('def-shipTo-' + id).value.trim();
     order.postcode = document.getElementById('def-postcode-' + id).value.trim();
     order.shippingCostActual = Number(document.getElementById('def-shippingCostActual-' + id).value) || 0;
@@ -3901,7 +3942,7 @@
       countEl.textContent = isFiltered ? filteredOrders.length + ' order' + (filteredOrders.length === 1 ? '' : 's') + ' in range' : '';
     }
     var sorted = filteredOrders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
-    var statuses = ['pending', 'shipped', 'delivered', 'cancelled'];
+    var statuses = ['queueing', 'ready to ship', 'shipped', 'delivered', 'cancelled'];
     tbody.innerHTML = sorted.map(function (o) {
       var statusOptions = statuses.map(function (s) {
         return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
@@ -3973,6 +4014,7 @@
     document.getElementById('of-immediate').checked = !!order.immediate;
     document.getElementById('of-estimated-date').disabled = !!order.immediate;
     document.getElementById('of-estimated-date-clear').disabled = !!order.immediate;
+    document.getElementById('of-recipient-name').value = order.recipientName || '';
     document.getElementById('of-ship-to').value = order.shipTo || '';
     document.getElementById('of-postcode').value = order.postcode || '';
     document.getElementById('of-shipping-zone').value = order.shippingZone || 'west_malaysia';
@@ -4068,17 +4110,7 @@
     if (e.target.classList.contains('order-status-select')) {
       var orderId = e.target.getAttribute('data-order-id');
       var newStatus = e.target.value;
-      var order = state.orders.find(function (o) { return o.id === orderId; });
-      if (order && (newStatus === 'shipped' || newStatus === 'delivered') && !orderFullyPaid(order)) {
-        var msg = !order.paid
-          ? 'This order has not been marked as paid yet. Mark as ' + newStatus + ' anyway?'
-          : 'This order still has an unpaid add-on (' + money(unpaidAmountFor(order)) + '). Mark as ' + newStatus + ' anyway?';
-        if (!confirm(msg)) {
-          e.target.value = order.status;
-          return;
-        }
-      }
-      changeOrderStatus(orderId, newStatus);
+      confirmAndChangeOrderStatus(orderId, newStatus, function (order) { e.target.value = order.status; });
       return;
     }
     if (e.target.classList.contains('order-paid-checkbox')) {
@@ -4570,7 +4602,7 @@
     var active = fin.active;
     var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
     var lowStock = state.products.filter(function (p) { return p.stock <= p.threshold; });
-    var pendingCount = state.orders.filter(function (o) { return o.status === 'pending'; }).length;
+    var pendingCount = state.orders.filter(function (o) { return o.status === 'queueing'; }).length;
     var recent = state.orders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 6);
     var unpaid = active.filter(function (o) { return !orderFullyPaid(o); });
     var unpaidTotal = unpaid.reduce(function (s, o) { return s + unpaidAmountFor(o); }, 0);
@@ -4614,10 +4646,10 @@
           return '<div class="row-line" data-dash-order="' + o.id + '" style="cursor:pointer;"><span>' + (escapeHtml(o.buyerName) || 'Unknown buyer') + ' <span class="muted">— target ' + escapeHtml(formatDate(o.estimatedDate)) + '</span></span><span style="display:flex; align-items:center; gap:8px; font-weight:500;">' + statusTag + '<span style="color:' + (diffDays < 0 ? 'var(--red)' : 'var(--muted)') + ';">' + whenLabel + '</span></span></div>';
         }).join('')) +
       '</div>' +
-      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' pending)</div>' +
+      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' queueing)</div>' +
       (recent.length === 0 ? '<div class="empty">No orders yet.</div>' :
         recent.map(function (o) {
-          var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : 'pill-gray');
+          var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : (o.status === 'ready to ship' ? 'pill-amber' : 'pill-gray'));
           return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + '</span>' +
             '<span style="display:flex; align-items:center; gap:8px;"><span class="pill ' + cls + '">' + o.status + '</span><span style="font-weight:500;">' + money(orderTotal(o)) + '</span></span></div>';
         }).join('')) +
@@ -4934,13 +4966,21 @@
     );
 
     state.orders.push(
-      { id: uid(), buyerName: 'Xin', buyerHandle: '@xin_tt', buyerWhatsapp: '+60123456789', date: '2026-08-03', status: 'pending',
+      { id: uid(), buyerName: 'Xin', buyerHandle: '@xin_tt', buyerWhatsapp: '+60123456789', date: '2026-08-03', status: 'queueing',
         paid: false, paymentDate: '', paymentRef: '', paymentBankName: '',
         shipTo: '12 Jalan Bunga, Kajang, Selangor', postcode: '43000', shippingFee: 8, shippingCostActual: 6, trackingNumber: '', scheduledDate: '',
         discount: 0, notes: '',
         items: [
           { productId: tumbler.id, productName: tumbler.name + ' — ' + tumbler.variant, qty: 1, unitPrice: 35, unitCost: 20 },
           { productId: b003.id, productName: b003.name, qty: 1, unitPrice: 0, unitCost: 2 }
+        ] },
+      { id: uid(), buyerName: 'Farah', buyerHandle: '@farahfinds', buyerWhatsapp: '+60187654321', date: '2026-08-02', status: 'ready to ship',
+        recipientName: 'Farah binti Ismail',
+        paid: true, paymentDate: '2026-08-02', paymentRef: 'TXN20260802', paymentBankName: 'FARAH ISMAIL',
+        shipTo: '5 Jalan Setia, Shah Alam, Selangor', postcode: '40000', shippingZone: 'west_malaysia', shippingWeight: 0.5, shippingFee: 8, shippingCostActual: 0, trackingNumber: '', scheduledDate: '',
+        discount: 0, notes: '',
+        items: [
+          { productId: tumbler.id, productName: tumbler.name + ' — ' + tumbler.variant, qty: 1, unitPrice: 35, unitCost: 20, madeQty: 1 }
         ] },
       { id: uid(), buyerName: 'Mei', buyerHandle: '@mei_glow', date: '2026-08-01', status: 'shipped',
         paid: true, paymentDate: '2026-08-01', paymentRef: 'TXN20260801', paymentBankName: 'MEI XIAO LING',
@@ -4971,6 +5011,64 @@
     save();
     renderAll();
     alert('Sample data loaded. Explore the tabs, then click Export any time to back up your real data.');
+  });
+
+  // ================= SHIPPING =================
+  // She asked for one place to see "which orders are ready to ship" so she can book couriers
+  // online in one pass, instead of scrolling the whole Orders table looking for the right ones.
+  function shippingZoneLabel(zone) {
+    return { west_malaysia: 'West Malaysia', east_malaysia: 'East Malaysia (Sabah/Sarawak)', singapore: 'Singapore', other: 'Other / custom' }[zone] || '—';
+  }
+
+  function renderShipping() {
+    var ready = state.orders.filter(function (o) { return o.status === 'ready to ship'; })
+      .slice().sort(function (a, b) { return (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date); });
+    var content = document.getElementById('shipping-content');
+    if (ready.length === 0) {
+      content.innerHTML = '<div class="empty">Nothing ready to ship yet. Mark an order "ready to ship" from the Orders tab once it\'s packed.</div>';
+      return;
+    }
+    content.innerHTML = '<div class="card" style="margin-bottom:10px;"><strong>' + ready.length + '</strong> order' + (ready.length !== 1 ? 's' : '') + ' ready to ship</div>' +
+      ready.map(function (o) {
+        var itemsSummary = o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ');
+        var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : 'Unpaid') + '</span>';
+        return '<div class="card" style="margin-bottom:8px; padding:12px 14px;">' +
+          '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
+            '<div>' +
+              '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
+              (o.recipientName && o.recipientName !== o.buyerName ? '<div class="muted" style="font-size:12px;">Buyer: ' + escapeHtml(o.buyerName) + '</div>' : '') +
+              (o.buyerWhatsapp ? '<div class="muted" style="font-size:12px;">WA: ' + escapeHtml(o.buyerWhatsapp) + '</div>' : '') +
+              '<div style="margin-top:6px; white-space:pre-wrap;">' + (escapeHtml(o.shipTo) || '<span class="muted">No address on file</span>') + (o.postcode ? '<br>' + escapeHtml(o.postcode) : '') + '</div>' +
+              '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
+              '<div class="muted" style="font-size:12px; margin-top:4px;">' + escapeHtml(itemsSummary) + '</div>' +
+            '</div>' +
+            '<div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">' +
+              paidPill +
+              '<button type="button" class="btn btn-secondary btn-small btn-copy-ship-address" data-order-id="' + o.id + '">Copy address</button>' +
+              '<button type="button" class="btn btn-primary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+  }
+
+  document.getElementById('shipping-content').addEventListener('click', function (e) {
+    if (e.target.classList.contains('btn-mark-shipped')) {
+      var orderId = e.target.getAttribute('data-order-id');
+      confirmAndChangeOrderStatus(orderId, 'shipped');
+      return;
+    }
+    if (e.target.classList.contains('btn-copy-ship-address')) {
+      var oid = e.target.getAttribute('data-order-id');
+      var order = state.orders.find(function (o) { return o.id === oid; });
+      if (order) {
+        var text = (order.recipientName || order.buyerName || '') + '\n' + (order.shipTo || '') + (order.postcode ? '\n' + order.postcode : '');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).catch(function () {});
+        }
+      }
+      return;
+    }
   });
 
   // ================= CALENDAR =================
@@ -6855,6 +6953,7 @@
     renderCosts();
     renderTesting();
     renderOrders();
+    renderShipping();
     renderSchedule();
     renderCalendar();
     renderQuickAdd();
@@ -6953,6 +7052,7 @@
         if (state.orders) {
           state.orders.forEach(function (o) {
             if (o.buyerTelegram && !o.buyerWhatsapp) { o.buyerWhatsapp = o.buyerTelegram; }
+            if (o.status === 'pending') o.status = 'queueing';
           });
         }
         save();
