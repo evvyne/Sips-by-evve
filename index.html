@@ -731,8 +731,8 @@
           <input id="of-buyer-handle" placeholder="@username">
         </div>
         <div>
-          <label class="field-label">Telegram name</label>
-          <input id="of-buyer-telegram" placeholder="@username">
+          <label class="field-label">WhatsApp username / phone number</label>
+          <input id="of-buyer-whatsapp" placeholder="+60123456789 or @username">
         </div>
         <div>
           <label class="field-label">Order date</label>
@@ -753,6 +753,9 @@
             <input id="of-estimated-date" type="date" style="flex:1;">
             <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
           </div>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; margin-top:8px;">
+            <input type="checkbox" id="of-immediate"> Ready right away — skip scheduling, don't show it in the queue
+          </label>
         </div>
       </div>
 
@@ -890,6 +893,13 @@
     state.costs.forEach(function (c) {
       if (c.category === 'materials') { c.category = 'restock'; didMigrate = true; }
       if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; didMigrate = true; }
+    });
+  }
+  // The "Telegram name" order field was renamed to "WhatsApp username / phone number" — carry
+  // over anything already saved under the old field name so existing orders don't lose it.
+  if (state.orders) {
+    state.orders.forEach(function (o) {
+      if (o.buyerTelegram && !o.buyerWhatsapp) { o.buyerWhatsapp = o.buyerTelegram; didMigrate = true; }
     });
   }
 
@@ -3164,13 +3174,25 @@
     document.getElementById('of-estimated-date').value = '';
   });
 
+  // Checking "Ready right away" means there's no date to schedule at all — disable+clear the
+  // date field instead of leaving both fields active and possibly contradicting each other.
+  document.getElementById('of-immediate').addEventListener('change', function () {
+    var dateInput = document.getElementById('of-estimated-date');
+    var clearBtn = document.getElementById('of-estimated-date-clear');
+    if (this.checked) { dateInput.value = ''; dateInput.disabled = true; clearBtn.disabled = true; }
+    else { dateInput.disabled = false; clearBtn.disabled = false; }
+  });
+
   function clearOrderForm() {
     document.getElementById('of-buyer-name').value = '';
     document.getElementById('of-buyer-handle').value = '';
-    document.getElementById('of-buyer-telegram').value = '';
+    document.getElementById('of-buyer-whatsapp').value = '';
     document.getElementById('of-date').value = todayISO();
     document.getElementById('of-status').value = 'pending';
     document.getElementById('of-estimated-date').value = '';
+    document.getElementById('of-estimated-date').disabled = false;
+    document.getElementById('of-estimated-date-clear').disabled = false;
+    document.getElementById('of-immediate').checked = false;
     document.getElementById('of-ship-to').value = '';
     document.getElementById('of-postcode').value = '';
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
@@ -3394,10 +3416,11 @@
     var status = document.getElementById('of-status').value;
     var buyerName = document.getElementById('of-buyer-name').value.trim();
     var buyerHandle = document.getElementById('of-buyer-handle').value.trim();
-    var buyerTelegram = document.getElementById('of-buyer-telegram').value.trim();
+    var buyerWhatsapp = document.getElementById('of-buyer-whatsapp').value.trim();
     var date = document.getElementById('of-date').value || todayISO();
-    var estimatedDate = document.getElementById('of-estimated-date').value;
-    if (!editingOrderId && !estimatedDate) {
+    var immediate = document.getElementById('of-immediate').checked;
+    var estimatedDate = immediate ? '' : document.getElementById('of-estimated-date').value;
+    if (!editingOrderId && !estimatedDate && !immediate) {
       if (!confirm("You haven't set a rough target date for this order — it helps you keep track of scheduling later. Save without one anyway?")) {
         return;
       }
@@ -3411,14 +3434,24 @@
     var trackingNumber = document.getElementById('of-tracking').value.trim();
     var discount = Number(document.getElementById('of-discount').value) || 0;
     var notes = document.getElementById('of-notes').value.trim();
-    var newItems = validLines.map(function (l) {
+    // If she's editing an order, carry over how many of each line item were already marked as
+    // "made" (see the per-item made-qty tracker on the expanded order row) — matched by
+    // position, since that's how the draft item list lines up with the order's saved items.
+    // Clamped to the (possibly reduced) new qty so "made" can never exceed what's ordered.
+    var existingOrderForItems = editingOrderId ? state.orders.find(function (o) { return o.id === editingOrderId; }) : null;
+    var oldItemsForMadeQty = (existingOrderForItems && existingOrderForItems.items) || [];
+    var newItems = validLines.map(function (l, idx) {
       var p = state.products.find(function (x) { return x.id === l.productId; });
+      var qty = Number(l.qty);
+      var prevItem = oldItemsForMadeQty[idx];
+      var prevMade = (prevItem && prevItem.productId === l.productId) ? (Number(prevItem.madeQty) || 0) : 0;
       return {
         productId: l.productId,
         productName: p ? p.name + (p.variant ? ' — ' + p.variant : '') : 'Deleted product',
-        qty: Number(l.qty),
+        qty: qty,
         unitPrice: Number(l.unitPrice) || 0,
-        unitCost: p ? p.cost : 0
+        unitCost: p ? p.cost : 0,
+        madeQty: Math.min(prevMade, qty)
       };
     });
 
@@ -3428,7 +3461,7 @@
         if (order.status !== 'cancelled') restoreStock(order);
         order.buyerName = buyerName;
         order.buyerHandle = buyerHandle;
-        order.buyerTelegram = buyerTelegram;
+        order.buyerWhatsapp = buyerWhatsapp;
         order.date = date;
         order.status = status;
         order.shipTo = shipTo;
@@ -3443,6 +3476,7 @@
         order.items = newItems;
         if (order.estimatedDate !== estimatedDate) order.customerNotified = false;
         order.estimatedDate = estimatedDate;
+        order.immediate = immediate;
         if (status !== 'cancelled') deductStock(order);
       }
       editingOrderId = null;
@@ -3451,7 +3485,7 @@
         id: uid(),
         buyerName: buyerName,
         buyerHandle: buyerHandle,
-        buyerTelegram: buyerTelegram,
+        buyerWhatsapp: buyerWhatsapp,
         date: date,
         status: status,
         paid: false,
@@ -3466,6 +3500,7 @@
         shippingCostActual: shippingCostActual,
         trackingNumber: trackingNumber,
         estimatedDate: estimatedDate,
+        immediate: immediate,
         customerNotified: false,
         scheduledDate: '',
         productionDone: false,
@@ -3600,6 +3635,18 @@
   // this is what "safe to ship" should be gated on, since add-ons are paid separately later.
   function orderFullyPaid(o) {
     return !!o.paid && (o.addOns || []).every(function (a) { return a.paid; });
+  }
+
+  // How many of each line item have actually been made so far vs how many were ordered —
+  // she wanted this per-item ("order 5 bottles, only 3 done so far") rather than one blended
+  // number for the whole order, since orders can mix multiple different products.
+  function orderMadeSummary(o) {
+    var made = 0, ordered = 0;
+    o.items.forEach(function (i) {
+      made += Number(i.madeQty) || 0;
+      ordered += Number(i.qty) || 0;
+    });
+    return { made: made, ordered: ordered };
   }
 
   function unpaidAmountFor(o) {
@@ -3861,10 +3908,16 @@
       }).join('');
       var rows = '<tr>' +
         '<td style="white-space:nowrap;">' + formatDate(o.date) + '</td>' +
-        '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + '</div>' + (o.buyerTelegram ? '<div class="muted">TG: ' + escapeHtml(o.buyerTelegram) + '</div>' : '') + '</td>' +
+        '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + '</div>' + (o.buyerWhatsapp ? '<div class="muted">WA: ' + escapeHtml(o.buyerWhatsapp) + '</div>' : '') + '</td>' +
         '<td class="muted">' + (escapeHtml(o.buyerHandle) || '—') + '</td>' +
         '<td class="muted">' + (escapeHtml(o.shipTo) || '—') + (o.postcode ? '<div>' + escapeHtml(o.postcode) + '</div>' : '') + '</td>' +
-        '<td><button class="btn-text" data-toggle-order="' + o.id + '">' + o.items.length + ' item' + (o.items.length !== 1 ? 's' : '') + '</button></td>' +
+        '<td><button class="btn-text" data-toggle-order="' + o.id + '">' + o.items.length + ' item' + (o.items.length !== 1 ? 's' : '') + '</button>' +
+          (function () {
+            if (o.status === 'cancelled') return '';
+            var ms = orderMadeSummary(o);
+            if (ms.ordered === 0) return '';
+            return '<div><span class="pill ' + (ms.made >= ms.ordered ? 'pill-green' : 'pill-gray') + '" style="font-size:10px;">' + ms.made + '/' + ms.ordered + ' made</span></div>';
+          })() + '</td>' +
         '<td style="font-weight:500;">' + money(orderTotal(o)) + '</td>' +
         '<td style="text-align:center;">' + (o.status === 'cancelled'
           ? '<span title="Cancelled — payment not applicable">⛔</span>'
@@ -3886,8 +3939,16 @@
       }
       if (expandedOrderId === o.id) {
         rows += '<tr class="order-items-row"><td colspan="9">' +
-          o.items.map(function (i) {
-            return '<div class="row-line"><span>' + escapeHtml(i.productName) + ' × ' + i.qty + '</span><span>' + money(i.qty * i.unitPrice) + '</span></div>';
+          o.items.map(function (i, idx) {
+            var madeQty = Number(i.madeQty) || 0;
+            var madeControl = o.status === 'cancelled' ? '' :
+              '<span style="display:flex; align-items:center; gap:6px; margin-left:12px;">' +
+                '<span class="muted" style="font-size:11px; white-space:nowrap;">Made:</span>' +
+                '<input type="number" class="order-item-made-input" data-order-id="' + o.id + '" data-item-index="' + idx + '" min="0" max="' + i.qty + '" value="' + madeQty + '" style="width:52px; padding:3px 5px; font-size:12px;">' +
+                '<span class="muted" style="font-size:11px; white-space:nowrap;">/ ' + i.qty + '</span>' +
+              '</span>';
+            return '<div class="row-line" style="align-items:center;"><span>' + escapeHtml(i.productName) + ' × ' + i.qty + '</span>' +
+              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + '</span></div>';
           }).join('') +
           (o.notes ? '<div class="muted" style="padding-top:6px;">Note: ' + escapeHtml(o.notes) + '</div>' : '') +
           renderOrderDetailsBlock(o) +
@@ -3905,10 +3966,13 @@
     editingOrderId = id;
     document.getElementById('of-buyer-name').value = order.buyerName || '';
     document.getElementById('of-buyer-handle').value = order.buyerHandle || '';
-    document.getElementById('of-buyer-telegram').value = order.buyerTelegram || '';
+    document.getElementById('of-buyer-whatsapp').value = order.buyerWhatsapp || '';
     document.getElementById('of-date').value = order.date || todayISO();
     document.getElementById('of-status').value = order.status;
     document.getElementById('of-estimated-date').value = order.estimatedDate || '';
+    document.getElementById('of-immediate').checked = !!order.immediate;
+    document.getElementById('of-estimated-date').disabled = !!order.immediate;
+    document.getElementById('of-estimated-date-clear').disabled = !!order.immediate;
     document.getElementById('of-ship-to').value = order.shipTo || '';
     document.getElementById('of-postcode').value = order.postcode || '';
     document.getElementById('of-shipping-zone').value = order.shippingZone || 'west_malaysia';
@@ -4026,6 +4090,18 @@
         renderOrders();
         renderDashboard();
         renderSchedule();
+      }
+    }
+    if (e.target.classList.contains('order-item-made-input')) {
+      var madeOrderId = e.target.getAttribute('data-order-id');
+      var itemIndex = Number(e.target.getAttribute('data-item-index'));
+      var madeOrder = state.orders.find(function (o) { return o.id === madeOrderId; });
+      var item = madeOrder && madeOrder.items[itemIndex];
+      if (item) {
+        // Clamp to [0, ordered qty] — "made" can never be negative or exceed what was ordered.
+        item.madeQty = Math.max(0, Math.min(Math.round(Number(e.target.value)) || 0, item.qty));
+        save();
+        renderOrders();
       }
     }
     if (e.target.classList.contains('addon-paid-checkbox')) {
@@ -4666,9 +4742,13 @@
     var notCancelled = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
     var active = notCancelled.filter(function (o) { return !o.productionDone; });
     var done = notCancelled.filter(function (o) { return o.productionDone; });
+    // Orders marked "Ready right away" (see the order form) are things she can make immediately
+    // — they were cluttering this queue and being numbered like they're waiting in line, when
+    // really there's nothing to wait for. Pull them into their own section instead.
+    var readyNow = active.filter(function (o) { return !o.scheduledDate && o.immediate; });
     // Queue order = first-come-first-served by when the order was actually created (id starts
     // with a timestamp) — lets you tell a customer "you're #4 in line" without locking a date.
-    var unscheduled = active.filter(function (o) { return !o.scheduledDate; })
+    var unscheduled = active.filter(function (o) { return !o.scheduledDate && !o.immediate; })
       .slice().sort(function (a, b) { return (a.id || '').localeCompare(b.id || ''); });
     var inRange = function (d) { return (!scheduleFilterFrom || d >= scheduleFilterFrom) && (!scheduleFilterTo || d <= scheduleFilterTo); };
     var scheduled = active.filter(function (o) { return o.scheduledDate && inRange(o.scheduledDate); });
@@ -4681,14 +4761,14 @@
     var dates = Object.keys(byDate).sort();
     var isDateFiltered = !!(scheduleFilterFrom || scheduleFilterTo);
 
-    function orderRow(o, isDone, queuePos) {
+    function orderRow(o, isDone, queuePos, isImmediateSection) {
       var itemsSummary = o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ');
       var paidPill = '<span class="pill ' + (o.paid ? 'pill-green' : 'pill-red') + '">' + (o.paid ? 'Paid' : 'Unpaid') + '</span>';
-      var queuePill = queuePos ? '<span class="pill pill-gray">#' + queuePos + ' in queue</span>' : '';
+      var queuePill = queuePos ? '<span class="pill pill-gray">#' + queuePos + ' in queue</span>' : (isImmediateSection ? '<span class="pill pill-green">Ready now</span>' : '');
       var estimateNote = (queuePos && o.estimatedDate) ? '<div class="muted" style="font-size:11px; margin-top:2px;">Rough target: ' + escapeHtml(formatDate(o.estimatedDate)) + ' (internal only)</div>' : '';
       return '<div class="card" style="margin-bottom:8px; padding:12px 14px;' + (isDone ? ' opacity:0.6;' : '') + '">' +
         '<div class="schedule-row">' +
-          '<div><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.buyerHandle ? ' <span class="muted">' + escapeHtml(o.buyerHandle) + '</span>' : '') + (o.buyerTelegram ? ' <span class="muted">TG: ' + escapeHtml(o.buyerTelegram) + '</span>' : '') + '</div>' +
+          '<div><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.buyerHandle ? ' <span class="muted">' + escapeHtml(o.buyerHandle) + '</span>' : '') + (o.buyerWhatsapp ? ' <span class="muted">WA: ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') + '</div>' +
           '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' + estimateNote + '</div>' +
           '<div class="schedule-controls">' + queuePill + paidPill +
             (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '">') +
@@ -4700,11 +4780,15 @@
     }
 
     var html = scheduleFilterBarHtml();
+    if (readyNow.length > 0) {
+      html += '<div class="form-section-title" style="border-top:none; padding-top:0;">✅ Ready now (' + readyNow.length + ')</div>' +
+        readyNow.map(function (o) { return orderRow(o, false, null, true); }).join('');
+    }
     if (unscheduled.length > 0) {
-      html += '<div class="form-section-title" style="border-top:none; padding-top:0;">Unscheduled (' + unscheduled.length + ')</div>' +
+      html += '<div class="form-section-title" style="border-top:' + (readyNow.length > 0 ? '1px solid var(--border)' : 'none') + '; padding-top:' + (readyNow.length > 0 ? '14px' : '0') + ';">Unscheduled (' + unscheduled.length + ')</div>' +
         unscheduled.map(function (o, idx) { return orderRow(o, false, idx + 1); }).join('');
     }
-    if (dates.length === 0 && unscheduled.length === 0 && done.length === 0 && !isDateFiltered) {
+    if (dates.length === 0 && unscheduled.length === 0 && readyNow.length === 0 && done.length === 0 && !isDateFiltered) {
       html += '<div class="empty">No active orders yet.</div>';
     }
     if (dates.length === 0 && isDateFiltered) {
@@ -4850,7 +4934,7 @@
     );
 
     state.orders.push(
-      { id: uid(), buyerName: 'Xin', buyerHandle: '@xin_tt', buyerTelegram: '@xin_telegram', date: '2026-08-03', status: 'pending',
+      { id: uid(), buyerName: 'Xin', buyerHandle: '@xin_tt', buyerWhatsapp: '+60123456789', date: '2026-08-03', status: 'pending',
         paid: false, paymentDate: '', paymentRef: '', paymentBankName: '',
         shipTo: '12 Jalan Bunga, Kajang, Selangor', postcode: '43000', shippingFee: 8, shippingCostActual: 6, trackingNumber: '', scheduledDate: '',
         discount: 0, notes: '',
@@ -6866,6 +6950,11 @@
             if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; }
           });
         }
+        if (state.orders) {
+          state.orders.forEach(function (o) {
+            if (o.buyerTelegram && !o.buyerWhatsapp) { o.buyerWhatsapp = o.buyerTelegram; }
+          });
+        }
         save();
         renderAll();
       } else {
@@ -6997,8 +7086,21 @@
     window.addEventListener('online', function () { scheduleCloudPush(); });
     window.addEventListener('offline', function () { setSyncStatus('offline'); });
 
+    // CRITICAL DATA-SAFETY FIX: pending local edits could get silently wiped. Supabase fires
+    // onAuthStateChange for MANY events, not just a real sign-in — including TOKEN_REFRESHED,
+    // which it can also trigger right when a backgrounded browser tab regains focus. The old
+    // code treated every one of those the same as a brand-new sign-in and unconditionally
+    // pulled the cloud copy, OVERWRITING whatever was just typed locally — and if that local
+    // edit hadn't finished pushing up yet (background tabs throttle/delay timers, so the normal
+    // 800ms debounced push can be stuck for a long time), it was gone for good with no way back.
+    // Fix: only ever adopt the cloud's copy once per page load, on the FIRST event that carries
+    // a session (the real "you're signed in" moment) — never again after that for this session,
+    // no matter how many more auth events fire. Local state is the source of truth from then on.
+    var hasAdoptedCloudStateThisSession = false;
     sb.auth.onAuthStateChange(function (event, session) {
       if (session && session.user) {
+        if (hasAdoptedCloudStateThisSession) return; // already synced once this session — never pull-and-overwrite again
+        hasAdoptedCloudStateThisSession = true;
         cloudSyncSuspended = true;
         setSyncStatus('syncing');
         pullStateFromCloud(session.user.id).catch(function () {
@@ -7009,7 +7111,21 @@
           syncPhotosToCloud(); // pick up any photo still sitting locally from before this feature existed
         });
       } else {
+        hasAdoptedCloudStateThisSession = false; // signed out — a genuine next sign-in should pull fresh
         showAuthScreen();
+      }
+    });
+
+    // A second layer of protection: if a cloud push is still waiting on its debounce timer (see
+    // scheduleCloudPush) when the tab is hidden — switching tabs, apps, or locking the phone —
+    // push it up immediately instead of leaving it to a background timer that the browser may
+    // throttle or never actually run. This is exactly the moment that led to the data loss above:
+    // she switched tabs with an unsaved push still pending, and by the time she came back the
+    // push still hadn't gone through.
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden' && cloudPushTimer) {
+        clearTimeout(cloudPushTimer);
+        pushStateToCloud();
       }
     });
   } else {
