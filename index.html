@@ -5873,14 +5873,23 @@
   // may suggest a likely type (e.g. glitter -> Tumbler), but that's only ever a suggestion:
   // she still gets to pick, since a themed material name (e.g. "hello kitty glitter") could
   // just as easily belong to Stickers or Others.
-  function askQuickAddProductType(item, typeGuess, unitTracked, nameVariant) {
-    quickAddStage = { type: 'producttypeask', item: item, typeGuess: typeGuess || null, unitTracked: !!unitTracked, nameVariant: nameVariant || null };
+  function askQuickAddProductType(item, typeGuess, unitTracked, nameVariant, isGuessedUnitTracked) {
+    quickAddStage = { type: 'producttypeask', item: item, typeGuess: typeGuess || null, unitTracked: !!unitTracked, nameVariant: nameVariant || null, isGuessedUnitTracked: !!isGuessedUnitTracked };
     renderQuickAdd();
   }
 
   function chooseQuickAddProductType(type) {
     var stage = quickAddStage;
-    if (stage.unitTracked) {
+    // A Tumbler/Stickers item is always sold and counted by the piece — even when its own name
+    // mentions a volume (e.g. "Tumbler 1000ml" is a 1000ml-CAPACITY tumbler, not 1000ml of
+    // stock). The unitTracked guess from the generic "New inventory item" fallback (as opposed
+    // to a pre-registered material keyword like glitter/mica powder, which really IS measured
+    // by volume regardless of type) has no way to tell a capacity/size mention apart from an
+    // actual purchased quantity, so once she's confirmed the type is a finished, piece-counted
+    // good, that guess is dropped and the line is treated as a normal per-piece item instead —
+    // otherwise "Tumbler 1000ml x1 RM50" would wrongly set stock to 1000 instead of 1.
+    var dropGuessedUnitTracked = stage.isGuessedUnitTracked && (type === 'Tumbler' || type === 'Stickers');
+    if (stage.unitTracked && !dropGuessedUnitTracked) {
       // She may have already typed the total ml/g inline (e.g. "candle dye 2.72rmb 10ml") —
       // if so, skip re-asking and use that instead of the separate materialqty prompt.
       if (stage.item.unitQty) {
@@ -5891,6 +5900,13 @@
       quickAddStage = { type: 'materialqty', item: stage.item, productType: type, nameVariant: stage.nameVariant || null };
       renderQuickAdd();
       return;
+    }
+    if (dropGuessedUnitTracked) {
+      // Clear the guessed volume reading entirely so it can't leak into parsedQty later (e.g.
+      // via autoCreateInventoryFromItem's own fallback parsing) — she'll get the normal
+      // per-piece "New product" flow with an Initial stock field she fills in herself.
+      stage.item.unitQty = null;
+      stage.item.unitQtyUnit = null;
     }
     proceedAfterProductType(stage.item, type, null, stage.nameVariant);
   }
@@ -7072,7 +7088,7 @@
         niItem.unitQty = Number(volMatch[1]);
         niItem.unitQtyUnit = normalizeUnitWord(volMatch[2]);
       }
-      askQuickAddProductType(niItem, null, !!(niItem.unitQty), null);
+      askQuickAddProductType(niItem, null, !!(niItem.unitQty), null, true);
       return;
     }
     if (e.target.getAttribute('data-qa-newproduct')) {
