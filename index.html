@@ -132,6 +132,7 @@
   .pill-green { background: var(--green-bg); color: var(--green); }
   .pill-gray { background: #eef0f4; color: var(--muted); }
   .pill-amber { background: var(--amber-bg); color: var(--amber); }
+  .pill-blue { background: #dbeafe; color: var(--blue-dark); }
   .empty { color: var(--muted); font-size: 14px; padding: 10px 0; }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
@@ -744,6 +745,7 @@
           <label class="field-label">Status</label>
           <select id="of-status">
             <option value="queueing">queueing</option>
+            <option value="uv curing">uv curing</option>
             <option value="ready to ship">ready to ship</option>
             <option value="shipped">shipped</option>
             <option value="delivered">delivered</option>
@@ -764,9 +766,13 @@
 
       <div class="form-section-title">Shipping</div>
       <div class="form-grid">
-        <div style="grid-column: 1 / -1;">
+        <div>
           <label class="field-label">Recipient name <span class="muted">(who's receiving the delivery — may differ from Buyer name)</span></label>
           <input id="of-recipient-name" placeholder="e.g. name on the parcel/courier label">
+        </div>
+        <div>
+          <label class="field-label">Recipient phone <span class="muted">(leave blank to use the WhatsApp number above)</span></label>
+          <input id="of-recipient-phone" placeholder="+60123456789">
         </div>
         <div style="grid-column: 1 / -1;">
           <label class="field-label">Ship to <span class="muted">(customer's delivery address)</span></label>
@@ -1073,11 +1079,61 @@
     }).join('') + (includeNewOption ? '<option value="__new__"' + (selected === '__new__' ? ' selected' : '') + '>+ Add new product…</option>' : '');
   }
 
+  // Add-ons are things a customer might ask to tack onto their order — a tumbler, a sticker, a
+  // glass straw, a custom name charm. Raw materials/supplies (type "Others" — syringes, kitchen
+  // towels, packaging) aren't something a customer orders, so they're left out of this picker to
+  // keep it short and relevant, even though they're still valid picks elsewhere (Costs, the main
+  // order item picker).
+  function addOnProductOptionsHtml(selected) {
+    return state.products.filter(function (p) { return p.type !== 'Others'; }).map(function (p) {
+      return '<option value="' + p.id + '"' + (p.id === selected ? ' selected' : '') + '>' + (p.type ? '[' + escapeHtml(p.type) + '] ' : '') + escapeHtml(p.name) + (p.variant ? ' — ' + escapeHtml(p.variant) : '') + '</option>';
+    }).join('');
+  }
+
   function refreshProductDropdowns() {
     var costSel = document.getElementById('cf-product');
     var current = costSel.value;
     costSel.innerHTML = '<option value="">— none —</option>' + productOptionsHtml(current, true);
     costSel.value = current;
+  }
+
+  // Generic version of the Inventory product-photo compression (same 500px/0.5-quality
+  // settings) reused by Order item photos and the Shipping barcode photo — anywhere that
+  // needs "paste or upload a photo" without bloating localStorage the way the old inline
+  // product photos once did.
+  function compressImageBlobToDataUrl(blob, callback) {
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var maxDim = 500;
+        var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        callback(canvas.toDataURL('image/jpeg', 0.5));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(blob);
+  }
+
+  // Tracks which photo field (an order item's finished-product photo, or an order's shipping
+  // barcode photo) should receive the next pasted image — set when she clicks that field's
+  // "Add/Change photo" control, since a paste event on its own doesn't know which field she means.
+  var activePhotoTarget = null;
+  function applyPhotoToTarget(target, dataUrl) {
+    if (!target) return;
+    if (target.kind === 'orderItem') {
+      var order = state.orders.find(function (o) { return o.id === target.orderId; });
+      var item = order && order.items[target.itemIndex];
+      if (item) { item.photo = dataUrl; save(); renderOrders(); }
+    } else if (target.kind === 'shippingBarcode') {
+      var order2 = state.orders.find(function (o) { return o.id === target.orderId; });
+      if (order2) { order2.shippingBarcodePhoto = dataUrl; save(); renderShipping(); }
+    }
   }
 
   // ================= LIGHTBOX =================
@@ -1179,7 +1235,25 @@
 
   // Paste an image (Ctrl+V / Cmd+V) straight into the product form — e.g. copied from
   // a chat, a supplier listing, or another app — no need to save it as a file first.
+  // If she's just clicked an order item's or the Shipping barcode's "Add/Change photo"
+  // control, route the pasted image there instead (see activePhotoTarget above).
   document.addEventListener('paste', function (e) {
+    if (activePhotoTarget) {
+      var targetItems = (e.clipboardData && e.clipboardData.items) || [];
+      for (var t = 0; t < targetItems.length; t++) {
+        if (targetItems[t].type && targetItems[t].type.indexOf('image/') === 0) {
+          var targetBlob = targetItems[t].getAsFile();
+          if (targetBlob) {
+            var target = activePhotoTarget;
+            activePhotoTarget = null;
+            compressImageBlobToDataUrl(targetBlob, function (dataUrl) { applyPhotoToTarget(target, dataUrl); });
+            e.preventDefault();
+          }
+          return;
+        }
+      }
+      return;
+    }
     var wrap = document.getElementById('product-form-wrap');
     if (!wrap || wrap.style.display === 'none') return;
     var items = (e.clipboardData && e.clipboardData.items) || [];
@@ -3211,6 +3285,7 @@
     document.getElementById('of-estimated-date-clear').disabled = false;
     document.getElementById('of-immediate').checked = false;
     document.getElementById('of-recipient-name').value = '';
+    document.getElementById('of-recipient-phone').value = '';
     document.getElementById('of-ship-to').value = '';
     document.getElementById('of-postcode').value = '';
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
@@ -3444,6 +3519,7 @@
       }
     }
     var recipientName = document.getElementById('of-recipient-name').value.trim();
+    var recipientPhone = document.getElementById('of-recipient-phone').value.trim();
     var shipTo = document.getElementById('of-ship-to').value.trim();
     var postcode = document.getElementById('of-postcode').value.trim();
     var shippingZone = document.getElementById('of-shipping-zone').value;
@@ -3464,13 +3540,15 @@
       var qty = Number(l.qty);
       var prevItem = oldItemsForMadeQty[idx];
       var prevMade = (prevItem && prevItem.productId === l.productId) ? (Number(prevItem.madeQty) || 0) : 0;
+      var prevPhoto = (prevItem && prevItem.productId === l.productId) ? (prevItem.photo || '') : '';
       return {
         productId: l.productId,
         productName: p ? p.name + (p.variant ? ' — ' + p.variant : '') : 'Deleted product',
         qty: qty,
         unitPrice: Number(l.unitPrice) || 0,
         unitCost: p ? p.cost : 0,
-        madeQty: Math.min(prevMade, qty)
+        madeQty: Math.min(prevMade, qty),
+        photo: prevPhoto
       };
     });
 
@@ -3484,6 +3562,7 @@
         order.date = date;
         order.status = status;
         order.recipientName = recipientName;
+        order.recipientPhone = recipientPhone;
         order.shipTo = shipTo;
         order.postcode = postcode;
         order.shippingZone = shippingZone;
@@ -3513,6 +3592,7 @@
         paymentRef: '',
         paymentBankName: '',
         recipientName: recipientName,
+        recipientPhone: recipientPhone,
         shipTo: shipTo,
         postcode: postcode,
         shippingZone: shippingZone,
@@ -3663,9 +3743,18 @@
     renderAll();
   }
 
+  // Some add-ons (e.g. a "Custom name" lettering charm) charge one flat price no matter how
+  // much of the underlying material gets used — always +RM5 whether the name is 3 letters or
+  // 10 — while every letter cut from a shared sheet should still come off stock. "Flat price"
+  // decouples the two: qty still drives how much stock is deducted (see saveAddOn), but the
+  // amount charged is unitPrice on its own instead of qty × unitPrice.
+  function addOnAmount(a) {
+    return a.flatPrice ? (Number(a.unitPrice) || 0) : a.qty * a.unitPrice;
+  }
+
   function orderTotal(o) {
     var itemsTotal = o.items.reduce(function (s, i) { return s + i.qty * i.unitPrice; }, 0);
-    var addOnsTotal = (o.addOns || []).reduce(function (s, a) { return s + a.qty * a.unitPrice; }, 0);
+    var addOnsTotal = (o.addOns || []).reduce(function (s, a) { return s + addOnAmount(a); }, 0);
     return itemsTotal + addOnsTotal + Number(o.shippingFee || 0) - Number(o.discount || 0);
   }
 
@@ -3689,7 +3778,7 @@
 
   function unpaidAmountFor(o) {
     if (!o.paid) return orderTotal(o);
-    return (o.addOns || []).filter(function (a) { return !a.paid; }).reduce(function (s, a) { return s + a.qty * a.unitPrice; }, 0);
+    return (o.addOns || []).filter(function (a) { return !a.paid; }).reduce(function (s, a) { return s + addOnAmount(a); }, 0);
   }
 
   var expandedOrderId = null;
@@ -3715,8 +3804,9 @@
     var isCancelled = o.status === 'cancelled';
     var addOns = o.addOns || [];
     var rowsHtml = addOns.map(function (a) {
+      var qtyLabel = a.flatPrice ? ' (' + a.qty + ' used)' : ' × ' + a.qty;
       return '<div class="row-line" style="align-items:center;">' +
-        '<span>' + escapeHtml(a.productName) + ' × ' + a.qty + ' — ' + money(a.qty * a.unitPrice) + (!a.paid ? ' <span style="color:var(--red);">· unpaid</span>' : '') + '</span>' +
+        '<span>' + escapeHtml(a.productName) + qtyLabel + ' — ' + money(addOnAmount(a)) + (a.flatPrice ? ' <span class="muted" style="font-size:11px;">flat</span>' : '') + (!a.paid ? ' <span style="color:var(--red);">· unpaid</span>' : '') + '</span>' +
         '<span style="display:flex; align-items:center; gap:10px;">' +
         (isCancelled ? '<span class="muted" style="font-size:12px;">—</span>' :
           '<label style="font-size:12px; display:flex; align-items:center; gap:4px;"><input type="checkbox" class="addon-paid-checkbox" data-order-id="' + o.id + '" data-addon-id="' + a.id + '"' + (a.paid ? ' checked' : '') + '> Paid</label>') +
@@ -3728,14 +3818,19 @@
     if (isCancelled) {
       formOrButton = '';
     } else if (addOnDraftFor === o.id) {
-      var options = '<option value="">Select item…</option>' + productOptionsHtml(addOnDraft.productId, false);
+      var options = '<option value="">Select item…</option>' + addOnProductOptionsHtml(addOnDraft.productId);
+      var qtyPlaceholder = addOnDraft.flatPrice ? 'Qty used (stock)' : 'Qty';
+      var pricePlaceholder = addOnDraft.flatPrice ? 'Flat price RM' : 'Unit RM';
       formOrButton = '<div class="item-line">' +
         '<select id="ao-product">' + options + '</select>' +
-        '<input class="di-qty" id="ao-qty" type="number" min="1" value="' + addOnDraft.qty + '" placeholder="Qty">' +
-        '<input class="di-price" id="ao-price" type="number" step="0.01" min="0" value="' + addOnDraft.unitPrice + '" placeholder="Unit RM">' +
+        '<input class="di-qty" id="ao-qty" type="number" min="1" value="' + addOnDraft.qty + '" placeholder="' + qtyPlaceholder + '">' +
+        '<input class="di-price" id="ao-price" type="number" step="0.01" min="0" value="' + addOnDraft.unitPrice + '" placeholder="' + pricePlaceholder + '">' +
         '<button class="btn btn-primary btn-small" data-save-addon="' + o.id + '">Add</button> ' +
         '<button class="btn btn-secondary btn-small" data-cancel-addon="1">Cancel</button>' +
-        '</div>';
+        '</div>' +
+        '<label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-top:6px; color:var(--muted);">' +
+          '<input type="checkbox" id="ao-flat-price"' + (addOnDraft.flatPrice ? ' checked' : '') + '> Flat price — qty only affects stock used, not the amount charged (e.g. custom name lettering)' +
+        '</label>';
     } else {
       formOrButton = '<button class="btn-text" data-start-addon="' + o.id + '">+ Add add-on</button>';
     }
@@ -3749,7 +3844,7 @@
 
   function startAddOn(orderId) {
     addOnDraftFor = orderId;
-    addOnDraft = { productId: '', qty: 1, unitPrice: '' };
+    addOnDraft = { productId: '', qty: 1, unitPrice: '', flatPrice: false };
     renderOrders();
   }
 
@@ -3759,6 +3854,7 @@
     var productId = document.getElementById('ao-product').value;
     var qty = Number(document.getElementById('ao-qty').value) || 0;
     var unitPrice = Number(document.getElementById('ao-price').value) || 0;
+    var flatPrice = document.getElementById('ao-flat-price').checked;
     if (!productId || qty <= 0) { alert('Pick an item and a quantity for the add-on.'); return; }
     var p = state.products.find(function (x) { return x.id === productId; });
     var addOn = {
@@ -3767,6 +3863,7 @@
       productName: p ? p.name + (p.variant ? ' — ' + p.variant : '') : 'Deleted product',
       qty: qty,
       unitPrice: unitPrice,
+      flatPrice: flatPrice,
       unitCost: p ? p.cost : 0,
       paid: false,
       paymentDate: '',
@@ -3859,7 +3956,8 @@
           '<div class="field-block"><label class="field-label">Payment date</label><input type="date" id="def-paymentDate-' + o.id + '" value="' + escapeHtml(o.paymentDate || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Reference no.</label><input id="def-paymentRef-' + o.id + '" value="' + escapeHtml(o.paymentRef || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Payer account name</label><input id="def-paymentBankName-' + o.id + '" value="' + escapeHtml(o.paymentBankName || '') + '"></div>' +
-          '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Recipient name</label><input id="def-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">Recipient name</label><input id="def-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">Recipient phone <span class="muted">(blank = use WhatsApp number)</span></label><input id="def-recipientPhone-' + o.id + '" value="' + escapeHtml(o.recipientPhone || '') + '"></div>' +
           '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Ship to (address)</label><textarea id="def-shipTo-' + o.id + '" rows="2" style="resize:vertical;">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
           '<div class="field-block"><label class="field-label">Postcode</label><input id="def-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostActual || 0) + '"></div>' +
@@ -3876,6 +3974,7 @@
         detailRow('Reference no.', o.paymentRef || '—') +
         detailRow('Payer account name', o.paymentBankName || '—') +
         detailRow('Recipient name', o.recipientName || '—') +
+        detailRow('Recipient phone', o.recipientPhone || o.buyerWhatsapp || '—') +
         detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
         detailRow('Shipping cost paid', money(o.shippingCostActual || 0)) +
         detailRow('Tracking number', o.trackingNumber || '—') +
@@ -3892,6 +3991,7 @@
     order.paymentRef = document.getElementById('def-paymentRef-' + id).value.trim();
     order.paymentBankName = document.getElementById('def-paymentBankName-' + id).value.trim();
     order.recipientName = document.getElementById('def-recipientName-' + id).value.trim();
+    order.recipientPhone = document.getElementById('def-recipientPhone-' + id).value.trim();
     order.shipTo = document.getElementById('def-shipTo-' + id).value.trim();
     order.postcode = document.getElementById('def-postcode-' + id).value.trim();
     order.shippingCostActual = Number(document.getElementById('def-shippingCostActual-' + id).value) || 0;
@@ -3942,7 +4042,7 @@
       countEl.textContent = isFiltered ? filteredOrders.length + ' order' + (filteredOrders.length === 1 ? '' : 's') + ' in range' : '';
     }
     var sorted = filteredOrders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
-    var statuses = ['queueing', 'ready to ship', 'shipped', 'delivered', 'cancelled'];
+    var statuses = ['queueing', 'uv curing', 'ready to ship', 'shipped', 'delivered', 'cancelled'];
     tbody.innerHTML = sorted.map(function (o) {
       var statusOptions = statuses.map(function (s) {
         return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
@@ -3988,8 +4088,19 @@
                 '<input type="number" class="order-item-made-input" data-order-id="' + o.id + '" data-item-index="' + idx + '" min="0" max="' + i.qty + '" value="' + madeQty + '" style="width:52px; padding:3px 5px; font-size:12px;">' +
                 '<span class="muted" style="font-size:11px; white-space:nowrap;">/ ' + i.qty + '</span>' +
               '</span>';
+            // A finished-product photo per item — she said if an order has, say, a 700ml and a
+            // 600ml bottle, she'll forget which is which once they're both made, so a photo
+            // lets her tell them apart at a glance. One per item (not one per order), since a
+            // multi-item order needs one photo per physical bottle.
+            var photoControl = '<span style="display:flex; align-items:center; gap:6px; margin-left:12px;">' +
+              (i.photo
+                ? '<img src="' + i.photo + '" class="order-item-photo-thumb" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="width:28px; height:28px; object-fit:cover; border-radius:4px; cursor:pointer;" title="Click to view">' +
+                  '<label class="btn-text order-item-photo-label" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px; cursor:pointer;">Change<input type="file" accept="image/*" class="order-item-photo-file" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="display:none;"></label>' +
+                  '<button type="button" class="btn-text danger order-item-photo-remove" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px;">Remove</button>'
+                : '<label class="btn-text order-item-photo-label" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px; cursor:pointer;">📷 Add photo<input type="file" accept="image/*" class="order-item-photo-file" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="display:none;"></label>') +
+              '</span>';
             return '<div class="row-line" style="align-items:center;"><span>' + escapeHtml(i.productName) + ' × ' + i.qty + '</span>' +
-              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + '</span></div>';
+              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + photoControl + '</span></div>';
           }).join('') +
           (o.notes ? '<div class="muted" style="padding-top:6px;">Note: ' + escapeHtml(o.notes) + '</div>' : '') +
           renderOrderDetailsBlock(o) +
@@ -4015,6 +4126,7 @@
     document.getElementById('of-estimated-date').disabled = !!order.immediate;
     document.getElementById('of-estimated-date-clear').disabled = !!order.immediate;
     document.getElementById('of-recipient-name').value = order.recipientName || '';
+    document.getElementById('of-recipient-phone').value = order.recipientPhone || '';
     document.getElementById('of-ship-to').value = order.shipTo || '';
     document.getElementById('of-postcode').value = order.postcode || '';
     document.getElementById('of-shipping-zone').value = order.shippingZone || 'west_malaysia';
@@ -4104,9 +4216,46 @@
         renderCalendar();
       }
     }
+    if (e.target.classList.contains('order-item-photo-thumb')) {
+      openLightbox(e.target.src);
+      return;
+    }
+    var photoLabel = e.target.closest ? e.target.closest('.order-item-photo-label') : null;
+    if (photoLabel) {
+      // Clicking either opens the native file picker (it's a <label> wrapping the hidden
+      // file input) or, if she cancels that and pastes instead, this target is what catches it.
+      activePhotoTarget = { kind: 'orderItem', orderId: photoLabel.getAttribute('data-order-id'), itemIndex: Number(photoLabel.getAttribute('data-item-index')) };
+      return;
+    }
+    if (e.target.classList.contains('order-item-photo-remove')) {
+      var photoOrderId = e.target.getAttribute('data-order-id');
+      var photoItemIndex = Number(e.target.getAttribute('data-item-index'));
+      var photoOrder = state.orders.find(function (o) { return o.id === photoOrderId; });
+      var photoItem = photoOrder && photoOrder.items[photoItemIndex];
+      if (photoItem) { photoItem.photo = ''; save(); renderOrders(); }
+      return;
+    }
   });
 
   document.querySelector('#order-table tbody').addEventListener('change', function (e) {
+    if (e.target.classList.contains('order-item-photo-file')) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var fpOrderId = e.target.getAttribute('data-order-id');
+      var fpItemIndex = Number(e.target.getAttribute('data-item-index'));
+      compressImageBlobToDataUrl(file, function (dataUrl) {
+        applyPhotoToTarget({ kind: 'orderItem', orderId: fpOrderId, itemIndex: fpItemIndex }, dataUrl);
+      });
+      return;
+    }
+    if (e.target.id === 'ao-flat-price') {
+      addOnDraft.flatPrice = e.target.checked;
+      var qtyInput = document.getElementById('ao-qty');
+      var priceInput = document.getElementById('ao-price');
+      qtyInput.placeholder = e.target.checked ? 'Qty used (stock)' : 'Qty';
+      priceInput.placeholder = e.target.checked ? 'Flat price RM' : 'Unit RM';
+      return;
+    }
     if (e.target.classList.contains('order-status-select')) {
       var orderId = e.target.getAttribute('data-order-id');
       var newStatus = e.target.value;
@@ -4649,7 +4798,7 @@
       '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' queueing)</div>' +
       (recent.length === 0 ? '<div class="empty">No orders yet.</div>' :
         recent.map(function (o) {
-          var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : (o.status === 'ready to ship' ? 'pill-amber' : 'pill-gray'));
+          var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : (o.status === 'ready to ship' ? 'pill-amber' : (o.status === 'uv curing' ? 'pill-blue' : 'pill-gray')));
           return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + '</span>' +
             '<span style="display:flex; align-items:center; gap:8px;"><span class="pill ' + cls + '">' + o.status + '</span><span style="font-weight:500;">' + money(orderTotal(o)) + '</span></span></div>';
         }).join('')) +
@@ -5020,6 +5169,22 @@
     return { west_malaysia: 'West Malaysia', east_malaysia: 'East Malaysia (Sabah/Sarawak)', singapore: 'Singapore', other: 'Other / custom' }[zone] || '—';
   }
 
+  // She books couriers online and gets back a barcode/label with no customer name printed on
+  // it, so once she has a stack of packed parcels she can't tell whose barcode is whose. This
+  // lets her snap or paste a photo of each parcel's barcode right onto its order here, so she
+  // can match them up before heading out to drop them off.
+  function shippingBarcodeControl(o) {
+    var photo = o.shippingBarcodePhoto;
+    return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+      '<span class="muted" style="font-size:12px;">Courier barcode:</span>' +
+      (photo
+        ? '<img src="' + photo + '" class="shipping-barcode-thumb" data-order-id="' + o.id + '" style="height:36px; border-radius:4px; cursor:pointer;" title="Click to view">' +
+          '<label class="btn-text shipping-barcode-label" data-order-id="' + o.id + '" style="font-size:12px; cursor:pointer;">Change<input type="file" accept="image/*" class="shipping-barcode-file" data-order-id="' + o.id + '" style="display:none;"></label>' +
+          '<button type="button" class="btn-text danger shipping-barcode-remove" data-order-id="' + o.id + '" style="font-size:12px;">Remove</button>'
+        : '<label class="btn-text shipping-barcode-label" data-order-id="' + o.id + '" style="font-size:12px; cursor:pointer;">📷 Add barcode photo<input type="file" accept="image/*" class="shipping-barcode-file" data-order-id="' + o.id + '" style="display:none;"></label>') +
+      '</div>';
+  }
+
   function renderShipping() {
     var ready = state.orders.filter(function (o) { return o.status === 'ready to ship'; })
       .slice().sort(function (a, b) { return (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date); });
@@ -5032,12 +5197,13 @@
       ready.map(function (o) {
         var itemsSummary = o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ');
         var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : 'Unpaid') + '</span>';
+        var contactPhone = o.recipientPhone || o.buyerWhatsapp || '';
         return '<div class="card" style="margin-bottom:8px; padding:12px 14px;">' +
           '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
             '<div>' +
               '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
               (o.recipientName && o.recipientName !== o.buyerName ? '<div class="muted" style="font-size:12px;">Buyer: ' + escapeHtml(o.buyerName) + '</div>' : '') +
-              (o.buyerWhatsapp ? '<div class="muted" style="font-size:12px;">WA: ' + escapeHtml(o.buyerWhatsapp) + '</div>' : '') +
+              (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
               '<div style="margin-top:6px; white-space:pre-wrap;">' + (escapeHtml(o.shipTo) || '<span class="muted">No address on file</span>') + (o.postcode ? '<br>' + escapeHtml(o.postcode) : '') + '</div>' +
               '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
               '<div class="muted" style="font-size:12px; margin-top:4px;">' + escapeHtml(itemsSummary) + '</div>' +
@@ -5048,6 +5214,7 @@
               '<button type="button" class="btn btn-primary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>' +
             '</div>' +
           '</div>' +
+          shippingBarcodeControl(o) +
         '</div>';
       }).join('');
   }
@@ -5062,12 +5229,44 @@
       var oid = e.target.getAttribute('data-order-id');
       var order = state.orders.find(function (o) { return o.id === oid; });
       if (order) {
-        var text = (order.recipientName || order.buyerName || '') + '\n' + (order.shipTo || '') + (order.postcode ? '\n' + order.postcode : '');
+        // Include the phone number so this can be pasted straight into a courier booking form
+        // without her needing to flip back to the Orders tab to look it up separately. Prefer
+        // the recipient's own phone (gift orders) over the buyer's WhatsApp number.
+        var copyPhone = order.recipientPhone || order.buyerWhatsapp || '';
+        var text = (order.recipientName || order.buyerName || '') +
+          (copyPhone ? '\n' + copyPhone : '') +
+          '\n' + (order.shipTo || '') + (order.postcode ? '\n' + order.postcode : '');
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(text).catch(function () {});
         }
       }
       return;
+    }
+    if (e.target.classList.contains('shipping-barcode-thumb')) {
+      openLightbox(e.target.src);
+      return;
+    }
+    var barcodeLabel = e.target.closest ? e.target.closest('.shipping-barcode-label') : null;
+    if (barcodeLabel) {
+      activePhotoTarget = { kind: 'shippingBarcode', orderId: barcodeLabel.getAttribute('data-order-id') };
+      return;
+    }
+    if (e.target.classList.contains('shipping-barcode-remove')) {
+      var barcodeOrderId = e.target.getAttribute('data-order-id');
+      var barcodeOrder = state.orders.find(function (o) { return o.id === barcodeOrderId; });
+      if (barcodeOrder) { barcodeOrder.shippingBarcodePhoto = ''; save(); renderShipping(); }
+      return;
+    }
+  });
+
+  document.getElementById('shipping-content').addEventListener('change', function (e) {
+    if (e.target.classList.contains('shipping-barcode-file')) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var bfOrderId = e.target.getAttribute('data-order-id');
+      compressImageBlobToDataUrl(file, function (dataUrl) {
+        applyPhotoToTarget({ kind: 'shippingBarcode', orderId: bfOrderId }, dataUrl);
+      });
     }
   });
 
@@ -7087,31 +7286,82 @@
     return new Blob([bytes], { type: mime });
   }
 
+  // Builds one flat list of every base64 photo still sitting in localStorage that needs to move
+  // to Supabase Storage — product photos, plus the newer per-order-item finished-product photos
+  // and the Shipping tab's courier-barcode photos. Each entry knows its own storage path and how
+  // to read back the current value / write the uploaded URL, so syncPhotosToCloud can upload them
+  // all through one shared queue instead of duplicating the upload logic per photo type.
+  function collectPendingPhotoTasks(userId) {
+    var tasks = [];
+    state.products.forEach(function (p) {
+      if (p.image && p.image.indexOf('data:') === 0) {
+        tasks.push({
+          path: userId + '/' + p.id + '.jpg',
+          get: function () { return p.image; },
+          set: function (url) { p.image = url; },
+          rerender: function () { if (typeof renderInventory === 'function') renderInventory(); }
+        });
+      }
+    });
+    state.orders.forEach(function (o) {
+      o.items.forEach(function (item, idx) {
+        if (item.photo && item.photo.indexOf('data:') === 0) {
+          tasks.push({
+            path: userId + '/order-' + o.id + '-item-' + idx + '.jpg',
+            get: function () { return item.photo; },
+            set: function (url) { item.photo = url; },
+            rerender: function () { if (typeof renderOrders === 'function') renderOrders(); }
+          });
+        }
+      });
+      if (o.shippingBarcodePhoto && o.shippingBarcodePhoto.indexOf('data:') === 0) {
+        tasks.push({
+          path: userId + '/order-' + o.id + '-barcode.jpg',
+          get: function () { return o.shippingBarcodePhoto; },
+          set: function (url) { o.shippingBarcodePhoto = url; },
+          rerender: function () { if (typeof renderShipping === 'function') renderShipping(); }
+        });
+      }
+    });
+    return tasks;
+  }
+
+  // Cheap synchronous check (no userId needed yet) so syncPhotosToCloud can set its re-entrancy
+  // guard immediately, before the async getUser() call — matching how the original
+  // product-only version worked, so rapid repeated calls (e.g. several saves in a row) can't
+  // race past each other before the first one has claimed the flag.
+  function hasPendingPhotos() {
+    if (state.products.some(function (p) { return p.image && p.image.indexOf('data:') === 0; })) return true;
+    return state.orders.some(function (o) {
+      if (o.shippingBarcodePhoto && o.shippingBarcodePhoto.indexOf('data:') === 0) return true;
+      return o.items.some(function (item) { return item.photo && item.photo.indexOf('data:') === 0; });
+    });
+  }
+
   function syncPhotosToCloud() {
     if (!sb || photoSyncInFlight) return;
-    var pending = state.products.filter(function (p) { return p.image && p.image.indexOf('data:') === 0; });
-    if (!pending.length) return;
+    if (!hasPendingPhotos()) return;
     photoSyncInFlight = true;
     sb.auth.getUser().then(function (res) {
       var user = res.data && res.data.user;
       if (!user) { photoSyncInFlight = false; return; }
+      var pending = collectPendingPhotoTasks(user.id);
+      if (!pending.length) { photoSyncInFlight = false; return; }
       // One at a time, so a single failure (e.g. the bucket hasn't been created in her Supabase
       // project yet) doesn't fire a burst of doomed parallel uploads.
       var chain = Promise.resolve();
-      pending.forEach(function (p) {
+      pending.forEach(function (task) {
         chain = chain.then(function () {
-          var blob = dataUrlToBlob(p.image);
-          var path = user.id + '/' + p.id + '.jpg';
-          return sb.storage.from(PHOTO_BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' }).then(function (uploadRes) {
+          var blob = dataUrlToBlob(task.get());
+          return sb.storage.from(PHOTO_BUCKET).upload(task.path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' }).then(function (uploadRes) {
             if (uploadRes.error) return; // leave the local photo as-is, try again later
-            var pub = sb.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+            var pub = sb.storage.from(PHOTO_BUCKET).getPublicUrl(task.path);
             var url = pub && pub.data && pub.data.publicUrl;
             if (!url) return;
-            var stillThere = state.products.find(function (x) { return x.id === p.id; });
-            if (stillThere && stillThere.image && stillThere.image.indexOf('data:') === 0) {
-              stillThere.image = url;
+            if (task.get() && task.get().indexOf('data:') === 0) {
+              task.set(url);
               save();
-              if (typeof renderInventory === 'function') renderInventory();
+              task.rerender();
             }
           }).catch(function () {});
         });
