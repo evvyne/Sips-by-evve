@@ -133,6 +133,7 @@
   .pill-gray { background: #eef0f4; color: var(--muted); }
   .pill-amber { background: var(--amber-bg); color: var(--amber); }
   .pill-blue { background: #dbeafe; color: var(--blue-dark); }
+  .pill-purple { background: #ede9fe; color: #6d28d9; }
   .empty { color: var(--muted); font-size: 14px; padding: 10px 0; }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
@@ -747,6 +748,7 @@
             <option value="queueing">queueing</option>
             <option value="uv curing">uv curing</option>
             <option value="ready to ship">ready to ship</option>
+            <option value="order shipment">order shipment</option>
             <option value="shipped">shipped</option>
             <option value="delivered">delivered</option>
             <option value="cancelled">cancelled</option>
@@ -802,10 +804,6 @@
         <div>
           <label class="field-label">Shipping cost you paid (courier)</label>
           <input id="of-shipping-cost" type="number" step="0.01" min="0" value="0">
-        </div>
-        <div>
-          <label class="field-label">Tracking number</label>
-          <input id="of-tracking">
         </div>
         <div>
           <label class="field-label">Discount</label>
@@ -895,6 +893,17 @@
   var STORAGE_KEY = 'snowglobeTrackerData';
   var PRODUCT_TYPES = ['Tumbler', 'Stickers', 'Add ons', 'Others'];
 
+  // Once she's booked a shipment with a courier and has a real tracking number, this builds the
+  // actual "track my parcel" URL for whichever courier she picked — she just types the bare
+  // number, no need to hunt down or paste the tracking site's URL herself.
+  var COURIER_TRACKING_URLS = {
+    jt: { label: 'J&T Express', url: function (n) { return 'https://www.jtexpress.my/tracking/' + encodeURIComponent(n); } },
+    poslaju: { label: 'Pos Laju', url: function (n) { return 'https://www.pos.com.my/postal-services/quick-access/?track-trace=' + encodeURIComponent(n); } },
+    ninja: { label: 'Ninja Van', url: function (n) { return 'https://www.ninjavan.co/en-my/tracking?id=' + encodeURIComponent(n); } },
+    dhl: { label: 'DHL', url: function (n) { return 'https://www.dhl.com/my-en/home/tracking.html?tracking-id=' + encodeURIComponent(n); } }
+  };
+  var DEFAULT_SHIPPED_MESSAGE_TEMPLATE = "Hihi! Your order has been shipped out! 😍\n\nYou can track your parcel here:\n{link}\n\nThank you so much for your patience and trust in Sips by Evve, allowing me to create this special piece for you! I hope you'll love this gift! 🎁\n\nOnce you've received your parcel, do let me know! I can't wait to hear your feedback!\n\nAnd don't forget to record an unboxing video when you open it! 📦✨";
+
   function loadState() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
@@ -908,6 +917,7 @@
   if (!state.stockLog) state.stockLog = [];
   if (!state.chatLog) state.chatLog = [];
   if (state.startingCash == null) state.startingCash = 5000;
+  if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
   var didMigrate = false;
   if (state.costs) {
     state.costs.forEach(function (c) {
@@ -3298,7 +3308,6 @@
     document.getElementById('of-shipping-weight').value = '';
     document.getElementById('of-shipping').value = 0;
     document.getElementById('of-shipping-cost').value = 0;
-    document.getElementById('of-tracking').value = '';
     document.getElementById('of-discount').value = 0;
     document.getElementById('of-notes').value = '';
     draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
@@ -3532,7 +3541,6 @@
     var shippingWeight = Number(document.getElementById('of-shipping-weight').value) || 0;
     var shippingFee = Number(document.getElementById('of-shipping').value) || 0;
     var shippingCostActual = Number(document.getElementById('of-shipping-cost').value) || 0;
-    var trackingNumber = document.getElementById('of-tracking').value.trim();
     var discount = Number(document.getElementById('of-discount').value) || 0;
     var notes = document.getElementById('of-notes').value.trim();
     // If she's editing an order, carry over how many of each line item were already marked as
@@ -3575,7 +3583,9 @@
         order.shippingWeight = shippingWeight;
         order.shippingFee = shippingFee;
         order.shippingCostActual = shippingCostActual;
-        order.trackingNumber = trackingNumber;
+        // Tracking number/courier are entered later, from the Shipping tab once she's actually
+        // booked the shipment — this form no longer touches them, so an edit here never
+        // clobbers what she already filled in over there.
         order.discount = discount;
         order.notes = notes;
         order.items = newItems;
@@ -3605,7 +3615,8 @@
         shippingWeight: shippingWeight,
         shippingFee: shippingFee,
         shippingCostActual: shippingCostActual,
-        trackingNumber: trackingNumber,
+        trackingNumber: '',
+        courier: '',
         estimatedDate: estimatedDate,
         immediate: immediate,
         customerNotified: false,
@@ -3967,7 +3978,6 @@
           '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Ship to (address)</label><textarea id="def-shipTo-' + o.id + '" rows="2" style="resize:vertical;">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
           '<div class="field-block"><label class="field-label">Postcode</label><input id="def-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '"></div>' +
           '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostActual || 0) + '"></div>' +
-          '<div class="field-block"><label class="field-label">Tracking number</label><input id="def-trackingNumber-' + o.id + '" value="' + escapeHtml(o.trackingNumber || '') + '"></div>' +
         '</div>' +
         '<div class="form-actions" style="margin-top:10px;">' +
           '<button class="btn btn-primary btn-small" data-save-details="' + o.id + '">Save</button> ' +
@@ -3983,7 +3993,6 @@
         detailRow('Recipient phone', o.recipientPhone || o.buyerWhatsapp || '—') +
         detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
         detailRow('Shipping cost paid', money(o.shippingCostActual || 0)) +
-        detailRow('Tracking number', o.trackingNumber || '—') +
       '</div>' +
       '<div style="margin-top:10px;"><button class="btn btn-secondary btn-small" data-edit-details="' + o.id + '">Edit details</button></div>';
   }
@@ -4001,7 +4010,6 @@
     order.shipTo = document.getElementById('def-shipTo-' + id).value.trim();
     order.postcode = document.getElementById('def-postcode-' + id).value.trim();
     order.shippingCostActual = Number(document.getElementById('def-shippingCostActual-' + id).value) || 0;
-    order.trackingNumber = document.getElementById('def-trackingNumber-' + id).value.trim();
     save();
     editingDetailsOrderId = null;
     renderAll();
@@ -4048,7 +4056,7 @@
       countEl.textContent = isFiltered ? filteredOrders.length + ' order' + (filteredOrders.length === 1 ? '' : 's') + ' in range' : '';
     }
     var sorted = filteredOrders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
-    var statuses = ['queueing', 'uv curing', 'ready to ship', 'shipped', 'delivered', 'cancelled'];
+    var statuses = ['queueing', 'uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered', 'cancelled'];
     tbody.innerHTML = sorted.map(function (o) {
       var statusOptions = statuses.map(function (s) {
         return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
@@ -4139,7 +4147,6 @@
     document.getElementById('of-shipping-weight').value = order.shippingWeight || '';
     document.getElementById('of-shipping').value = order.shippingFee || 0;
     document.getElementById('of-shipping-cost').value = order.shippingCostActual || 0;
-    document.getElementById('of-tracking').value = order.trackingNumber || '';
     document.getElementById('of-discount').value = order.discount || 0;
     document.getElementById('of-notes').value = order.notes || '';
     draftItems = order.items.map(function (item) {
@@ -4804,7 +4811,7 @@
       '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' queueing)</div>' +
       (recent.length === 0 ? '<div class="empty">No orders yet.</div>' :
         recent.map(function (o) {
-          var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : (o.status === 'ready to ship' ? 'pill-amber' : (o.status === 'uv curing' ? 'pill-blue' : 'pill-gray')));
+          var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : (o.status === 'ready to ship' ? 'pill-amber' : (o.status === 'order shipment' ? 'pill-purple' : (o.status === 'uv curing' ? 'pill-blue' : 'pill-gray'))));
           return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + '</span>' +
             '<span style="display:flex; align-items:center; gap:8px;"><span class="pill ' + cls + '">' + o.status + '</span><span style="font-weight:500;">' + money(orderTotal(o)) + '</span></span></div>';
         }).join('')) +
@@ -5191,44 +5198,145 @@
       '</div>';
   }
 
+  // She doesn't want the courier's tracking number to be filled in the moment an order is
+  // created — only once she's actually booked the shipment and has a real number in hand, which
+  // is what the "order shipment" status now marks. Kept as its own small toggle (not saved into
+  // state) so opening the shared message-template editor doesn't require touching any order.
+  var editingShippedTemplate = false;
+
+  function courierOptionsHtml(selected) {
+    return '<option value="">Select courier…</option>' + Object.keys(COURIER_TRACKING_URLS).map(function (key) {
+      var c = COURIER_TRACKING_URLS[key];
+      return '<option value="' + key + '"' + (key === selected ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>';
+    }).join('');
+  }
+
+  // Once she's picked a courier AND typed the tracking number, this builds the real "track my
+  // parcel" link for that courier — used both for the clickable preview link and for filling in
+  // {link} in the copy-ready WhatsApp message.
+  function shippingTrackingLink(o) {
+    var courierInfo = o.courier && COURIER_TRACKING_URLS[o.courier];
+    if (!courierInfo || !o.trackingNumber) return '';
+    return courierInfo.url(o.trackingNumber);
+  }
+
+  // Only shown once she's reached "order shipment" — before that there's no tracking number to
+  // enter yet, so showing this section earlier would just be a dead, unusable form.
+  function trackingSectionControl(o) {
+    var link = shippingTrackingLink(o);
+    return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">Tracking</div>' +
+      '<div style="display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;">' +
+        '<select class="ship-courier-select" data-order-id="' + o.id + '" style="flex:1; min-width:120px;">' + courierOptionsHtml(o.courier) + '</select>' +
+        '<input class="ship-tracking-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.trackingNumber || '') + '" placeholder="Tracking number" style="flex:1; min-width:120px;">' +
+      '</div>' +
+      (link ? '<div style="font-size:12px; margin-bottom:8px; word-break:break-all;"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener">' + escapeHtml(link) + '</a></div>' : '') +
+      '<button type="button" class="btn btn-secondary btn-small btn-copy-shipped-message" data-order-id="' + o.id + '">📋 Copy shipped message</button>' +
+    '</div>';
+  }
+
   function renderShipping() {
-    var ready = state.orders.filter(function (o) { return o.status === 'ready to ship'; })
+    var queue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment'; })
       .slice().sort(function (a, b) { return (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date); });
     var content = document.getElementById('shipping-content');
-    if (ready.length === 0) {
-      content.innerHTML = '<div class="empty">Nothing ready to ship yet. Mark an order "ready to ship" from the Orders tab once it\'s packed.</div>';
+    var summary = '<div class="card" style="margin-bottom:10px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
+        '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ' in the shipping queue</span>' +
+        (editingShippedTemplate ? '' : '<button type="button" class="btn-text" id="btn-edit-shipped-template">✏️ Edit shipped message</button>') +
+      '</div>' +
+      (editingShippedTemplate ?
+        '<div style="margin-top:8px;">' +
+          '<div class="muted" style="font-size:12px; margin-bottom:6px;">Use <code>{link}</code> where the tracking link should go.</div>' +
+          '<textarea id="shipped-template-input" rows="9" style="width:100%; font-size:13px;">' + escapeHtml(state.shippedMessageTemplate) + '</textarea>' +
+          '<div style="margin-top:6px;"><button type="button" class="btn btn-primary btn-small" id="btn-save-shipped-template">Save template</button> ' +
+          '<button type="button" class="btn btn-secondary btn-small" id="btn-cancel-shipped-template">Cancel</button></div>' +
+        '</div>' : '') +
+    '</div>';
+    if (queue.length === 0) {
+      content.innerHTML = summary + '<div class="empty">Nothing ready to ship yet. Mark an order "ready to ship" from the Orders tab once it\'s packed.</div>';
       return;
     }
-    content.innerHTML = '<div class="card" style="margin-bottom:10px;"><strong>' + ready.length + '</strong> order' + (ready.length !== 1 ? 's' : '') + ' ready to ship</div>' +
-      ready.map(function (o) {
-        var itemsSummary = o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ');
-        var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : 'Unpaid') + '</span>';
-        var contactPhone = o.recipientPhone || o.buyerWhatsapp || '';
-        return '<div class="card" style="margin-bottom:8px; padding:12px 14px;">' +
-          '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
-            '<div>' +
-              '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
-              (o.recipientName && o.recipientName !== o.buyerName ? '<div class="muted" style="font-size:12px;">Buyer: ' + escapeHtml(o.buyerName) + '</div>' : '') +
-              (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
-              '<div style="margin-top:6px; white-space:pre-wrap;">' + (escapeHtml(o.shipTo) || '<span class="muted">No address on file</span>') + (o.postcode ? '<br>' + escapeHtml(o.postcode) : '') + '</div>' +
-              '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
-              '<div class="muted" style="font-size:12px; margin-top:4px;">' + escapeHtml(itemsSummary) + '</div>' +
-            '</div>' +
-            '<div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">' +
-              paidPill +
-              '<button type="button" class="btn btn-secondary btn-small btn-copy-ship-address" data-order-id="' + o.id + '">Copy address</button>' +
-              '<button type="button" class="btn btn-primary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>' +
-            '</div>' +
+    content.innerHTML = summary + queue.map(function (o) {
+      var itemsSummary = o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ');
+      var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : 'Unpaid') + '</span>';
+      var contactPhone = o.recipientPhone || o.buyerWhatsapp || '';
+      var isOrderShipment = o.status === 'order shipment';
+      // A ready-to-ship order keeps BOTH options — "Mark order shipment" for when she's booked a
+      // courier and wants to log the tracking number, and the original one-tap "Mark as shipped"
+      // for when she's shipping it without bothering to track it. Nothing forces her through the
+      // tracking step if she doesn't want it.
+      var actionBtn = isOrderShipment
+        ? '<button type="button" class="btn btn-primary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>'
+        : '<button type="button" class="btn btn-primary btn-small btn-mark-order-shipment" data-order-id="' + o.id + '">📦 Mark order shipment</button>' +
+          '<button type="button" class="btn btn-secondary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>';
+      return '<div class="card" style="margin-bottom:8px; padding:12px 14px;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
+          '<div>' +
+            '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
+            (o.recipientName && o.recipientName !== o.buyerName ? '<div class="muted" style="font-size:12px;">Buyer: ' + escapeHtml(o.buyerName) + '</div>' : '') +
+            (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
+            '<div style="margin-top:6px; white-space:pre-wrap;">' + (escapeHtml(o.shipTo) || '<span class="muted">No address on file</span>') + (o.postcode ? '<br>' + escapeHtml(o.postcode) : '') + '</div>' +
+            '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
+            '<div class="muted" style="font-size:12px; margin-top:4px;">' + escapeHtml(itemsSummary) + '</div>' +
           '</div>' +
-          shippingBarcodeControl(o) +
-        '</div>';
-      }).join('');
+          '<div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">' +
+            paidPill +
+            (isOrderShipment ? '<span class="pill pill-purple">Order shipment</span>' : '') +
+            '<button type="button" class="btn btn-secondary btn-small btn-copy-ship-address" data-order-id="' + o.id + '">Copy address</button>' +
+            actionBtn +
+          '</div>' +
+        '</div>' +
+        shippingBarcodeControl(o) +
+        (isOrderShipment ? trackingSectionControl(o) : '') +
+      '</div>';
+    }).join('');
   }
 
   document.getElementById('shipping-content').addEventListener('click', function (e) {
     if (e.target.classList.contains('btn-mark-shipped')) {
       var orderId = e.target.getAttribute('data-order-id');
       confirmAndChangeOrderStatus(orderId, 'shipped');
+      return;
+    }
+    if (e.target.classList.contains('btn-mark-order-shipment')) {
+      // No payment-confirmation gate here — that check is specifically about the parcel
+      // physically leaving ("shipped"/"delivered"), not about having booked the courier yet.
+      var osOrderId = e.target.getAttribute('data-order-id');
+      changeOrderStatus(osOrderId, 'order shipment');
+      return;
+    }
+    if (e.target.id === 'btn-edit-shipped-template') {
+      editingShippedTemplate = true;
+      renderShipping();
+      return;
+    }
+    if (e.target.id === 'btn-cancel-shipped-template') {
+      editingShippedTemplate = false;
+      renderShipping();
+      return;
+    }
+    if (e.target.id === 'btn-save-shipped-template') {
+      var newTemplate = document.getElementById('shipped-template-input').value;
+      state.shippedMessageTemplate = newTemplate || DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
+      save();
+      editingShippedTemplate = false;
+      renderShipping();
+      return;
+    }
+    if (e.target.classList.contains('btn-copy-shipped-message')) {
+      var cmOrderId = e.target.getAttribute('data-order-id');
+      var cmOrder = state.orders.find(function (o) { return o.id === cmOrderId; });
+      if (cmOrder) {
+        var link = shippingTrackingLink(cmOrder);
+        if (!link) {
+          alert('Pick a courier and enter the tracking number first.');
+          return;
+        }
+        var message = (state.shippedMessageTemplate || DEFAULT_SHIPPED_MESSAGE_TEMPLATE).split('{link}').join(link);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(message).catch(function () {});
+        }
+      }
       return;
     }
     if (e.target.classList.contains('btn-copy-ship-address')) {
@@ -5273,6 +5381,22 @@
       compressImageBlobToDataUrl(file, function (dataUrl) {
         applyPhotoToTarget({ kind: 'shippingBarcode', orderId: bfOrderId }, dataUrl);
       });
+      return;
+    }
+    // Persisted on 'change' (blur / picking a courier), not 'input' — renderShipping() does a
+    // full innerHTML rebuild, which would yank focus out of the tracking-number field on every
+    // keystroke if this fired live like that.
+    if (e.target.classList.contains('ship-courier-select')) {
+      var scOrderId = e.target.getAttribute('data-order-id');
+      var scOrder = state.orders.find(function (o) { return o.id === scOrderId; });
+      if (scOrder) { scOrder.courier = e.target.value; save(); renderShipping(); }
+      return;
+    }
+    if (e.target.classList.contains('ship-tracking-input')) {
+      var stOrderId = e.target.getAttribute('data-order-id');
+      var stOrder = state.orders.find(function (o) { return o.id === stOrderId; });
+      if (stOrder) { stOrder.trackingNumber = e.target.value.trim(); save(); renderShipping(); }
+      return;
     }
   });
 
@@ -7281,6 +7405,7 @@
         if (!state.stockLog) state.stockLog = [];
         if (!state.chatLog) state.chatLog = [];
         if (state.startingCash == null) state.startingCash = 5000;
+        if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
         if (state.costs) {
           state.costs.forEach(function (c) {
             if (c.category === 'materials') c.category = 'restock';
