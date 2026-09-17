@@ -3617,6 +3617,7 @@
         shippingCostActual: shippingCostActual,
         trackingNumber: '',
         courier: '',
+        trackingMessageSent: false,
         estimatedDate: estimatedDate,
         immediate: immediate,
         customerNotified: false,
@@ -5204,6 +5205,12 @@
   // state) so opening the shared message-template editor doesn't require touching any order.
   var editingShippedTemplate = false;
 
+  // She wants a shipped order to stay visible on this tab — it only drops off once the customer
+  // has actually confirmed receipt ("delivered"), so she isn't losing track of parcels that are
+  // still in transit. Delivered orders move into their own collapsed history list below, so she
+  // can still look them up later without them cluttering the active queue.
+  var showDeliveredHistory = false;
+
   function courierOptionsHtml(selected) {
     return '<option value="">Select courier…</option>' + Object.keys(COURIER_TRACKING_URLS).map(function (key) {
       var c = COURIER_TRACKING_URLS[key];
@@ -5232,12 +5239,46 @@
       '</div>' +
       (link ? '<div style="font-size:12px; margin-bottom:8px; word-break:break-all;"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener">' + escapeHtml(link) + '</a></div>' : '') +
       '<button type="button" class="btn btn-secondary btn-small btn-copy-shipped-message" data-order-id="' + o.id + '">📋 Copy shipped message</button>' +
+      // She wanted an easy way to tell, at a glance, whether she's actually sent the tracking
+      // link to this customer yet — copying the message doesn't itself confirm it was sent (she
+      // might copy it, get interrupted, and forget), so this is a separate manual tick.
+      '<label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:13px; cursor:pointer;">' +
+        '<input type="checkbox" class="ship-message-sent-checkbox" data-order-id="' + o.id + '"' + (o.trackingMessageSent ? ' checked' : '') + '> ' +
+        (o.trackingMessageSent ? '✅ Sent to customer' : 'Sent to customer?') +
+      '</label>' +
+    '</div>';
+  }
+
+  // Once she's confirmed the customer actually received it, it drops out of the active queue and
+  // lands here instead — a quiet reference list rather than something she has to act on again.
+  function renderDeliveredHistory(delivered) {
+    if (delivered.length === 0) {
+      return '<div class="card" style="margin-top:10px;"><div class="empty" style="padding:6px 0;">No delivered orders yet.</div></div>';
+    }
+    return '<div style="margin-top:14px;">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">✅ Delivered</div>' +
+      delivered.map(function (o) {
+        var itemsSummary = o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ');
+        var courierLabel = o.courier && COURIER_TRACKING_URLS[o.courier] ? COURIER_TRACKING_URLS[o.courier].label + ' · ' : '';
+        return '<div class="card" style="margin-bottom:8px; padding:10px 14px; opacity:0.85;">' +
+          '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
+            '<div>' +
+              '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
+              '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' +
+              (o.trackingNumber ? '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(courierLabel) + escapeHtml(o.trackingNumber) + '</div>' : '') +
+            '</div>' +
+            '<span class="pill pill-green">Delivered</span>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
     '</div>';
   }
 
   function renderShipping() {
-    var queue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment'; })
+    var queue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
       .slice().sort(function (a, b) { return (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date); });
+    var delivered = state.orders.filter(function (o) { return o.status === 'delivered'; })
+      .slice().sort(function (a, b) { return (b.scheduledDate || b.date).localeCompare(a.scheduledDate || a.date); });
     var content = document.getElementById('shipping-content');
     var summary = '<div class="card" style="margin-bottom:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
@@ -5250,10 +5291,12 @@
           '<textarea id="shipped-template-input" rows="9" style="width:100%; font-size:13px;">' + escapeHtml(state.shippedMessageTemplate) + '</textarea>' +
           '<div style="margin-top:6px;"><button type="button" class="btn btn-primary btn-small" id="btn-save-shipped-template">Save template</button> ' +
           '<button type="button" class="btn btn-secondary btn-small" id="btn-cancel-shipped-template">Cancel</button></div>' +
-        '</div>' : '') +
+        '</div>' :
+        '<div style="margin-top:6px;"><button type="button" class="btn-text" id="btn-toggle-delivered">' + (showDeliveredHistory ? '▲ Hide' : '▼ View') + ' delivered orders (' + delivered.length + ')</button></div>') +
     '</div>';
+    var deliveredSection = showDeliveredHistory ? renderDeliveredHistory(delivered) : '';
     if (queue.length === 0) {
-      content.innerHTML = summary + '<div class="empty">Nothing ready to ship yet. Mark an order "ready to ship" from the Orders tab once it\'s packed.</div>';
+      content.innerHTML = summary + '<div class="empty">Nothing ready to ship yet. Mark an order "ready to ship" from the Orders tab once it\'s packed.</div>' + deliveredSection;
       return;
     }
     content.innerHTML = summary + queue.map(function (o) {
@@ -5261,14 +5304,23 @@
       var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : 'Unpaid') + '</span>';
       var contactPhone = o.recipientPhone || o.buyerWhatsapp || '';
       var isOrderShipment = o.status === 'order shipment';
-      // A ready-to-ship order keeps BOTH options — "Mark order shipment" for when she's booked a
-      // courier and wants to log the tracking number, and the original one-tap "Mark as shipped"
-      // for when she's shipping it without bothering to track it. Nothing forces her through the
-      // tracking step if she doesn't want it.
-      var actionBtn = isOrderShipment
-        ? '<button type="button" class="btn btn-primary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>'
-        : '<button type="button" class="btn btn-primary btn-small btn-mark-order-shipment" data-order-id="' + o.id + '">📦 Mark order shipment</button>' +
+      var isShipped = o.status === 'shipped';
+      var statusPill = isOrderShipment ? '<span class="pill pill-purple">Order shipment</span>' : (isShipped ? '<span class="pill pill-blue">Shipped</span>' : '');
+      var actionBtn;
+      if (isShipped) {
+        // Stays here — with its tracking still visible — until she confirms the customer actually
+        // got it. That's the whole point of this change: "shipped" is not the finish line anymore.
+        actionBtn = '<button type="button" class="btn btn-primary btn-small btn-mark-delivered" data-order-id="' + o.id + '">✅ Mark as delivered</button>';
+      } else if (isOrderShipment) {
+        actionBtn = '<button type="button" class="btn btn-primary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>';
+      } else {
+        // A ready-to-ship order keeps BOTH options — "Mark order shipment" for when she's booked a
+        // courier and wants to log the tracking number, and the original one-tap "Mark as shipped"
+        // for when she's shipping it without bothering to track it. Nothing forces her through the
+        // tracking step if she doesn't want it.
+        actionBtn = '<button type="button" class="btn btn-primary btn-small btn-mark-order-shipment" data-order-id="' + o.id + '">📦 Mark order shipment</button>' +
           '<button type="button" class="btn btn-secondary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>';
+      }
       return '<div class="card" style="margin-bottom:8px; padding:12px 14px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
           '<div>' +
@@ -5281,15 +5333,15 @@
           '</div>' +
           '<div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">' +
             paidPill +
-            (isOrderShipment ? '<span class="pill pill-purple">Order shipment</span>' : '') +
+            statusPill +
             '<button type="button" class="btn btn-secondary btn-small btn-copy-ship-address" data-order-id="' + o.id + '">Copy address</button>' +
             actionBtn +
           '</div>' +
         '</div>' +
         shippingBarcodeControl(o) +
-        (isOrderShipment ? trackingSectionControl(o) : '') +
+        ((isOrderShipment || isShipped) ? trackingSectionControl(o) : '') +
       '</div>';
-    }).join('');
+    }).join('') + deliveredSection;
   }
 
   document.getElementById('shipping-content').addEventListener('click', function (e) {
@@ -5303,6 +5355,16 @@
       // physically leaving ("shipped"/"delivered"), not about having booked the courier yet.
       var osOrderId = e.target.getAttribute('data-order-id');
       changeOrderStatus(osOrderId, 'order shipment');
+      return;
+    }
+    if (e.target.classList.contains('btn-mark-delivered')) {
+      var dOrderId = e.target.getAttribute('data-order-id');
+      confirmAndChangeOrderStatus(dOrderId, 'delivered');
+      return;
+    }
+    if (e.target.id === 'btn-toggle-delivered') {
+      showDeliveredHistory = !showDeliveredHistory;
+      renderShipping();
       return;
     }
     if (e.target.id === 'btn-edit-shipped-template') {
@@ -5389,13 +5451,28 @@
     if (e.target.classList.contains('ship-courier-select')) {
       var scOrderId = e.target.getAttribute('data-order-id');
       var scOrder = state.orders.find(function (o) { return o.id === scOrderId; });
-      if (scOrder) { scOrder.courier = e.target.value; save(); renderShipping(); }
+      // Changing the courier means whatever she already told the customer (if anything) is now
+      // out of date, so the "sent" tick resets — otherwise she could get a false sense that the
+      // customer already has the correct tracking info.
+      if (scOrder) { if (scOrder.courier !== e.target.value) scOrder.trackingMessageSent = false; scOrder.courier = e.target.value; save(); renderShipping(); }
       return;
     }
     if (e.target.classList.contains('ship-tracking-input')) {
       var stOrderId = e.target.getAttribute('data-order-id');
       var stOrder = state.orders.find(function (o) { return o.id === stOrderId; });
-      if (stOrder) { stOrder.trackingNumber = e.target.value.trim(); save(); renderShipping(); }
+      if (stOrder) {
+        var newTracking = e.target.value.trim();
+        if (stOrder.trackingNumber !== newTracking) stOrder.trackingMessageSent = false;
+        stOrder.trackingNumber = newTracking;
+        save();
+        renderShipping();
+      }
+      return;
+    }
+    if (e.target.classList.contains('ship-message-sent-checkbox')) {
+      var msOrderId = e.target.getAttribute('data-order-id');
+      var msOrder = state.orders.find(function (o) { return o.id === msOrderId; });
+      if (msOrder) { msOrder.trackingMessageSent = e.target.checked; save(); renderShipping(); }
       return;
     }
   });
