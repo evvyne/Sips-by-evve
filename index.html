@@ -931,6 +931,12 @@
   // disabled forever with zero explanation. Now any failure shows a clear message and is
   // re-thrown so the calling code stops (instead of pretending the save worked).
   function save() {
+    // Stamped on every local save so a fresh page load can tell whether the cloud's copy is
+    // actually newer than what's already sitting on this device, or just hasn't caught up yet
+    // (see pullStateFromCloud) — e.g. she uploads a photo, then refreshes before the network
+    // push had time to land; without this, the refresh would pull the OLDER cloud copy and wipe
+    // out the photo that was already saved locally, seconds after she made it.
+    state.updatedAt = Date.now();
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (err) {
@@ -7249,6 +7255,23 @@
     return sb.from('app_state').select('data').eq('user_id', userId).maybeSingle().then(function (res) {
       if (res.error) { setSyncStatus('offline'); return; }
       if (res.data && res.data.data) {
+        // Before blindly adopting the cloud's copy, check whether what's ALREADY on this
+        // device (loaded from localStorage at the top of this file, before any of this ran) is
+        // actually more recent — e.g. she just saved something here (a photo, a new order...)
+        // and the 800ms debounced push to the cloud hadn't gone out yet, or was still in flight,
+        // when this page load's initial pull fired. Overwriting a newer local save with an
+        // older cloud snapshot would silently erase that edit — exactly the class of data loss
+        // already fixed once for tab-refocus (see the auth-event guard below); a full page
+        // reload needs the same protection. Both sides default to 0 for old data saved before
+        // this timestamp existed, so this only changes behavior once both sides actually have one.
+        var cloudUpdatedAt = res.data.data.updatedAt || 0;
+        var localUpdatedAt = state.updatedAt || 0;
+        if (cloudUpdatedAt < localUpdatedAt) {
+          // Local is ahead — keep it, and push it up so the cloud catches up instead of staying stale.
+          setSyncStatus('synced');
+          pushStateToCloud();
+          return;
+        }
         // Cloud already has a state for this account — adopt it as the source of truth.
         state = res.data.data;
         if (!state.blockedDates) state.blockedDates = {};
