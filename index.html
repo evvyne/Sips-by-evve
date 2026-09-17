@@ -829,11 +829,22 @@
     </div>
     <div class="card" id="order-filter-bar">
       <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn btn-secondary btn-small" id="btn-order-sort-toggle"></button>
         <button class="btn btn-secondary btn-small" id="btn-orderfilter-7d">Last 7 days</button>
         <button class="btn btn-secondary btn-small" id="btn-orderfilter-month">This month</button>
         <button class="btn btn-secondary btn-small" id="btn-orderfilter-clear">Clear dates</button>
       </div>
       <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
+        <select id="order-filter-status" style="width:170px;">
+          <option value="">All statuses</option>
+          <option value="queueing">queueing</option>
+          <option value="uv curing">uv curing</option>
+          <option value="ready to ship">ready to ship</option>
+          <option value="order shipment">order shipment</option>
+          <option value="shipped">shipped</option>
+          <option value="delivered">delivered</option>
+          <option value="cancelled">cancelled</option>
+        </select>
         <input id="order-filter-from" type="date" style="width:150px;">
         <input id="order-filter-to" type="date" style="width:150px;">
       </div>
@@ -3245,8 +3256,14 @@
   document.getElementById('order-filter-bar').addEventListener('change', function (e) {
     if (e.target.id === 'order-filter-from') { orderFilterFrom = e.target.value; renderOrders(); return; }
     if (e.target.id === 'order-filter-to') { orderFilterTo = e.target.value; renderOrders(); return; }
+    if (e.target.id === 'order-filter-status') { orderFilterStatus = e.target.value; renderOrders(); return; }
   });
   document.getElementById('order-filter-bar').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-order-sort-toggle') {
+      orderSortAscending = !orderSortAscending;
+      renderOrders();
+      return;
+    }
     if (e.target.id === 'btn-orderfilter-7d') {
       var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
       orderFilterFrom = from7.toISOString().slice(0, 10); orderFilterTo = todayISO();
@@ -4019,12 +4036,26 @@
   // Ephemeral Orders date-range filter state — not persisted, resets on reload.
   var orderFilterFrom = '';
   var orderFilterTo = '';
+  // She said the Orders table gets messy once there are several different stages mixed together
+  // (queueing, uv curing, ready to ship, etc.) — this lets her narrow the table down to just one
+  // stage at a time, e.g. "show me only what still needs uv curing".
+  var orderFilterStatus = '';
+
+  // Sorts by the order they were actually ADDED into the app (state.orders is only ever
+  // appended to via push, so its natural array order already IS that add-sequence) — not by the
+  // order's own Date field, which she can freely type/backdate independently of when she
+  // actually entered it. false = newest added shown first (the long-standing default).
+  var orderSortAscending = false;
 
   function renderOrderFilterBar() {
     var from = document.getElementById('order-filter-from');
     var to = document.getElementById('order-filter-to');
     if (from) from.value = orderFilterFrom;
     if (to) to.value = orderFilterTo;
+    var statusSel = document.getElementById('order-filter-status');
+    if (statusSel) statusSel.value = orderFilterStatus;
+    var sortBtn = document.getElementById('btn-order-sort-toggle');
+    if (sortBtn) sortBtn.textContent = orderSortAscending ? '↑ Oldest added first' : '↓ Newest added first';
   }
 
   function renderOrders() {
@@ -4041,12 +4072,13 @@
     var filteredOrders = state.orders.filter(function (o) {
       if (orderFilterFrom && o.date < orderFilterFrom) return false;
       if (orderFilterTo && o.date > orderFilterTo) return false;
+      if (orderFilterStatus && o.status !== orderFilterStatus) return false;
       return true;
     });
     if (filteredOrders.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
-      empty.textContent = 'No orders match this date range.';
+      empty.textContent = orderFilterStatus ? 'No orders match this status/date range.' : 'No orders match this date range.';
       if (countEl) countEl.textContent = '';
       return;
     }
@@ -4054,9 +4086,12 @@
     empty.textContent = 'No orders yet.';
     if (countEl) {
       var isFiltered = filteredOrders.length !== state.orders.length;
-      countEl.textContent = isFiltered ? filteredOrders.length + ' order' + (filteredOrders.length === 1 ? '' : 's') + ' in range' : '';
+      countEl.textContent = isFiltered ? filteredOrders.length + ' order' + (filteredOrders.length === 1 ? '' : 's') + (orderFilterStatus ? ' matching filters' : ' in range') : '';
     }
-    var sorted = filteredOrders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); });
+    // filteredOrders came from state.orders via .filter(), which preserves array order — and
+    // since new orders are only ever pushed onto the end of state.orders, that order already IS
+    // the add-sequence (oldest first). So ascending needs no sort at all; descending just reverses it.
+    var sorted = orderSortAscending ? filteredOrders.slice() : filteredOrders.slice().reverse();
     var statuses = ['queueing', 'uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered', 'cancelled'];
     tbody.innerHTML = sorted.map(function (o) {
       var statusOptions = statuses.map(function (s) {
