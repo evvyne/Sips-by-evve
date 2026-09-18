@@ -767,23 +767,8 @@
       </div>
 
       <div class="form-section-title">Shipping</div>
+      <p class="muted" style="font-size:12px; margin:-8px 0 12px;">The recipient's name, phone and delivery address are added later — from the Shipping tab, once the order is ready to ship and you actually have that info from the customer.</p>
       <div class="form-grid">
-        <div>
-          <label class="field-label">Recipient name <span class="muted">(who's receiving the delivery — may differ from Buyer name)</span></label>
-          <input id="of-recipient-name" placeholder="e.g. name on the parcel/courier label">
-        </div>
-        <div>
-          <label class="field-label">Recipient phone <span class="muted">(leave blank to use the WhatsApp number above)</span></label>
-          <input id="of-recipient-phone" placeholder="+60123456789">
-        </div>
-        <div style="grid-column: 1 / -1;">
-          <label class="field-label">Ship to <span class="muted">(customer's delivery address)</span></label>
-          <textarea id="of-ship-to" rows="2" placeholder="e.g. 12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor" style="resize:vertical;"></textarea>
-        </div>
-        <div>
-          <label class="field-label">Postcode</label>
-          <input id="of-postcode" placeholder="e.g. 43000">
-        </div>
         <div>
           <label class="field-label">Shipping zone</label>
           <select id="of-shipping-zone">
@@ -913,7 +898,14 @@
     ninja: { label: 'Ninja Van', url: function (n) { return 'https://www.ninjavan.co/en-my/tracking?id=' + encodeURIComponent(n); } },
     dhl: { label: 'DHL', url: function (n) { return 'https://www.dhl.com/my-en/home/tracking.html?tracking-id=' + encodeURIComponent(n); } }
   };
-  var DEFAULT_SHIPPED_MESSAGE_TEMPLATE = "Hihi! Your order has been shipped out! 😍\n\nYou can track your parcel here:\n{link}\n\nThank you so much for your patience and trust in Sips by Evve, allowing me to create this special piece for you! I hope you'll love this gift! 🎁\n\nOnce you've received your parcel, do let me know! I can't wait to hear your feedback!\n\nAnd don't forget to record an unboxing video when you open it! 📦✨";
+  // Kept around only so the one-time migration below can detect "she never customised this" —
+  // matching the exact old default text — and swap it for the new one automatically, without
+  // touching anything she's already edited herself.
+  var OLD_DEFAULT_SHIPPED_MESSAGE_TEMPLATE = "Hihi! Your order has been shipped out! 😍\n\nYou can track your parcel here:\n{link}\n\nThank you so much for your patience and trust in Sips by Evve, allowing me to create this special piece for you! I hope you'll love this gift! 🎁\n\nOnce you've received your parcel, do let me know! I can't wait to hear your feedback!\n\nAnd don't forget to record an unboxing video when you open it! 📦✨";
+  // {buyerName} is filled in with the BUYER's name (not the delivery recipient's name, which can
+  // differ for gift orders) — she asked for the greeting specifically to use whoever placed and
+  // paid for the order, not whoever it's being shipped to.
+  var DEFAULT_SHIPPED_MESSAGE_TEMPLATE = "Hihi Kakak {buyerName}! Your order has been shipped out! 😍\n\nYou can track your parcel here:\n{link}\n\nThank you so much for your patience and trust in Sips by Evve, allowing me to create this special piece for you! I hope you'll love this gift! 🎁\n\nOnce you've received your parcel, do let me know! I can't wait to hear your feedback!\n\nAnd don't forget to record an unboxing video when you open it! 📦✨";
 
   function loadState() {
     try {
@@ -930,6 +922,7 @@
   if (state.startingCash == null) state.startingCash = 5000;
   if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
   var didMigrate = false;
+  if (state.shippedMessageTemplate === OLD_DEFAULT_SHIPPED_MESSAGE_TEMPLATE) { state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE; didMigrate = true; }
   if (state.costs) {
     state.costs.forEach(function (c) {
       if (c.category === 'materials') { c.category = 'restock'; didMigrate = true; }
@@ -1130,8 +1123,13 @@
   // product photos once did.
   function compressImageBlobToDataUrl(blob, callback) {
     var reader = new FileReader();
+    // Same silent-failure fix as processImageBlob above (Inventory photos) — a photo that can't
+    // be decoded (HEIC, corrupted file, unsupported format) used to just do nothing at all here,
+    // which is indistinguishable from the upload never having registered in the first place.
+    reader.onerror = function () { alert(PHOTO_DECODE_ERROR_MESSAGE); };
     reader.onload = function (ev) {
       var img = new Image();
+      img.onerror = function () { alert(PHOTO_DECODE_ERROR_MESSAGE); };
       img.onload = function () {
         var maxDim = 500;
         var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
@@ -1151,12 +1149,18 @@
   // barcode photo) should receive the next pasted image — set when she clicks that field's
   // "Add/Change photo" control, since a paste event on its own doesn't know which field she means.
   var activePhotoTarget = null;
+  // She asked for an explicit Save step on the order-item photo, rather than it committing the
+  // instant a photo is picked/pasted — partly so she gets a clear confirmation the upload actually
+  // registered (auto-saving with no visible "done" moment was easy to mistake for "nothing
+  // happened"), and partly so a photo that got picked but never actually got looked at/confirmed
+  // doesn't silently overwrite anything. Holds at most one staged photo at a time; picking or
+  // pasting a new one before saving just replaces whatever was pending.
+  var pendingItemPhoto = null; // { orderId, itemIndex, dataUrl }
   function applyPhotoToTarget(target, dataUrl) {
     if (!target) return;
     if (target.kind === 'orderItem') {
-      var order = state.orders.find(function (o) { return o.id === target.orderId; });
-      var item = order && order.items[target.itemIndex];
-      if (item) { item.photo = dataUrl; save(); renderOrders(); }
+      pendingItemPhoto = { orderId: target.orderId, itemIndex: target.itemIndex, dataUrl: dataUrl };
+      renderOrders();
     } else if (target.kind === 'shippingBarcode') {
       var order2 = state.orders.find(function (o) { return o.id === target.orderId; });
       if (order2) { order2.shippingBarcodePhoto = dataUrl; save(); renderShipping(); }
@@ -1234,10 +1238,17 @@
   // don't bloat localStorage. She's OK trading photo sharpness for storage headroom (these
   // are just small "recognize the sticker design at a glance" thumbnails, not print-quality
   // photos), so this is deliberately compressed hard: 500px max dimension + quality 0.5.
+  // A photo that can't be decoded (a HEIC straight off an iPhone camera roll, a corrupted file,
+  // or a format the browser just doesn't support) used to fail completely silently here — no
+  // thumbnail, no error, nothing saved — which looked exactly like "I uploaded it and nothing
+  // happened." Both onerror handlers below turn that into a clear message instead.
+  var PHOTO_DECODE_ERROR_MESSAGE = 'Could not read that photo — it might be in a format this browser can\'t open (this happens with some iPhone HEIC photos). Try a different photo, or take a screenshot of it first and upload that instead.';
   function processImageBlob(blob) {
     var reader = new FileReader();
+    reader.onerror = function () { alert(PHOTO_DECODE_ERROR_MESSAGE); };
     reader.onload = function (ev) {
       var img = new Image();
+      img.onerror = function () { alert(PHOTO_DECODE_ERROR_MESSAGE); };
       img.onload = function () {
         var maxDim = 500;
         var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
@@ -3317,10 +3328,6 @@
     document.getElementById('of-estimated-date').disabled = false;
     document.getElementById('of-estimated-date-clear').disabled = false;
     document.getElementById('of-immediate').checked = false;
-    document.getElementById('of-recipient-name').value = '';
-    document.getElementById('of-recipient-phone').value = '';
-    document.getElementById('of-ship-to').value = '';
-    document.getElementById('of-postcode').value = '';
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
     document.getElementById('of-shipping-weight').value = '';
     document.getElementById('of-shipping').value = 0;
@@ -3550,10 +3557,6 @@
         return;
       }
     }
-    var recipientName = document.getElementById('of-recipient-name').value.trim();
-    var recipientPhone = document.getElementById('of-recipient-phone').value.trim();
-    var shipTo = document.getElementById('of-ship-to').value.trim();
-    var postcode = document.getElementById('of-postcode').value.trim();
     var shippingZone = document.getElementById('of-shipping-zone').value;
     var shippingWeight = Number(document.getElementById('of-shipping-weight').value) || 0;
     var shippingFee = Number(document.getElementById('of-shipping').value) || 0;
@@ -3592,10 +3595,10 @@
         order.buyerWhatsapp = buyerWhatsapp;
         order.date = date;
         order.status = status;
-        order.recipientName = recipientName;
-        order.recipientPhone = recipientPhone;
-        order.shipTo = shipTo;
-        order.postcode = postcode;
+        // Recipient name/phone/address are no longer editable from this form — they're filled in
+        // later, from the Shipping tab, once she actually has that info from the customer. Leaving
+        // these four fields untouched here means re-saving an edited order can never wipe out an
+        // address she already added.
         order.shippingZone = shippingZone;
         order.shippingWeight = shippingWeight;
         order.shippingFee = shippingFee;
@@ -3624,10 +3627,12 @@
         paymentDate: '',
         paymentRef: '',
         paymentBankName: '',
-        recipientName: recipientName,
-        recipientPhone: recipientPhone,
-        shipTo: shipTo,
-        postcode: postcode,
+        // Blank until she adds them from the Shipping tab later (see comment on the edit path
+        // above) — a brand new order never has this info yet anyway.
+        recipientName: '',
+        recipientPhone: '',
+        shipTo: '',
+        postcode: '',
         shippingZone: shippingZone,
         shippingWeight: shippingWeight,
         shippingFee: shippingFee,
@@ -3643,7 +3648,8 @@
         discount: discount,
         notes: notes,
         items: newItems,
-        addOns: []
+        addOns: [],
+        parcels: []
       };
       if (status !== 'cancelled') deductStock(newOrder);
       state.orders.push(newOrder);
@@ -4142,15 +4148,41 @@
             // 600ml bottle, she'll forget which is which once they're both made, so a photo
             // lets her tell them apart at a glance. One per item (not one per order), since a
             // multi-item order needs one photo per physical bottle.
+            var pendingPhoto = (pendingItemPhoto && pendingItemPhoto.orderId === o.id && pendingItemPhoto.itemIndex === idx) ? pendingItemPhoto : null;
             var photoControl = '<span style="display:flex; align-items:center; gap:6px; margin-left:12px;">' +
-              (i.photo
-                ? '<img src="' + i.photo + '" class="order-item-photo-thumb" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="width:28px; height:28px; object-fit:cover; border-radius:4px; cursor:pointer;" title="Click to view">' +
-                  '<label class="btn-text order-item-photo-label" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px; cursor:pointer;">Change<input type="file" accept="image/*" class="order-item-photo-file" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="display:none;"></label>' +
-                  '<button type="button" class="btn-text danger order-item-photo-remove" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px;">Remove</button>'
-                : '<label class="btn-text order-item-photo-label" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px; cursor:pointer;">📷 Add photo<input type="file" accept="image/*" class="order-item-photo-file" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="display:none;"></label>') +
+              (pendingPhoto
+                // Staged but not yet saved — she confirms it looks right, then taps Save. Nothing
+                // is written to the order until she does.
+                ? '<img src="' + pendingPhoto.dataUrl + '" style="width:28px; height:28px; object-fit:cover; border-radius:4px; border:2px solid var(--blue);" title="Not saved yet">' +
+                  '<button type="button" class="btn btn-primary btn-small order-item-photo-save" data-order-id="' + o.id + '" data-item-index="' + idx + '">Save</button>' +
+                  '<button type="button" class="btn-text order-item-photo-save-cancel" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px;">Cancel</button>'
+                : (i.photo
+                  ? '<img src="' + i.photo + '" class="order-item-photo-thumb" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="width:28px; height:28px; object-fit:cover; border-radius:4px; cursor:pointer;" title="Click to view">' +
+                    '<label class="btn-text order-item-photo-label" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px; cursor:pointer;">Change<input type="file" accept="image/*" class="order-item-photo-file" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="display:none;"></label>' +
+                    '<button type="button" class="btn-text danger order-item-photo-remove" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px;">Remove</button>'
+                  : '<label class="btn-text order-item-photo-label" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:11px; cursor:pointer;">📷 Add photo<input type="file" accept="image/*" class="order-item-photo-file" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="display:none;"></label>')) +
               '</span>';
-            return '<div class="row-line" style="align-items:center;"><span>' + escapeHtml(i.productName) + ' × ' + i.qty + '</span>' +
-              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + photoControl + '</span></div>';
+            // She sometimes sells a defective bottle cheap rather than writing it off entirely.
+            // Ticking this doesn't touch revenue/profit math at all — that's already correct the
+            // moment she types the discounted unitPrice for the line — it just snapshots the
+            // product's normal selling price (at the moment she ticks it) so the gap between
+            // "what it should've sold for" and "what she actually charged" can be tallied up
+            // separately later, instead of being invisible inside a lower revenue number.
+            var defectControl = o.status === 'cancelled' ? '' :
+              '<label style="display:flex; align-items:center; gap:4px; margin-left:12px; font-size:11px; cursor:pointer; white-space:nowrap;">' +
+                '<input type="checkbox" class="order-item-defect-checkbox" data-order-id="' + o.id + '" data-item-index="' + idx + '"' + (i.isDefect ? ' checked' : '') + '> 🔧 Defect' +
+              '</label>';
+            var defectTag = i.isDefect ? ' <span class="pill pill-amber" style="font-size:10px;">🔧 defect</span>' : '';
+            // A small thumbnail of the PRODUCT's own catalog photo (not the per-item finished
+            // photo above, which is a photo of this specific physical bottle) — so she can tell
+            // "which sticker/tumbler is this row" at a glance instead of reading the name text,
+            // same idea as the Shipping tab's item boxes.
+            var catalogProduct = state.products.find(function (p) { return p.id === i.productId; });
+            var catalogThumb = (catalogProduct && catalogProduct.image)
+              ? '<img src="' + catalogProduct.image + '" class="thumb order-item-catalog-thumb" style="width:26px; height:26px; margin-right:8px; vertical-align:middle;" title="Click to view">'
+              : '';
+            return '<div class="row-line" style="align-items:center;"><span>' + catalogThumb + escapeHtml(i.productName) + ' × ' + i.qty + defectTag + '</span>' +
+              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + photoControl + defectControl + '</span></div>';
           }).join('') +
           (o.notes ? '<div class="muted" style="padding-top:6px;">Note: ' + escapeHtml(o.notes) + '</div>' : '') +
           renderOrderDetailsBlock(o) +
@@ -4175,10 +4207,6 @@
     document.getElementById('of-immediate').checked = !!order.immediate;
     document.getElementById('of-estimated-date').disabled = !!order.immediate;
     document.getElementById('of-estimated-date-clear').disabled = !!order.immediate;
-    document.getElementById('of-recipient-name').value = order.recipientName || '';
-    document.getElementById('of-recipient-phone').value = order.recipientPhone || '';
-    document.getElementById('of-ship-to').value = order.shipTo || '';
-    document.getElementById('of-postcode').value = order.postcode || '';
     document.getElementById('of-shipping-zone').value = order.shippingZone || 'west_malaysia';
     document.getElementById('of-shipping-weight').value = order.shippingWeight || '';
     document.getElementById('of-shipping').value = order.shippingFee || 0;
@@ -4265,7 +4293,7 @@
         renderCalendar();
       }
     }
-    if (e.target.classList.contains('order-item-photo-thumb')) {
+    if (e.target.classList.contains('order-item-photo-thumb') || e.target.classList.contains('order-item-catalog-thumb')) {
       openLightbox(e.target.src);
       return;
     }
@@ -4274,6 +4302,23 @@
       // Clicking either opens the native file picker (it's a <label> wrapping the hidden
       // file input) or, if she cancels that and pastes instead, this target is what catches it.
       activePhotoTarget = { kind: 'orderItem', orderId: photoLabel.getAttribute('data-order-id'), itemIndex: Number(photoLabel.getAttribute('data-item-index')) };
+      return;
+    }
+    if (e.target.classList.contains('order-item-photo-save')) {
+      var spOrderId = e.target.getAttribute('data-order-id');
+      var spItemIndex = Number(e.target.getAttribute('data-item-index'));
+      if (pendingItemPhoto && pendingItemPhoto.orderId === spOrderId && pendingItemPhoto.itemIndex === spItemIndex) {
+        var spOrder = state.orders.find(function (o) { return o.id === spOrderId; });
+        var spItem = spOrder && spOrder.items[spItemIndex];
+        if (spItem) { spItem.photo = pendingItemPhoto.dataUrl; save(); }
+      }
+      pendingItemPhoto = null;
+      renderOrders();
+      return;
+    }
+    if (e.target.classList.contains('order-item-photo-save-cancel')) {
+      pendingItemPhoto = null;
+      renderOrders();
       return;
     }
     if (e.target.classList.contains('order-item-photo-remove')) {
@@ -4332,6 +4377,27 @@
         item.madeQty = Math.max(0, Math.min(Math.round(Number(e.target.value)) || 0, item.qty));
         save();
         renderOrders();
+      }
+    }
+    if (e.target.classList.contains('order-item-defect-checkbox')) {
+      var defOrderId = e.target.getAttribute('data-order-id');
+      var defItemIndex = Number(e.target.getAttribute('data-item-index'));
+      var defOrder = state.orders.find(function (o) { return o.id === defOrderId; });
+      var defItem = defOrder && defOrder.items[defItemIndex];
+      if (defItem) {
+        defItem.isDefect = e.target.checked;
+        if (defItem.isDefect) {
+          // Snapshot the product's CURRENT normal selling price the moment she flags it — not
+          // read live later — so if she changes that product's price down the road, past defect
+          // records still reflect what "full price" actually meant back when this one was sold.
+          var defProduct = state.products.find(function (p) { return p.id === defItem.productId; });
+          defItem.defectNormalPrice = defProduct ? Number(defProduct.price) || 0 : Number(defItem.unitPrice) || 0;
+        } else {
+          defItem.defectNormalPrice = null;
+        }
+        save();
+        renderOrders();
+        renderDashboard();
       }
     }
     if (e.target.classList.contains('addon-paid-checkbox')) {
@@ -4404,6 +4470,24 @@
   // an operating expense or money converted into inventory stock), plus money actually
   // collected from orders marked Paid. Inventory purchases don't vanish from the books —
   // they just move from Cash into Inventory value instead of counting as an Expense.
+  // Purely an informational tally — it does NOT feed into revenue/expense/profit anywhere. The
+  // moment she types a lower unitPrice for a defective item, revenue is already correctly lower;
+  // this just adds up, across items she's flagged 🔧 Defect, the gap between what the product
+  // would normally have sold for (snapshotted onto the item when she ticked it) and what she
+  // actually charged — so she can see "how much defects have cost me" as its own number instead
+  // of it being invisible inside a smaller revenue figure.
+  function defectLossFor(orders) {
+    var loss = 0, count = 0;
+    orders.forEach(function (o) {
+      o.items.forEach(function (i) {
+        if (!i.isDefect) return;
+        var gap = (Number(i.defectNormalPrice) || 0) - Number(i.unitPrice || 0);
+        if (gap > 0) { loss += gap * Number(i.qty || 0); count++; }
+      });
+    });
+    return { defectLoss: loss, defectCount: count };
+  }
+
   function financials() {
     var active = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
     var revenue = active.reduce(function (s, o) { return s + orderTotal(o); }, 0);
@@ -4445,11 +4529,13 @@
     var invValue = state.products.reduce(function (s, p) { return s + p.stock * p.cost; }, 0);
     var netProfit = revenue - inventorySpend - expense - testingSpend - wastageLoss;
     var totalAccountValue = cash + invValue;
+    var defectStats = defectLossFor(active);
     return {
       active: active, revenue: revenue, shippingCostsPaid: shippingCostsPaid,
       inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, testingSpend: testingSpend, wastageLoss: wastageLoss, allCostsSpent: allCostsSpent,
       expense: expense, cash: cash, invValue: invValue,
-      netProfit: netProfit, totalAccountValue: totalAccountValue
+      netProfit: netProfit, totalAccountValue: totalAccountValue,
+      defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount
     };
   }
 
@@ -4712,7 +4798,9 @@
     // above for the full reasoning — but still reduces Net profit.
     var allCostsSpent = inventorySpend + expenseFromCosts + testingSpend;
     var netProfit = revenue - allCostsSpent - wastageLoss;
-    return { revenue: revenue, allCostsSpent: allCostsSpent, testingSpend: testingSpend, wastageLoss: wastageLoss, netProfit: netProfit, orderCount: active.length };
+    var defectStats = defectLossFor(active);
+    return { revenue: revenue, allCostsSpent: allCostsSpent, testingSpend: testingSpend, wastageLoss: wastageLoss, netProfit: netProfit, orderCount: active.length,
+      defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount };
   }
 
   function dashboardDateRangeHtml() {
@@ -4796,6 +4884,8 @@
     var netProfitPeriod = periodFin ? periodFin.netProfit : fin.netProfit;
     var totalSpentPeriod = periodFin ? periodFin.allCostsSpent : fin.allCostsSpent;
     var testingSpendPeriod = periodFin ? periodFin.testingSpend : fin.testingSpend;
+    var defectLossPeriod = periodFin ? periodFin.defectLoss : fin.defectLoss;
+    var defectCountPeriod = periodFin ? periodFin.defectCount : fin.defectCount;
     var orderCountLabel = periodFin ? periodFin.orderCount + ' orders in range (excl. cancelled)' : fin.active.length + ' orders (excl. cancelled)';
     var active = fin.active;
     var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
@@ -4817,6 +4907,7 @@
       totalSpentStatCard(totalSpentPeriod, testingSpendPeriod, !!periodFin) +
       statCard('Testing spent', money(fin.testingSpend), 'Samples/materials for testing — not counted as Expense') +
       statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
+      statCard('🔧 Defect loss', money(defectLossPeriod), defectCountPeriod + ' item' + (defectCountPeriod === 1 ? '' : 's') + ' sold cheap due to defect' + (periodFin ? ' (for the selected range)' : '') + ' — already reflected in Revenue, shown here separately for visibility') +
       '</div>' +
       '<div class="panel-grid">' +
       '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Low stock alerts</div>' +
@@ -5218,6 +5309,100 @@
     return { west_malaysia: 'West Malaysia', east_malaysia: 'East Malaysia (Sabah/Sarawak)', singapore: 'Singapore', other: 'Other / custom' }[zone] || '—';
   }
 
+  // She only finds out the customer's actual delivery address once the order is made and ready
+  // to ship — not when the order is first created — so the New/Edit order form no longer asks for
+  // it at all. This is the one place that address now gets added: right here on the Shipping tab,
+  // exactly when she needs it, without detouring back to Orders > Edit details.
+  var editingShippingAddressOrderId = null;
+  function shippingAddressBlockHtml(o) {
+    if (editingShippingAddressOrderId === o.id) {
+      return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
+        '<div class="field-block"><label class="field-label">Recipient name</label><input id="sa-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '" placeholder="e.g. name on the parcel/courier label"></div>' +
+        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Recipient phone <span class="muted">(blank = use WhatsApp number)</span></label><input id="sa-recipientPhone-' + o.id + '" value="' + escapeHtml(o.recipientPhone || '') + '" placeholder="+60123456789"></div>' +
+        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Ship to (address)</label><textarea id="sa-shipTo-' + o.id + '" rows="2" style="resize:vertical; width:100%;" placeholder="e.g. 12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
+        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Postcode</label><input id="sa-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '" placeholder="e.g. 43000"></div>' +
+        '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" data-save-shipaddr="' + o.id + '">Save</button> ' +
+        '<button type="button" class="btn btn-secondary btn-small" data-cancel-shipaddr="' + o.id + '">Cancel</button></div>' +
+      '</div>';
+    }
+    if (!o.shipTo) {
+      return '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" data-add-shipaddr="' + o.id + '">+ Add shipping address</button></div>';
+    }
+    return '<div style="margin-top:6px; white-space:pre-wrap;">' + escapeHtml(o.shipTo) + (o.postcode ? '<br>' + escapeHtml(o.postcode) : '') + '</div>' +
+      '<button type="button" class="btn-text" data-edit-shipaddr="' + o.id + '" style="font-size:12px;">✏️ Edit address</button>';
+  }
+
+  function saveShippingAddress(id) {
+    var order = state.orders.find(function (o) { return o.id === id; });
+    if (!order) return;
+    order.recipientName = document.getElementById('sa-recipientName-' + id).value.trim();
+    order.recipientPhone = document.getElementById('sa-recipientPhone-' + id).value.trim();
+    order.shipTo = document.getElementById('sa-shipTo-' + id).value.trim();
+    order.postcode = document.getElementById('sa-postcode-' + id).value.trim();
+    save();
+    editingShippingAddressOrderId = null;
+    renderShipping();
+  }
+
+  // She wanted what's in each order to be obvious at a glance while she's physically packing —
+  // not buried in a small grey line of text. This renders one clearly-boxed chip per item,
+  // colour/icon-coded by Tumbler / Stickers / Others (looked up from the product, since order
+  // items only store a productId+name snapshot, not the type) plus a separate chip style for
+  // add-ons (a separate o.addOns array), so she can tell at a glance "1 tumbler + 1 sticker +
+  // 1 add-on" without reading full sentences.
+  // Prefers the product's own uploaded photo (so she recognises "that's the 700ml one" at a
+  // glance, same reasoning as the per-item made-photo on Orders) — falls back to the type emoji
+  // when the product has no photo on file, or was deleted since the order was placed.
+  function shippingItemIconHtml(imageUrl, fallbackIcon) {
+    return imageUrl
+      ? '<img src="' + imageUrl + '" style="width:22px; height:22px; object-fit:cover; border-radius:5px; flex-shrink:0;">'
+      : fallbackIcon;
+  }
+
+  var SHIPPING_TYPE_STYLE = {
+    'Tumbler': { icon: '🥤', bg: '#dbeafe', color: 'var(--blue-dark)' },
+    'Stickers': { icon: '🏷️', bg: '#ede9fe', color: '#6d28d9' },
+    'Others': { icon: '📦', bg: 'var(--bg)', color: 'var(--text)' }
+  };
+  // Pulled out of shippingItemBoxesHtml so a single-parcel order and a split-into-parcels order
+  // (see parcelItemBoxesHtml below) render each item box identically instead of maintaining the
+  // same markup twice.
+  function shippingItemBoxHtml(item, qty) {
+    var product = state.products.find(function (p) { return p.id === item.productId; });
+    var style = SHIPPING_TYPE_STYLE[product ? product.type : 'Others'] || SHIPPING_TYPE_STYLE['Others'];
+    return '<span style="display:inline-flex; align-items:center; gap:5px; background:' + style.bg + '; color:' + style.color + '; border-radius:8px; padding:6px 12px; font-size:13px; font-weight:600;">' +
+      shippingItemIconHtml(product && product.image, style.icon) + ' ' + escapeHtml(item.productName) + ' ×' + qty +
+    '</span>';
+  }
+  function addOnBoxHtml(a) {
+    var addOnProduct = state.products.find(function (p) { return p.id === a.productId; });
+    return '<span style="display:inline-flex; align-items:center; gap:5px; background:var(--amber-bg); color:var(--amber); border-radius:8px; padding:6px 12px; font-size:13px; font-weight:600;">' +
+      shippingItemIconHtml(addOnProduct && addOnProduct.image, '✨') + ' ' + escapeHtml(a.productName) + ' ×' + a.qty + ' <span style="font-weight:400;">(add-on)</span>' +
+    '</span>';
+  }
+  function shippingItemBoxesHtml(o) {
+    var boxes = (o.items || []).map(function (i) { return shippingItemBoxHtml(i, i.qty); });
+    (o.addOns || []).forEach(function (a) { boxes.push(addOnBoxHtml(a)); });
+    return '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">' + boxes.join('') + '</div>';
+  }
+  // Add-ons aren't split across parcels (see the split-into-parcels feature below) — shown once,
+  // separately from whichever parcel actually carries them physically.
+  function addOnsOnlyBoxesHtml(o) {
+    var boxes = (o.addOns || []).map(addOnBoxHtml);
+    if (!boxes.length) return '';
+    return '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">' + boxes.join('') + '</div>';
+  }
+  // Renders only the items (and quantities) assigned to one parcel of a split order —
+  // parcel.itemQtys maps an order-item's array index (as a string key) to how many of that item
+  // are physically in this parcel.
+  function parcelItemBoxesHtml(o, parcel) {
+    var boxes = Object.keys(parcel.itemQtys || {}).map(function (idxStr) {
+      var item = o.items[Number(idxStr)];
+      return item ? shippingItemBoxHtml(item, parcel.itemQtys[idxStr]) : '';
+    }).filter(Boolean);
+    return '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' + boxes.join('') + '</div>';
+  }
+
   // She books couriers online and gets back a barcode/label with no customer name printed on
   // it, so once she has a stack of packed parcels she can't tell whose barcode is whose. This
   // lets her snap or paste a photo of each parcel's barcode right onto its order here, so she
@@ -5246,6 +5431,38 @@
   // can still look them up later without them cluttering the active queue.
   var showDeliveredHistory = false;
 
+  // Lets her narrow the queue down to just what she's looking for right now — e.g. "which of
+  // these have I already told the customer are on the way" — instead of scanning the whole list.
+  // Accounts for split-into-parcels orders: "has tracking" is true if ANY parcel has one, "sent
+  // to customer" requires ALL parcels to be marked sent (a half-notified split order isn't fully
+  // "sent" yet).
+  var shippingStatusFilter = 'all';
+  function orderHasTracking(o) {
+    if (o.parcels && o.parcels.length) return o.parcels.some(function (p) { return !!p.trackingNumber; });
+    return !!o.trackingNumber;
+  }
+  function orderMessageSent(o) {
+    if (o.parcels && o.parcels.length) return o.parcels.every(function (p) { return p.trackingMessageSent; });
+    return !!o.trackingMessageSent;
+  }
+  function matchesShippingFilter(o) {
+    if (shippingStatusFilter === 'notshipped') return o.status !== 'shipped';
+    if (shippingStatusFilter === 'shipped') return o.status === 'shipped';
+    if (shippingStatusFilter === 'tracking') return orderHasTracking(o);
+    if (shippingStatusFilter === 'sent') return orderMessageSent(o);
+    return true;
+  }
+  function shippingFilterOptionsHtml() {
+    var opts = [
+      ['all', 'All in queue'],
+      ['notshipped', 'Not yet shipped'],
+      ['shipped', 'Shipped'],
+      ['tracking', 'Has tracking number'],
+      ['sent', 'Sent to customer']
+    ];
+    return opts.map(function (pair) { return '<option value="' + pair[0] + '"' + (pair[0] === shippingStatusFilter ? ' selected' : '') + '>' + pair[1] + '</option>'; }).join('');
+  }
+
   function courierOptionsHtml(selected) {
     return '<option value="">Select courier…</option>' + Object.keys(COURIER_TRACKING_URLS).map(function (key) {
       var c = COURIER_TRACKING_URLS[key];
@@ -5256,10 +5473,127 @@
   // Once she's picked a courier AND typed the tracking number, this builds the real "track my
   // parcel" link for that courier — used both for the clickable preview link and for filling in
   // {link} in the copy-ready WhatsApp message.
+  function trackingLinkFor(courier, trackingNumber) {
+    var courierInfo = courier && COURIER_TRACKING_URLS[courier];
+    if (!courierInfo || !trackingNumber) return '';
+    return courierInfo.url(trackingNumber);
+  }
+  // Fills in both {link} and {buyerName} — buyerName is always the person who placed/paid for
+  // the order, even on a gift order where the delivery recipient (o.recipientName) is someone
+  // else, since that's who she's actually messaging.
+  function buildShippedMessage(order, link) {
+    return (state.shippedMessageTemplate || DEFAULT_SHIPPED_MESSAGE_TEMPLATE)
+      .split('{link}').join(link)
+      .split('{buyerName}').join(order.buyerName || 'there');
+  }
+  // A quick, unobtrusive "Copied!" confirmation for clipboard actions — she couldn't otherwise
+  // tell whether a copy button actually worked. Reuses one element so rapid clicks don't stack
+  // up a pile of toasts.
+  function showCopiedToast(label) {
+    var existing = document.getElementById('app-toast');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.id = 'app-toast';
+    toast.textContent = label || 'Copied!';
+    toast.style.cssText = 'position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#1f2937; color:#fff; padding:10px 20px; border-radius:20px; font-size:13px; z-index:9999; box-shadow:0 2px 10px rgba(0,0,0,0.25);';
+    document.body.appendChild(toast);
+    setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 1600);
+  }
   function shippingTrackingLink(o) {
-    var courierInfo = o.courier && COURIER_TRACKING_URLS[o.courier];
-    if (!courierInfo || !o.trackingNumber) return '';
-    return courierInfo.url(o.trackingNumber);
+    return trackingLinkFor(o.courier, o.trackingNumber);
+  }
+
+  // She sometimes has to send a single order out as more than one physical parcel — e.g. 3
+  // bottles but only 2 fit in one box, so 1 goes in a second box, possibly with its own courier
+  // booking and tracking number. This lets her record that split (which items/qty went in which
+  // parcel) and track each parcel's courier separately, while the order itself still has one
+  // shared delivery address and goes through the usual ready-to-ship -> shipped -> delivered
+  // stages as a whole (she confirmed the address is always the same across parcels of one order).
+  var splittingOrderId = null;
+  var splitDraftParcelCount = 2;
+
+  function splitEditorHtml(o) {
+    var rows = (o.items || []).map(function (item, idx) {
+      var cells = [];
+      for (var p = 0; p < splitDraftParcelCount; p++) {
+        cells.push('<input type="number" min="0" class="split-qty-input" data-item-index="' + idx + '" data-parcel-index="' + p + '" style="width:56px;" value="' + (p === 0 ? item.qty : 0) + '">');
+      }
+      return '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">' +
+        '<span style="flex:1; font-size:13px;">' + escapeHtml(item.productName) + ' <span class="muted">(total ' + item.qty + ')</span></span>' +
+        cells.join('') +
+      '</div>';
+    });
+    var headerCells = [];
+    for (var h = 0; h < splitDraftParcelCount; h++) {
+      headerCells.push('<span style="width:56px; text-align:center; font-size:12px; font-weight:600;">Parcel ' + (h + 1) + '</span>');
+    }
+    return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px;">Split this order\'s items across parcels — each item\'s quantities must add up to the total ordered.</div>' +
+      '<div style="display:flex; gap:8px; margin-bottom:8px;"><span style="flex:1;"></span>' + headerCells.join('') + '</div>' +
+      rows.join('') +
+      '<div style="margin-top:6px;"><button type="button" class="btn-text" data-add-split-parcel="' + o.id + '">+ Add another parcel</button></div>' +
+      '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" data-save-split="' + o.id + '">Save split</button> ' +
+      '<button type="button" class="btn btn-secondary btn-small" data-cancel-split="' + o.id + '">Cancel</button></div>' +
+    '</div>';
+  }
+
+  function saveSplit(orderId) {
+    var order = state.orders.find(function (o) { return o.id === orderId; });
+    if (!order) return;
+    var inputs = document.querySelectorAll('.split-qty-input');
+    var totals = {};
+    var parcelsMap = {};
+    inputs.forEach(function (inp) {
+      var itemIdx = inp.getAttribute('data-item-index');
+      var parcelIdx = inp.getAttribute('data-parcel-index');
+      var qty = parseInt(inp.value, 10) || 0;
+      if (qty <= 0) return;
+      totals[itemIdx] = (totals[itemIdx] || 0) + qty;
+      if (!parcelsMap[parcelIdx]) parcelsMap[parcelIdx] = {};
+      parcelsMap[parcelIdx][itemIdx] = qty;
+    });
+    var mismatch = (order.items || []).some(function (item, idx) {
+      return (totals[String(idx)] || 0) !== item.qty;
+    });
+    if (mismatch) {
+      alert('Each item\'s quantities across all parcels must add up to the total ordered. Double-check the numbers and try again.');
+      return;
+    }
+    var parcelIndexes = Object.keys(parcelsMap);
+    if (parcelIndexes.length < 2) {
+      alert('Split into at least 2 parcels, or Cancel if this order isn\'t being split after all.');
+      return;
+    }
+    order.parcels = parcelIndexes.sort(function (a, b) { return Number(a) - Number(b); }).map(function (pIdx) {
+      return { id: 'pcl_' + Date.now() + '_' + pIdx, itemQtys: parcelsMap[pIdx], courier: '', trackingNumber: '', trackingMessageSent: false };
+    });
+    save();
+    splittingOrderId = null;
+    renderShipping();
+  }
+
+  // Only shows the courier/tracking controls once she's actually at the order-shipment-or-later
+  // stage (mirrors trackingSectionControl's own gating) — before that there's nothing to track
+  // yet, so it just shows the parcel's item breakdown.
+  function parcelTrackingHtml(o, parcel, idx, total, showTracking) {
+    var header = '<div style="font-size:12px; font-weight:600; margin-bottom:4px;">Parcel ' + (idx + 1) + ' of ' + total + '</div>';
+    var boxesHtml = parcelItemBoxesHtml(o, parcel);
+    if (!showTracking) {
+      return '<div style="margin-top:8px; padding:8px; background:var(--bg); border-radius:8px;">' + header + boxesHtml + '</div>';
+    }
+    var link = trackingLinkFor(parcel.courier, parcel.trackingNumber);
+    return '<div style="margin-top:8px; padding:8px; background:var(--bg); border-radius:8px;">' + header + boxesHtml +
+      '<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">' +
+        '<select class="parcel-courier-select" data-order-id="' + o.id + '" data-parcel-id="' + parcel.id + '" style="flex:1; min-width:120px;">' + courierOptionsHtml(parcel.courier) + '</select>' +
+        '<input class="parcel-tracking-input" data-order-id="' + o.id + '" data-parcel-id="' + parcel.id + '" value="' + escapeHtml(parcel.trackingNumber || '') + '" placeholder="Tracking number" style="flex:1; min-width:120px;">' +
+      '</div>' +
+      (link ? '<div style="font-size:12px; margin-top:6px; word-break:break-all;"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener">' + escapeHtml(link) + '</a></div>' : '') +
+      '<button type="button" class="btn btn-secondary btn-small btn-copy-parcel-message" data-order-id="' + o.id + '" data-parcel-id="' + parcel.id + '" style="margin-top:6px;">📋 Copy shipped message</button>' +
+      '<label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:13px; cursor:pointer;">' +
+        '<input type="checkbox" class="parcel-message-sent-checkbox" data-order-id="' + o.id + '" data-parcel-id="' + parcel.id + '"' + (parcel.trackingMessageSent ? ' checked' : '') + '> ' +
+        (parcel.trackingMessageSent ? '✅ Sent to customer' : 'Sent to customer?') +
+      '</label>' +
+    '</div>';
   }
 
   // Only shown once she's reached "order shipment" — before that there's no tracking number to
@@ -5310,19 +5644,26 @@
   }
 
   function renderShipping() {
-    var queue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
+    var fullQueue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
       .slice().sort(function (a, b) { return (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date); });
+    var queue = fullQueue.filter(matchesShippingFilter);
     var delivered = state.orders.filter(function (o) { return o.status === 'delivered'; })
       .slice().sort(function (a, b) { return (b.scheduledDate || b.date).localeCompare(a.scheduledDate || a.date); });
     var content = document.getElementById('shipping-content');
     var summary = '<div class="card" style="margin-bottom:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
-        '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ' in the shipping queue</span>' +
+        '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + (shippingStatusFilter === 'all' ? ' in the shipping queue' : ' matching this filter') + '</span>' +
         (editingShippedTemplate ? '' : '<button type="button" class="btn-text" id="btn-edit-shipped-template">✏️ Edit shipped message</button>') +
       '</div>' +
+      (fullQueue.length > 0
+        ? '<div style="margin-top:8px; display:flex; align-items:center; gap:8px;">' +
+            '<label class="muted" style="font-size:12px;">Filter:</label>' +
+            '<select id="shipping-status-filter" style="font-size:13px;">' + shippingFilterOptionsHtml() + '</select>' +
+          '</div>'
+        : '') +
       (editingShippedTemplate ?
         '<div style="margin-top:8px;">' +
-          '<div class="muted" style="font-size:12px; margin-bottom:6px;">Use <code>{link}</code> where the tracking link should go.</div>' +
+          '<div class="muted" style="font-size:12px; margin-bottom:6px;">Use <code>{link}</code> where the tracking link should go, and <code>{buyerName}</code> where the buyer\'s name should go.</div>' +
           '<textarea id="shipped-template-input" rows="9" style="width:100%; font-size:13px;">' + escapeHtml(state.shippedMessageTemplate) + '</textarea>' +
           '<div style="margin-top:6px;"><button type="button" class="btn btn-primary btn-small" id="btn-save-shipped-template">Save template</button> ' +
           '<button type="button" class="btn btn-secondary btn-small" id="btn-cancel-shipped-template">Cancel</button></div>' +
@@ -5330,12 +5671,15 @@
         '<div style="margin-top:6px;"><button type="button" class="btn-text" id="btn-toggle-delivered">' + (showDeliveredHistory ? '▲ Hide' : '▼ View') + ' delivered orders (' + delivered.length + ')</button></div>') +
     '</div>';
     var deliveredSection = showDeliveredHistory ? renderDeliveredHistory(delivered) : '';
-    if (queue.length === 0) {
+    if (fullQueue.length === 0) {
       content.innerHTML = summary + '<div class="empty">Nothing ready to ship yet. Mark an order "ready to ship" from the Orders tab once it\'s packed.</div>' + deliveredSection;
       return;
     }
+    if (queue.length === 0) {
+      content.innerHTML = summary + '<div class="empty">No orders in the queue match this filter.</div>' + deliveredSection;
+      return;
+    }
     content.innerHTML = summary + queue.map(function (o) {
-      var itemsSummary = o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ');
       var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : 'Unpaid') + '</span>';
       var contactPhone = o.recipientPhone || o.buyerWhatsapp || '';
       var isOrderShipment = o.status === 'order shipment';
@@ -5362,9 +5706,15 @@
             '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
             (o.recipientName && o.recipientName !== o.buyerName ? '<div class="muted" style="font-size:12px;">Buyer: ' + escapeHtml(o.buyerName) + '</div>' : '') +
             (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
-            '<div style="margin-top:6px; white-space:pre-wrap;">' + (escapeHtml(o.shipTo) || '<span class="muted">No address on file</span>') + (o.postcode ? '<br>' + escapeHtml(o.postcode) : '') + '</div>' +
+            shippingAddressBlockHtml(o) +
             '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
-            '<div class="muted" style="font-size:12px; margin-top:4px;">' + escapeHtml(itemsSummary) + '</div>' +
+            (o.parcels && o.parcels.length
+              ? addOnsOnlyBoxesHtml(o) +
+                '<div style="margin-top:6px;"><button type="button" class="btn-text danger" data-remove-split="' + o.id + '" style="font-size:12px;">↩️ Remove split</button></div>' +
+                o.parcels.map(function (parcel, pIdx) { return parcelTrackingHtml(o, parcel, pIdx, o.parcels.length, isOrderShipment || isShipped); }).join('')
+              : (splittingOrderId === o.id
+                ? splitEditorHtml(o)
+                : shippingItemBoxesHtml(o) + '<div style="margin-top:6px;"><button type="button" class="btn-text" data-start-split="' + o.id + '" style="font-size:12px;">✂️ Split into parcels</button></div>')) +
           '</div>' +
           '<div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">' +
             paidPill +
@@ -5380,6 +5730,48 @@
   }
 
   document.getElementById('shipping-content').addEventListener('click', function (e) {
+    var addAddrId = e.target.getAttribute && e.target.getAttribute('data-add-shipaddr');
+    if (addAddrId) { editingShippingAddressOrderId = addAddrId; renderShipping(); return; }
+    var editAddrId = e.target.getAttribute && e.target.getAttribute('data-edit-shipaddr');
+    if (editAddrId) { editingShippingAddressOrderId = editAddrId; renderShipping(); return; }
+    var saveAddrId = e.target.getAttribute && e.target.getAttribute('data-save-shipaddr');
+    if (saveAddrId) { saveShippingAddress(saveAddrId); return; }
+    var cancelAddrId = e.target.getAttribute && e.target.getAttribute('data-cancel-shipaddr');
+    if (cancelAddrId) { editingShippingAddressOrderId = null; renderShipping(); return; }
+    var startSplitId = e.target.getAttribute && e.target.getAttribute('data-start-split');
+    if (startSplitId) { splittingOrderId = startSplitId; splitDraftParcelCount = 2; renderShipping(); return; }
+    var addSplitParcelId = e.target.getAttribute && e.target.getAttribute('data-add-split-parcel');
+    if (addSplitParcelId) { splitDraftParcelCount++; renderShipping(); return; }
+    var saveSplitId = e.target.getAttribute && e.target.getAttribute('data-save-split');
+    if (saveSplitId) { saveSplit(saveSplitId); return; }
+    var cancelSplitId = e.target.getAttribute && e.target.getAttribute('data-cancel-split');
+    if (cancelSplitId) { splittingOrderId = null; renderShipping(); return; }
+    var removeSplitId = e.target.getAttribute && e.target.getAttribute('data-remove-split');
+    if (removeSplitId) {
+      if (confirm('Remove the parcel split? Any courier/tracking numbers entered per parcel will be lost.')) {
+        var rsOrder = state.orders.find(function (o) { return o.id === removeSplitId; });
+        if (rsOrder) { rsOrder.parcels = []; save(); renderShipping(); }
+      }
+      return;
+    }
+    if (e.target.classList.contains('btn-copy-parcel-message')) {
+      var pmOrderId = e.target.getAttribute('data-order-id');
+      var pmParcelId = e.target.getAttribute('data-parcel-id');
+      var pmOrder = state.orders.find(function (o) { return o.id === pmOrderId; });
+      var pmParcel = pmOrder && (pmOrder.parcels || []).find(function (p) { return p.id === pmParcelId; });
+      if (pmParcel) {
+        var pmLink = trackingLinkFor(pmParcel.courier, pmParcel.trackingNumber);
+        if (!pmLink) {
+          alert('Pick a courier and enter the tracking number first.');
+          return;
+        }
+        var pmMessage = buildShippedMessage(pmOrder, pmLink);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(pmMessage).then(function () { showCopiedToast('Copied!'); }).catch(function () {});
+        }
+      }
+      return;
+    }
     if (e.target.classList.contains('btn-mark-shipped')) {
       var orderId = e.target.getAttribute('data-order-id');
       confirmAndChangeOrderStatus(orderId, 'shipped');
@@ -5429,9 +5821,9 @@
           alert('Pick a courier and enter the tracking number first.');
           return;
         }
-        var message = (state.shippedMessageTemplate || DEFAULT_SHIPPED_MESSAGE_TEMPLATE).split('{link}').join(link);
+        var message = buildShippedMessage(cmOrder, link);
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(message).catch(function () {});
+          navigator.clipboard.writeText(message).then(function () { showCopiedToast('Copied!'); }).catch(function () {});
         }
       }
       return;
@@ -5448,7 +5840,7 @@
           (copyPhone ? '\n' + copyPhone : '') +
           '\n' + (order.shipTo || '') + (order.postcode ? '\n' + order.postcode : '');
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).catch(function () {});
+          navigator.clipboard.writeText(text).then(function () { showCopiedToast('Copied!'); }).catch(function () {});
         }
       }
       return;
@@ -5508,6 +5900,46 @@
       var msOrderId = e.target.getAttribute('data-order-id');
       var msOrder = state.orders.find(function (o) { return o.id === msOrderId; });
       if (msOrder) { msOrder.trackingMessageSent = e.target.checked; save(); renderShipping(); }
+      return;
+    }
+    if (e.target.classList.contains('parcel-courier-select')) {
+      var pcOrderId = e.target.getAttribute('data-order-id');
+      var pcParcelId = e.target.getAttribute('data-parcel-id');
+      var pcOrder = state.orders.find(function (o) { return o.id === pcOrderId; });
+      var pcParcel = pcOrder && (pcOrder.parcels || []).find(function (p) { return p.id === pcParcelId; });
+      if (pcParcel) {
+        if (pcParcel.courier !== e.target.value) pcParcel.trackingMessageSent = false;
+        pcParcel.courier = e.target.value;
+        save();
+        renderShipping();
+      }
+      return;
+    }
+    if (e.target.classList.contains('parcel-tracking-input')) {
+      var ptOrderId = e.target.getAttribute('data-order-id');
+      var ptParcelId = e.target.getAttribute('data-parcel-id');
+      var ptOrder = state.orders.find(function (o) { return o.id === ptOrderId; });
+      var ptParcel = ptOrder && (ptOrder.parcels || []).find(function (p) { return p.id === ptParcelId; });
+      if (ptParcel) {
+        var newPtTracking = e.target.value.trim();
+        if (ptParcel.trackingNumber !== newPtTracking) ptParcel.trackingMessageSent = false;
+        ptParcel.trackingNumber = newPtTracking;
+        save();
+        renderShipping();
+      }
+      return;
+    }
+    if (e.target.classList.contains('parcel-message-sent-checkbox')) {
+      var psOrderId = e.target.getAttribute('data-order-id');
+      var psParcelId = e.target.getAttribute('data-parcel-id');
+      var psOrder = state.orders.find(function (o) { return o.id === psOrderId; });
+      var psParcel = psOrder && (psOrder.parcels || []).find(function (p) { return p.id === psParcelId; });
+      if (psParcel) { psParcel.trackingMessageSent = e.target.checked; save(); renderShipping(); }
+      return;
+    }
+    if (e.target.id === 'shipping-status-filter') {
+      shippingStatusFilter = e.target.value;
+      renderShipping();
       return;
     }
   });
@@ -7518,6 +7950,7 @@
         if (!state.chatLog) state.chatLog = [];
         if (state.startingCash == null) state.startingCash = 5000;
         if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
+        else if (state.shippedMessageTemplate === OLD_DEFAULT_SHIPPED_MESSAGE_TEMPLATE) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
         if (state.costs) {
           state.costs.forEach(function (c) {
             if (c.category === 'materials') c.category = 'restock';
