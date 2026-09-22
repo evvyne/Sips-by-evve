@@ -204,6 +204,7 @@
   .cal-blocked-tag { font-size: 10px; color: var(--muted); background: #e4e1ec; border-radius: 4px; padding: 1px 5px; align-self: flex-start; }
   .cal-chip-row { display: flex; flex-wrap: wrap; gap: 3px; }
   .cal-order-chip { font-size: 10px; background: #eaf1fd; color: var(--blue); border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .cal-order-chip-immediate { font-size: 10px; background: #fdf0e0; color: #b5680a; border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .cal-order-chip-lg { font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer; white-space: normal; overflow: visible; text-overflow: unset; }
   .cal-order-chip-lg:hover { background: #d9e8fc; }
   .cal-note-input { font-size: 10px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; width: 100%; }
@@ -482,6 +483,10 @@
         <div class="checkbox-row" style="grid-column: 1 / -1;">
           <input type="checkbox" id="cf-multi-toggle">
           <label for="cf-multi-toggle">This purchase covers multiple products (e.g. glitter + tumblers + liquids in one payment)</label>
+        </div>
+        <div class="checkbox-row" style="grid-column: 1 / -1;">
+          <input type="checkbox" id="cf-paid-by-owner">
+          <label for="cf-paid-by-owner">I paid this with my own money (need to claim it back from the business)</label>
         </div>
         <div id="cf-single-wrap" style="display:contents;">
           <div>
@@ -836,7 +841,7 @@
     </div>
     <div class="card" style="overflow-x:auto;">
       <table id="order-table">
-        <thead><tr><th>Date</th><th>Buyer</th><th>TikTok</th><th>Ship to</th><th>Items</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Date</th><th>Buyer</th><th>WhatsApp</th><th>Items</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="order-empty" style="display:none;">No orders yet.</div>
@@ -889,6 +894,21 @@
   var STORAGE_KEY = 'snowglobeTrackerData';
   var PRODUCT_TYPES = ['Tumbler', 'Stickers', 'Add ons', 'Others'];
 
+  // The epoxy pattern she actually used on a Tumbler, recorded once it's made (not at order
+  // time) — purely for her own clarity on which pattern went out to which customer. Only
+  // "full_glitter" carries a price surcharge; the rest are free style choices. Keyed by a
+  // stable value (not the label) so relabeling later doesn't silently break saved orders.
+  var TUMBLER_PATTERNS = [
+    { value: 'normal_cateye', label: 'Normal Cateye', surcharge: 0 },
+    { value: 'swirl_cateye', label: 'Swirl Flow Cateye', surcharge: 0 },
+    { value: 'full_glitter', label: 'Full Glitter', surcharge: 5 },
+    { value: 'dual_lava', label: 'Dual Lava', surcharge: 0 },
+    { value: 'single_lava', label: 'Single Lava', surcharge: 0 }
+  ];
+  function tumblerPatternInfo(value) {
+    return TUMBLER_PATTERNS.find(function (p) { return p.value === value; }) || null;
+  }
+
   // Once she's booked a shipment with a courier and has a real tracking number, this builds the
   // actual "track my parcel" URL for whichever courier she picked — she just types the bare
   // number, no need to hunt down or paste the tracking site's URL herself.
@@ -917,6 +937,12 @@
 
   var state = loadState();
   if (!state.blockedDates) state.blockedDates = {};
+  // Her weekly recurring pack/rest days (default Tue + Sat, per her own schedule) — kept separate
+  // from blockedDates, which is for one-off exceptions (a specific day off, a holiday). Used to
+  // auto-suggest a rough production date for new Tumbler orders so she doesn't have to keep track
+  // of which days are already full herself. Editable from the Calendar tab.
+  if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6]; // 0=Sun ... 6=Sat: Tue, Sat
+  if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
   if (!state.stockLog) state.stockLog = [];
   if (!state.chatLog) state.chatLog = [];
   if (state.startingCash == null) state.startingCash = 5000;
@@ -2056,6 +2082,7 @@
     document.getElementById('cf-extra-goods').value = '';
     document.getElementById('cf-extra-shipping').value = '';
     document.getElementById('cf-extra-fee').value = '';
+    document.getElementById('cf-paid-by-owner').checked = false;
     document.getElementById('cf-multi-toggle').checked = false;
     document.getElementById('cf-multi-updatecost').checked = true;
     document.getElementById('cf-single-wrap').style.display = 'contents';
@@ -2366,7 +2393,8 @@
       originalCurrency: fxAmount ? fxCurrency : null,
       exchangeRate: fxAmount ? fxRate : null,
       shippingAmount: shippingAmount || null,
-      serviceFeeAmount: serviceFeeAmount || null
+      serviceFeeAmount: serviceFeeAmount || null,
+      paidByOwner: document.getElementById('cf-paid-by-owner').checked
     };
     // Qty is now stamped on single-product entries for BOTH new entries and edits — she needs
     // to be able to correct a mistyped restock qty from here, and that correction has to flow
@@ -2384,6 +2412,10 @@
     }
     if (editingCostId) {
       var c = state.costs.find(function (x) { return x.id === editingCostId; });
+      // If she's un-ticking "paid with my own money" on an entry that was already marked
+      // claimed, the claimed status no longer means anything (there's nothing left to claim
+      // back) — clear it so it doesn't linger as stale state if the box gets re-ticked later.
+      if (c.paidByOwner && !data.paidByOwner) { delete c.claimed; delete c.claimedDate; }
       Object.assign(c, data);
       // Recategorizing an existing entry (e.g. restock -> new inventory) is a meaningful change
       // to how it's tracked — log it to Quick Add the same way deletes/moves already are, so the
@@ -2472,6 +2504,7 @@
     document.getElementById('cf-extra-goods').value = '';
     document.getElementById('cf-extra-shipping').value = c.shippingAmount || c.sstAmount || '';
     document.getElementById('cf-extra-fee').value = c.serviceFeeAmount || '';
+    document.getElementById('cf-paid-by-owner').checked = !!c.paidByOwner;
 
     if (c.items && c.items.length) {
       document.getElementById('cf-multi-toggle').checked = true;
@@ -2661,9 +2694,57 @@
   ];
   var costBreakdownCategorySelection = COST_BREAKDOWN_CATEGORIES[0].key;
 
+  // Total of every Cost entry she paid for with her own money that she hasn't marked as
+  // "claimed" (reimbursed) yet — the number she needs to know how much to pull back from the
+  // business account. Deliberately NOT scoped to any Costs-page filter — this is "what's
+  // outstanding right now" regardless of what she happens to be looking at.
+  // "Owed to you" — every category counts here, since regardless of how the entry is
+  // categorized, if she personally paid for it and hasn't been reimbursed, the business still
+  // owes her that amount. Used for the Costs-page/Dashboard "owed to you" display.
+  function unclaimedOwnerAmount() {
+    return state.costs.reduce(function (s, c) { return s + (c.paidByOwner && !c.claimed ? Number(c.amount) : 0); }, 0);
+  }
+
+  // Narrower version used only inside the Cash formula below — scoped to exclude 'wastage' the
+  // same way allCostsSpent does, since a wastage entry's amount was never part of allCostsSpent
+  // (and therefore never part of what Cash subtracts) in the first place. Using the broader
+  // unclaimedOwnerAmount() there would over-credit Cash by double-un-subtracting money that was
+  // never subtracted to begin with.
+  function unclaimedOwnerAmountExcludingWastage() {
+    return state.costs.reduce(function (s, c) { return s + (c.paidByOwner && !c.claimed && c.category !== 'wastage' ? Number(c.amount) : 0); }, 0);
+  }
+
+  function claimAllUnclaimed() {
+    var unclaimedEntries = state.costs.filter(function (c) { return c.paidByOwner && !c.claimed; });
+    if (!unclaimedEntries.length) return;
+    var total = unclaimedEntries.reduce(function (s, c) { return s + Number(c.amount); }, 0);
+    if (!confirm('Mark all ' + unclaimedEntries.length + ' unclaimed entr' + (unclaimedEntries.length === 1 ? 'y' : 'ies') + ' (' + money(total) + ') as claimed?')) return;
+    var today = todayISO();
+    unclaimedEntries.forEach(function (c) { c.claimed = true; c.claimedDate = today; });
+    save();
+    renderAll();
+  }
+
+  function toggleCostClaimed(id) {
+    var c = state.costs.find(function (x) { return x.id === id; });
+    if (!c) return;
+    c.claimed = !c.claimed;
+    c.claimedDate = c.claimed ? todayISO() : null;
+    save();
+    renderAll();
+  }
+
   function renderCostBreakdown() {
     var wrap = document.getElementById('cost-breakdown');
     if (!wrap) return;
+    var unclaimedTotal = unclaimedOwnerAmount();
+    var claimBannerHtml = unclaimedTotal > 0
+      ? '<div class="card" style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; background:#fff8ec; border-color:#f0d9ae;">' +
+          '<div><div style="font-weight:600;">💳 Owed to you (unclaimed): ' + money(unclaimedTotal) + '</div>' +
+          '<div class="muted" style="font-size:12px;">Purchases you paid with your own money — mark as claimed once you\'ve taken the money back from the business.</div></div>' +
+          '<button class="btn btn-secondary btn-small" id="btn-claim-all-unclaimed">Claim all</button>' +
+        '</div>'
+      : '';
     var selectedCat = COST_BREAKDOWN_CATEGORIES.find(function (c) { return c.key === costBreakdownCategorySelection; }) || COST_BREAKDOWN_CATEGORIES[0];
     var catOpts = COST_BREAKDOWN_CATEGORIES.map(function (c) {
       return '<option value="' + c.key + '"' + (c.key === selectedCat.key ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>';
@@ -2675,7 +2756,7 @@
         '<div class="stat-value">' + money(costAmountForCategory(selectedCat.key)) + '</div>' +
       '</div>' +
     '</div>';
-    wrap.innerHTML = '<div class="stat-grid">' +
+    wrap.innerHTML = claimBannerHtml + '<div class="stat-grid">' +
       PRODUCT_TYPES.map(function (type) {
         var itemsOfType = state.products.filter(function (p) { return p.type === type; });
         var selectedId = costBreakdownSelection[type] || '';
@@ -2706,6 +2787,10 @@
       costBreakdownSelection[type] = e.target.value;
       renderCostBreakdown();
     }
+  });
+
+  document.getElementById('cost-breakdown').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-claim-all-unclaimed') { claimAllUnclaimed(); }
   });
 
   // Ephemeral Costs-page filter state — not persisted, resets on reload.
@@ -2811,9 +2896,11 @@
         '<td>' + money(c.amount) +
           (c.originalAmount ? '<div class="muted" style="font-size:11px;">' + escapeHtml(c.originalCurrency) + ' ' + Number(c.originalAmount).toFixed(2) + ' @ ' + c.exchangeRate + '</div>' : '') +
           (((c.shippingAmount || c.sstAmount) || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">+ ' + [(c.shippingAmount || c.sstAmount) ? 'shipping ' + money(c.shippingAmount || c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + ' (not in price above)</div>' : '') +
+          (c.paidByOwner ? ('<div style="font-size:11px; margin-top:2px;">' + (c.claimed ? '<span class="muted">✓ Claimed' + (c.claimedDate ? ' ' + formatDate(c.claimedDate) : '') + '</span>' : '<span style="color:#b5680a;">💳 To claim</span>') + '</div>') : '') +
         '</td>' +
         '<td style="text-align:right; white-space:nowrap;">' +
         (c.movedFromTesting ? '<button class="btn-text" data-undo-testing-move="' + c.id + '" title="Move back to Testing">↩ Undo move</button> ' : '') +
+        (c.paidByOwner ? ('<button class="btn-text" data-toggle-claimed="' + c.id + '">' + (c.claimed ? 'Unclaim' : 'Mark claimed') + '</button> ') : '') +
         '<button class="btn-text" data-edit-cost="' + c.id + '">Edit</button> ' +
         '<button class="btn-text danger" data-delete-cost="' + c.id + '">Delete</button>' +
         '</td></tr>';
@@ -2827,9 +2914,11 @@
     var editId = e.target.getAttribute('data-edit-cost');
     var delId = e.target.getAttribute('data-delete-cost');
     var undoId = e.target.getAttribute('data-undo-testing-move');
+    var claimId = e.target.getAttribute('data-toggle-claimed');
     if (editId) editCost(editId);
     if (delId) deleteCost(delId);
     if (undoId) reverseTestingMove(undoId);
+    if (claimId) toggleCostClaimed(claimId);
   });
 
   document.getElementById('cost-filter-bar').addEventListener('change', function (e) {
@@ -3552,6 +3641,25 @@
     var date = document.getElementById('of-date').value || todayISO();
     var immediate = document.getElementById('of-immediate').checked;
     var estimatedDate = immediate ? '' : document.getElementById('of-estimated-date').value;
+    // She shouldn't have to work out a rough production date herself — if this order has any
+    // Tumbler in it and she left the date blank, pick the next day that isn't one of her weekly
+    // days off, isn't a one-off blocked day, and still has room under her daily Tumbler cap. She
+    // can always drag it to a different day afterwards; this just removes the guesswork.
+    // Search starts from the order's own Date field (above), not always "today" — she sometimes
+    // logs an order a day or more late (took it yesterday, only typing it in now), and starting
+    // the search from today in that case would wrongly treat today/tomorrow's queue as more full
+    // than it really is, since this order should have been counted against its actual date.
+    // Backdating Date to the real day it happened lets the search look there first, same as if
+    // she'd logged it on time.
+    if (!estimatedDate && !immediate) {
+      var autoTumblerQty = validLines.reduce(function (sum, l) {
+        var lp = state.products.find(function (pp) { return pp.id === l.productId; });
+        return (lp && lp.type === 'Tumbler') ? sum + Number(l.qty) : sum;
+      }, 0);
+      if (autoTumblerQty > 0) {
+        estimatedDate = nextAvailableProductionDate(autoTumblerQty, date);
+      }
+    }
     if (!editingOrderId && !estimatedDate && !immediate) {
       if (!confirm("You haven't set a rough target date for this order — it helps you keep track of scheduling later. Save without one anyway?")) {
         return;
@@ -3575,6 +3683,11 @@
       var prevItem = oldItemsForMadeQty[idx];
       var prevMade = (prevItem && prevItem.productId === l.productId) ? (Number(prevItem.madeQty) || 0) : 0;
       var prevPhoto = (prevItem && prevItem.productId === l.productId) ? (prevItem.photo || '') : '';
+      // Same carry-over-by-position idea as madeQty/photo above — the pattern she already
+      // recorded for this line (and the surcharge already baked into its unitPrice) shouldn't
+      // vanish just because she re-opened the order to tweak something else.
+      var prevPattern = (prevItem && prevItem.productId === l.productId) ? (prevItem.pattern || '') : '';
+      var prevPatternSurcharge = (prevItem && prevItem.productId === l.productId) ? (Number(prevItem.patternSurcharge) || 0) : 0;
       return {
         productId: l.productId,
         productName: p ? p.name + (p.variant ? ' — ' + p.variant : '') : 'Deleted product',
@@ -3582,7 +3695,9 @@
         unitPrice: Number(l.unitPrice) || 0,
         unitCost: p ? p.cost : 0,
         madeQty: Math.min(prevMade, qty),
-        photo: prevPhoto
+        photo: prevPhoto,
+        pattern: prevPattern,
+        patternSurcharge: prevPatternSurcharge
       };
     });
 
@@ -3820,6 +3935,62 @@
   function unpaidAmountFor(o) {
     if (!o.paid) return orderTotal(o);
     return (o.addOns || []).filter(function (a) { return !a.paid; }).reduce(function (s, a) { return s + addOnAmount(a); }, 0);
+  }
+
+  // She physically makes each Tumbler herself, so there's a real daily limit on how many she can
+  // turn out — and Tue/Sat are her days off from that (packing/errands instead). Rather than her
+  // mentally tracking which days are already full, a new order's rough target date is picked for
+  // her: skip her recurring weekly days off, skip any one-off blocked day, and land on the first
+  // day that still has room under the daily Tumbler cap. Both the weekly days and the cap are
+  // editable from the Calendar tab in case her schedule changes later.
+  function orderTumblerQty(o) {
+    return (o.items || []).reduce(function (sum, i) {
+      var p = state.products.find(function (pp) { return pp.id === i.productId; });
+      return (p && p.type === 'Tumbler') ? sum + (Number(i.qty) || 0) : sum;
+    }, 0);
+  }
+  function tumblerQtyScheduledOn(dateStr) {
+    return state.orders
+      .filter(function (o) { return o.status !== 'cancelled' && o.estimatedDate === dateStr; })
+      .reduce(function (sum, o) { return sum + orderTumblerQty(o); }, 0);
+  }
+  function isProductionDay(dateStr) {
+    var d = new Date(dateStr + 'T00:00:00');
+    if ((state.weeklyBreakDays || []).indexOf(d.getDay()) !== -1) return false;
+    if (state.blockedDates && state.blockedDates.hasOwnProperty(dateStr)) return false;
+    return true;
+  }
+  function nextAvailableProductionDate(tumblerQtyNeeded, fromDateStr) {
+    var capacity = Number(state.dailyTumblerCapacity) || 5;
+    var d = new Date((fromDateStr || todayISO()) + 'T00:00:00');
+    for (var i = 0; i < 365; i++) {
+      var dateStr = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+      if (isProductionDay(dateStr)) {
+        var already = tumblerQtyScheduledOn(dateStr);
+        // Fits under the cap, OR the day is currently empty — the empty-day fallback means an
+        // order bigger than the daily cap still lands somewhere instead of never finding a slot.
+        if (already + tumblerQtyNeeded <= capacity || already === 0) return dateStr;
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return fromDateStr || todayISO();
+  }
+
+  // Used only by the "bump orders off a day you just blocked" flow below — deliberately NOT
+  // the same search as nextAvailableProductionDate(). That one hunts for the next day with
+  // room under the daily cap, which could leapfrog an order past several full days into next
+  // week. When she's marking herself off sick for one day, she wants those orders to simply
+  // land on the very next day she's actually working — skipping her weekly day(s) off and any
+  // other blocked day, but never skipping a day just because it's already busy.
+  function nextProductionDayAfter(dateStr) {
+    var d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    for (var i = 0; i < 365; i++) {
+      var next = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+      if (isProductionDay(next)) return next;
+      d.setDate(d.getDate() + 1);
+    }
+    return dateStr;
   }
 
   var expandedOrderId = null;
@@ -4105,10 +4276,9 @@
       }).join('');
       var rows = '<tr>' +
         '<td style="white-space:nowrap;">' + formatDate(o.date) + '</td>' +
-        '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + '</div>' + (o.buyerWhatsapp ? '<div class="muted">WA: ' + escapeHtml(o.buyerWhatsapp) + '</div>' : '') + '</td>' +
-        '<td class="muted">' + (escapeHtml(o.buyerHandle) || '—') + '</td>' +
-        '<td class="muted">' + (escapeHtml(o.shipTo) || '—') + (o.postcode ? '<div>' + escapeHtml(o.postcode) + '</div>' : '') + '</td>' +
-        '<td><button class="btn-text" data-toggle-order="' + o.id + '">' + o.items.length + ' item' + (o.items.length !== 1 ? 's' : '') + '</button>' +
+        '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + (o.buyerHandle ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 replacement</span>' : '') + '</div></td>' +
+        '<td class="muted">' + (escapeHtml(o.buyerWhatsapp) || '—') + '</td>' +
+        '<td><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit;">' + (o.items.length ? escapeHtml(o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ')) : 'No items') + '</button>' +
           (function () {
             if (o.status === 'cancelled') return '';
             var ms = orderMadeSummary(o);
@@ -4127,7 +4297,7 @@
         '</td>' +
         '</tr>';
       if (pendingPackagingChoiceOrderId === o.id) {
-        rows += '<tr><td colspan="9" style="background:#fffaf0; padding:8px 12px;">' +
+        rows += '<tr><td colspan="8" style="background:#fffaf0; padding:8px 12px;">' +
           '<span style="font-size:13px;">📦 Which packaging did you use for this order?</span> ' +
           '<button class="btn btn-secondary btn-small" data-packaging-choice="box" data-packaging-order="' + o.id + '">📦 Parcel Box</button> ' +
           '<button class="btn btn-secondary btn-small" data-packaging-choice="bag" data-packaging-order="' + o.id + '">🛍️ Parcel Bag</button> ' +
@@ -4135,7 +4305,7 @@
         '</td></tr>';
       }
       if (expandedOrderId === o.id) {
-        rows += '<tr class="order-items-row"><td colspan="9">' +
+        rows += '<tr class="order-items-row"><td colspan="8">' +
           o.items.map(function (i, idx) {
             var madeQty = Number(i.madeQty) || 0;
             var madeControl = o.status === 'cancelled' ? '' :
@@ -4173,6 +4343,24 @@
                 '<input type="checkbox" class="order-item-defect-checkbox" data-order-id="' + o.id + '" data-item-index="' + idx + '"' + (i.isDefect ? ' checked' : '') + '> 🔧 Defect' +
               '</label>';
             var defectTag = i.isDefect ? ' <span class="pill pill-amber" style="font-size:10px;">🔧 defect</span>' : '';
+            var itemPatternInfo = i.pattern ? tumblerPatternInfo(i.pattern) : null;
+            var patternTag = itemPatternInfo ? ' <span class="pill pill-blue" style="font-size:10px;">' + escapeHtml(itemPatternInfo.label) + '</span>' : '';
+            // Which epoxy pattern this specific Tumbler was actually made with — purely her own
+            // record, filled in once it's made (not at order time), so she can tell customers'
+            // bottles apart later. Only shown for Tumbler-type items. Required before she can mark
+            // the item as made (see the order-item-made-input handler) so it never gets skipped.
+            var itemProductForPattern = state.products.find(function (p) { return p.id === i.productId; });
+            var patternControl = (o.status !== 'cancelled' && itemProductForPattern && itemProductForPattern.type === 'Tumbler')
+              ? '<span style="display:flex; align-items:center; gap:4px; margin-left:12px;">' +
+                  '<span class="muted" style="font-size:11px; white-space:nowrap;">Pattern:</span>' +
+                  '<select class="order-item-pattern-select" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:12px; padding:3px 5px;">' +
+                    '<option value="">Select…</option>' +
+                    TUMBLER_PATTERNS.map(function (pt) {
+                      return '<option value="' + pt.value + '"' + (i.pattern === pt.value ? ' selected' : '') + '>' + escapeHtml(pt.label) + (pt.surcharge ? ' (+' + money(pt.surcharge) + ')' : '') + '</option>';
+                    }).join('') +
+                  '</select>' +
+                '</span>'
+              : '';
             // A small thumbnail of the PRODUCT's own catalog photo (not the per-item finished
             // photo above, which is a photo of this specific physical bottle) — so she can tell
             // "which sticker/tumbler is this row" at a glance instead of reading the name text,
@@ -4181,8 +4369,8 @@
             var catalogThumb = (catalogProduct && catalogProduct.image)
               ? '<img src="' + catalogProduct.image + '" class="thumb order-item-catalog-thumb" style="width:26px; height:26px; margin-right:8px; vertical-align:middle;" title="Click to view">'
               : '';
-            return '<div class="row-line" style="align-items:center;"><span>' + catalogThumb + escapeHtml(i.productName) + ' × ' + i.qty + defectTag + '</span>' +
-              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + photoControl + defectControl + '</span></div>';
+            return '<div class="row-line" style="align-items:center;"><span>' + catalogThumb + escapeHtml(i.productName) + ' × ' + i.qty + defectTag + patternTag + '</span>' +
+              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + patternControl + photoControl + defectControl + '</span></div>';
           }).join('') +
           (o.notes ? '<div class="muted" style="padding-top:6px;">Note: ' + escapeHtml(o.notes) + '</div>' : '') +
           renderOrderDetailsBlock(o) +
@@ -4373,10 +4561,46 @@
       var madeOrder = state.orders.find(function (o) { return o.id === madeOrderId; });
       var item = madeOrder && madeOrder.items[itemIndex];
       if (item) {
+        var oldMadeQty = Number(item.madeQty) || 0;
+        var newMadeQty = Math.max(0, Math.min(Math.round(Number(e.target.value)) || 0, item.qty));
+        // A Tumbler can't be marked as made (going from 0 to any made at all) until she's
+        // recorded which pattern it was actually made with — that's the whole point of tracking
+        // it (so she can tell customers' bottles apart later), so this would be silently useless
+        // data if it could be skipped. Only gates the very first 0 -> made transition, though —
+        // an order that already had progress recorded before this feature existed (madeQty > 0,
+        // no pattern) must still be free to have its made count increased further, or she'd be
+        // permanently locked out of updating perfectly normal in-progress orders.
+        var madeItemProduct = state.products.find(function (p) { return p.id === item.productId; });
+        if (newMadeQty > 0 && oldMadeQty === 0 && madeItemProduct && madeItemProduct.type === 'Tumbler' && !item.pattern) {
+          alert('Pick which pattern this Tumbler was made with before marking it as made.');
+          e.target.value = oldMadeQty;
+          return;
+        }
         // Clamp to [0, ordered qty] — "made" can never be negative or exceed what was ordered.
-        item.madeQty = Math.max(0, Math.min(Math.round(Number(e.target.value)) || 0, item.qty));
+        item.madeQty = newMadeQty;
         save();
         renderOrders();
+      }
+    }
+    if (e.target.classList.contains('order-item-pattern-select')) {
+      var patOrderId = e.target.getAttribute('data-order-id');
+      var patItemIndex = Number(e.target.getAttribute('data-item-index'));
+      var patOrder = state.orders.find(function (o) { return o.id === patOrderId; });
+      var patItem = patOrder && patOrder.items[patItemIndex];
+      if (patItem) {
+        // Only the SURCHARGE portion of unitPrice is adjusted (not the whole price), tracked via
+        // patternSurcharge, so switching between patterns any number of times — or her having
+        // manually discounted/adjusted the unit price elsewhere — never double-counts or wipes
+        // out her own pricing.
+        var oldSurcharge = Number(patItem.patternSurcharge) || 0;
+        var newPatternInfo = tumblerPatternInfo(e.target.value);
+        var newSurcharge = newPatternInfo ? newPatternInfo.surcharge : 0;
+        patItem.unitPrice = (Number(patItem.unitPrice) || 0) - oldSurcharge + newSurcharge;
+        patItem.pattern = e.target.value;
+        patItem.patternSurcharge = newSurcharge;
+        save();
+        renderOrders();
+        renderDashboard();
       }
     }
     if (e.target.classList.contains('order-item-defect-checkbox')) {
@@ -4525,9 +4749,23 @@
     // tracked/paid separately), not the moment it's logged — matches the app's existing
     // paid/unpaid tracking so Cash reflects money really in hand.
     var cashCollected = active.reduce(function (s, o) { return s + (orderTotal(o) - unpaidAmountFor(o)); }, 0);
-    var cash = Number(state.startingCash || 0) - allCostsSpent - shippingCostsPaid + cashCollected;
+    // A Cost entry she paid for with her own money (not yet claimed back from the business)
+    // still counts toward Total spent/Expense/Inventory spend above — the money really was
+    // spent on the business — but it hasn't touched the business's own Cash yet, since it
+    // never came out of the business account. Hold that amount OUT of the Cash deduction until
+    // she marks it claimed (i.e. actually reimburses herself), at which point it behaves like
+    // any other Cost entry always has. See unclaimedOwnerAmount().
+    var unclaimedOwed = unclaimedOwnerAmountExcludingWastage();
+    // A refund is real cash actually leaving the business account back to the customer (e.g.
+    // she sends a cheaper replacement item and wires back the price difference) — tracked as its
+    // own bucket, same pattern as wastageLoss/defectLoss, rather than folded into orderTotal()
+    // (which would retroactively rewrite that order's Revenue/paid history). Unlike wastage,
+    // this DOES reduce Cash, since unlike a broken item, money genuinely moved.
+    var refundsGiven = active.reduce(function (s, o) { return s + Number(o.refundAmount || 0); }, 0);
+    var cash = Number(state.startingCash || 0) - (allCostsSpent - unclaimedOwed) - shippingCostsPaid + cashCollected - refundsGiven;
+    var unclaimedOwedTotal = unclaimedOwnerAmount();
     var invValue = state.products.reduce(function (s, p) { return s + p.stock * p.cost; }, 0);
-    var netProfit = revenue - inventorySpend - expense - testingSpend - wastageLoss;
+    var netProfit = revenue - inventorySpend - expense - testingSpend - wastageLoss - refundsGiven;
     var totalAccountValue = cash + invValue;
     var defectStats = defectLossFor(active);
     return {
@@ -4535,7 +4773,8 @@
       inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, testingSpend: testingSpend, wastageLoss: wastageLoss, allCostsSpent: allCostsSpent,
       expense: expense, cash: cash, invValue: invValue,
       netProfit: netProfit, totalAccountValue: totalAccountValue,
-      defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount
+      defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount,
+      unclaimedOwed: unclaimedOwedTotal, refundsGiven: refundsGiven
     };
   }
 
@@ -4795,12 +5034,14 @@
       else expenseFromCosts += Number(c.amount);
     });
     // wastageLoss is deliberately excluded from allCostsSpent (Total spent) — see financials()
-    // above for the full reasoning — but still reduces Net profit.
+    // above for the full reasoning — but still reduces Net profit. Refunds given (see
+    // financials()) follow the same "own bucket, still reduces Net profit" treatment here.
+    var refundsGiven = active.reduce(function (s, o) { return s + Number(o.refundAmount || 0); }, 0);
     var allCostsSpent = inventorySpend + expenseFromCosts + testingSpend;
-    var netProfit = revenue - allCostsSpent - wastageLoss;
+    var netProfit = revenue - allCostsSpent - wastageLoss - refundsGiven;
     var defectStats = defectLossFor(active);
     return { revenue: revenue, allCostsSpent: allCostsSpent, testingSpend: testingSpend, wastageLoss: wastageLoss, netProfit: netProfit, orderCount: active.length,
-      defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount };
+      defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount, refundsGiven: refundsGiven };
   }
 
   function dashboardDateRangeHtml() {
@@ -4886,6 +5127,7 @@
     var testingSpendPeriod = periodFin ? periodFin.testingSpend : fin.testingSpend;
     var defectLossPeriod = periodFin ? periodFin.defectLoss : fin.defectLoss;
     var defectCountPeriod = periodFin ? periodFin.defectCount : fin.defectCount;
+    var refundsGivenPeriod = periodFin ? periodFin.refundsGiven : fin.refundsGiven;
     var orderCountLabel = periodFin ? periodFin.orderCount + ' orders in range (excl. cancelled)' : fin.active.length + ' orders (excl. cancelled)';
     var active = fin.active;
     var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
@@ -4900,14 +5142,16 @@
       '<div class="stat-grid">' +
       statCard('Total account value', money(fin.totalAccountValue), 'Cash + inventory value') +
       cashStatCard(fin.cash, state.startingCash) +
+      statCard('💳 Owed to you', money(fin.unclaimedOwed), 'Purchases paid with your own money, not yet claimed back', fin.unclaimedOwed > 0 ? 'var(--red)' : 'var(--green)') +
       statCard('Expense', money(fin.expense), 'Ads, shipping, packaging, fees etc. + courier paid') +
       statCard('Inventory value', money(invValue), unitsInStock + ' units in stock') +
       statCard('Revenue', money(revenue), orderCountLabel) +
-      statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense − testing' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
+      statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense − testing − refunds' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
       totalSpentStatCard(totalSpentPeriod, testingSpendPeriod, !!periodFin) +
       statCard('Testing spent', money(fin.testingSpend), 'Samples/materials for testing — not counted as Expense') +
       statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
       statCard('🔧 Defect loss', money(defectLossPeriod), defectCountPeriod + ' item' + (defectCountPeriod === 1 ? '' : 's') + ' sold cheap due to defect' + (periodFin ? ' (for the selected range)' : '') + ' — already reflected in Revenue, shown here separately for visibility') +
+      statCard('💸 Refunds given', money(refundsGivenPeriod), 'Cash given back to customers (e.g. a cheaper replacement item)' + (periodFin ? ' (for the selected range)' : ''), refundsGivenPeriod > 0 ? 'var(--red)' : 'var(--green)') +
       '</div>' +
       '<div class="panel-grid">' +
       '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Low stock alerts</div>' +
@@ -5222,7 +5466,7 @@
   document.getElementById('btn-reset-data').addEventListener('click', function () {
     if (!confirm('This will permanently delete ALL products, costs, orders and calendar data — including anything already synced to your account. This cannot be undone. Continue?')) return;
     if (!confirm('Really sure? This clears everything and starts you with a blank tracker.')) return;
-    state = { products: [], costs: [], orders: [], blockedDates: {}, stockLog: [], chatLog: [], startingCash: 5000 };
+    state = { products: [], costs: [], orders: [], blockedDates: {}, weeklyBreakDays: [2, 6], dailyTumblerCapacity: 5, stockLog: [], chatLog: [], startingCash: 5000 };
     quickAddLastEntryId = null;
     quickAddLastShipping = null;
     quickAddLastFxRate = null;
@@ -5432,14 +5676,21 @@
   var showDeliveredHistory = false;
 
   // She wanted an easy way to see, while packing, which of her currently-queued orders need a
-  // glass straw add-on tucked in — rather than opening each order individually. Matches by
-  // add-on product NAME (case-insensitive substring) rather than a hardcoded product id, so it
-  // keeps working if she ever recreates or renames that Inventory item.
+  // glass straw tucked in — rather than opening each order individually. Matches by product NAME
+  // (case-insensitive substring), not a hardcoded product id, so it keeps working if she
+  // recreates/renames that Inventory item (e.g. hers is "Glass straw 23cm"). Checks BOTH the
+  // order's regular items AND its add-ons — she actually adds this one as a normal item
+  // alongside the tumbler/sticker, not through the add-on picker, but a future order (or a
+  // different product she genuinely does add as an add-on) should still be caught either way.
   var showGlassStrawList = false;
   function orderAddOnQty(o, nameSubstr) {
-    return (o.addOns || []).filter(function (a) {
+    var fromItems = (o.items || []).filter(function (i) {
+      return i.productName && i.productName.toLowerCase().indexOf(nameSubstr) !== -1;
+    }).reduce(function (sum, i) { return sum + (i.qty || 0); }, 0);
+    var fromAddOns = (o.addOns || []).filter(function (a) {
       return a.productName && a.productName.toLowerCase().indexOf(nameSubstr) !== -1;
     }).reduce(function (sum, a) { return sum + (a.qty || 0); }, 0);
+    return fromItems + fromAddOns;
   }
   function renderGlassStrawList(orders) {
     var withStraw = orders.filter(function (o) { return orderAddOnQty(o, 'glass straw') > 0; });
@@ -5455,6 +5706,109 @@
         '</div>';
       }).join('') +
     '</div>';
+  }
+
+  // She occasionally has to send a customer a free replacement after something ships broken or
+  // the wrong colour arrives. A replacement is really a small new order — it still needs to be
+  // packed, addressed, given its own tracking number and dropped off, with everyone else's
+  // parcels still in the queue — so instead of just logging a note on the old order, this creates
+  // a real linked order: same buyer/recipient/address (no retyping), price RM0 (free), flowing
+  // through the normal queueing/ready-to-ship -> shipping -> delivered pipeline like any other
+  // order. The replacement item's cost is still logged as a 'wastage' Cost entry (same bucket as
+  // other write-offs) so the giveaway shows up as a real loss instead of vanishing with no trace.
+  var editingReplacementOrderId = null;
+  function replacementProductOptionsHtml() {
+    return '<option value="">Select product…</option>' + state.products.map(function (p) {
+      return '<option value="' + p.id + '">' + escapeHtml(p.name) + (p.variant ? ' — ' + escapeHtml(p.variant) : '') + '</option>';
+    }).join('');
+  }
+  // Shows any replacement order(s) already created FROM this order — she can tap through to see
+  // its own status/tracking on the Orders tab, same as opening any other order.
+  function orderReplacementsHtml(o) {
+    var reps = state.orders.filter(function (r) { return r.replacementForOrderId === o.id; });
+    if (reps.length === 0) return '';
+    return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
+      reps.map(function (r) {
+        var itemsSummary = (r.items || []).map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ');
+        var refundTag = r.refundAmount ? ' <span class="pill pill-amber" style="font-size:10px;">💸 refunded ' + money(r.refundAmount) + '</span>' : '';
+        return '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; margin-bottom:4px; cursor:pointer;" data-goto-replacement="' + r.id + '">' +
+          '<span class="muted">🔁 Replacement — ' + escapeHtml(itemsSummary) + (r.trackingNumber ? ' — ' + escapeHtml(r.trackingNumber) : '') + refundTag + '</span>' +
+          '<span class="pill" style="font-size:10px;">' + escapeHtml(r.status) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+  function replacementFormHtml(o) {
+    return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">Sending a free replacement (e.g. arrived cracked or wrong colour)? This opens a new RM0 order for the same buyer/address — it\'ll flow through your normal queue/pack/ship steps, and the item\'s cost is recorded as wastage.</div>' +
+      '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">' +
+        '<div class="field-block"><label class="field-label">Product</label><select id="rep-product-' + o.id + '">' + replacementProductOptionsHtml() + '</select></div>' +
+        '<div class="field-block"><label class="field-label">Qty</label><input type="number" min="1" id="rep-qty-' + o.id + '" value="1" style="width:64px;"></div>' +
+        '<div class="field-block" style="flex:1; min-width:140px;"><label class="field-label">Note (optional)</label><input type="text" id="rep-note-' + o.id + '" placeholder="e.g. arrived cracked" style="width:100%;"></div>' +
+      '</div>' +
+      '<div class="field-block" style="margin-top:8px; max-width:260px;">' +
+        '<label class="field-label">Refund amount (optional)</label>' +
+        '<input type="number" min="0" step="0.01" id="rep-refund-' + o.id + '" placeholder="0.00">' +
+        '<div class="muted" style="font-size:11px; margin-top:2px;">If the replacement is worth less than what they originally paid and you\'re giving back the difference in cash.</div>' +
+      '</div>' +
+      '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" data-save-replacement="' + o.id + '">Create replacement order</button> ' +
+      '<button type="button" class="btn btn-secondary btn-small" data-cancel-replacement="' + o.id + '">Cancel</button></div>' +
+    '</div>';
+  }
+  function saveReplacement(orderId) {
+    var original = state.orders.find(function (o) { return o.id === orderId; });
+    if (!original) return;
+    var productId = document.getElementById('rep-product-' + orderId).value;
+    var product = state.products.find(function (p) { return p.id === productId; });
+    if (!product) { alert('Pick which product is being sent as a replacement.'); return; }
+    var qty = Number(document.getElementById('rep-qty-' + orderId).value);
+    if (!qty || qty <= 0) { alert('Enter a valid quantity.'); return; }
+    var note = document.getElementById('rep-note-' + orderId).value.trim();
+    var refundInput = document.getElementById('rep-refund-' + orderId);
+    var refundAmount = refundInput ? (Number(refundInput.value) || 0) : 0;
+    var buyerLabel = original.buyerName || original.recipientName || 'Unknown buyer';
+
+    // Enough on the shelf already? Ship it straight away. Otherwise it needs remaking first, so
+    // it joins the normal production queue — auto-scheduled just like a fresh Tumbler order.
+    var stockReady = product.stock >= qty;
+    var needsTumblerSlot = product.type === 'Tumbler' && !stockReady;
+    var newOrder = {
+      id: uid(),
+      buyerName: original.buyerName, buyerHandle: original.buyerHandle, buyerWhatsapp: original.buyerWhatsapp,
+      recipientName: original.recipientName || original.buyerName, recipientPhone: original.recipientPhone,
+      date: todayISO(),
+      status: stockReady ? 'ready to ship' : 'queueing',
+      paid: true, paymentDate: '', paymentRef: '', paymentBankName: '',
+      shipTo: original.shipTo, postcode: original.postcode,
+      shippingZone: original.shippingZone, shippingWeight: 0, shippingFee: 0, shippingCostActual: 0,
+      trackingNumber: '', courier: '', trackingMessageSent: false,
+      scheduledDate: '', estimatedDate: needsTumblerSlot ? nextAvailableProductionDate(qty, todayISO()) : '',
+      customerNotified: false, discount: 0,
+      notes: 'Replacement for order — ' + buyerLabel + (note ? ' — ' + note : '') + (refundAmount > 0 ? ' — refunded ' + money(refundAmount) : ''),
+      addOns: [], parcels: [],
+      items: [{ productId: product.id, productName: product.name, qty: qty, unitPrice: 0, unitCost: product.cost, madeQty: stockReady ? qty : 0 }],
+      isReplacement: true,
+      replacementForOrderId: original.id,
+      refundAmount: refundAmount > 0 ? refundAmount : 0
+    };
+    state.orders.push(newOrder);
+    deductStock(newOrder);
+
+    var costId = uid();
+    state.costs.push({
+      id: costId,
+      category: 'wastage',
+      date: todayISO(),
+      amount: qty * product.cost,
+      productId: product.id,
+      qty: -qty,
+      description: 'Replacement sent — ' + buyerLabel + ' — ' + product.name + (product.variant ? ' — ' + product.variant : '') + ' (' + qty + ' units)' + (note ? ' — ' + note : '')
+    });
+
+    logAddToQuickAdd('Opened a replacement order for ' + buyerLabel + ': ' + qty + '× ' + product.name + ' (' + money(qty * product.cost) + ' recorded as wastage).' + (refundAmount > 0 ? ' Also refunded ' + money(refundAmount) + ' to the customer.' : ''));
+    editingReplacementOrderId = null;
+    save();
+    renderShipping();
   }
 
   // Lets her narrow the queue down to just what she's looking for right now — e.g. "which of
@@ -5487,6 +5841,22 @@
       ['sent', 'Sent to customer']
     ];
     return opts.map(function (pair) { return '<option value="' + pair[0] + '"' + (pair[0] === shippingStatusFilter ? ' selected' : '') + '>' + pair[1] + '</option>'; }).join('');
+  }
+
+  // A free-text box so she can jump straight to one order by typing any part of the recipient's
+  // name, the tracking number, or a word from the address — instead of scrolling the whole queue.
+  // Committed on Enter/the search button rather than live per-keystroke (see the same pattern in
+  // Inventory/Costs/Testing) since renderShipping() fully rebuilds the DOM, which would otherwise
+  // yank focus out of the box after the first letter typed.
+  var shippingSearchText = '';
+  function matchesShippingSearch(o) {
+    if (!shippingSearchText) return true;
+    var needle = shippingSearchText.toLowerCase();
+    var trackingNums = (o.parcels && o.parcels.length)
+      ? o.parcels.map(function (p) { return p.trackingNumber || ''; })
+      : [o.trackingNumber || ''];
+    var haystacks = [o.recipientName, o.buyerName, o.shipTo, o.postcode].concat(trackingNums);
+    return haystacks.some(function (h) { return h && h.toLowerCase().indexOf(needle) !== -1; });
   }
 
   function courierOptionsHtml(selected) {
@@ -5664,6 +6034,10 @@
             '</div>' +
             '<span class="pill pill-green">Delivered</span>' +
           '</div>' +
+          orderReplacementsHtml(o) +
+          (editingReplacementOrderId === o.id
+            ? replacementFormHtml(o)
+            : '<div style="margin-top:6px;"><button type="button" class="btn-text" data-toggle-replacement="' + o.id + '" style="font-size:12px;">🔁 Send replacement</button></div>') +
         '</div>';
       }).join('') +
     '</div>';
@@ -5672,19 +6046,21 @@
   function renderShipping() {
     var fullQueue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
       .slice().sort(function (a, b) { return (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date); });
-    var queue = fullQueue.filter(matchesShippingFilter);
+    var queue = fullQueue.filter(matchesShippingFilter).filter(matchesShippingSearch);
     var delivered = state.orders.filter(function (o) { return o.status === 'delivered'; })
       .slice().sort(function (a, b) { return (b.scheduledDate || b.date).localeCompare(a.scheduledDate || a.date); });
     var content = document.getElementById('shipping-content');
     var summary = '<div class="card" style="margin-bottom:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
-        '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + (shippingStatusFilter === 'all' ? ' in the shipping queue' : ' matching this filter') + '</span>' +
+        '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</span>' +
         (editingShippedTemplate ? '' : '<button type="button" class="btn-text" id="btn-edit-shipped-template">✏️ Edit shipped message</button>') +
       '</div>' +
       (fullQueue.length > 0
-        ? '<div style="margin-top:8px; display:flex; align-items:center; gap:8px;">' +
+        ? '<div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
             '<label class="muted" style="font-size:12px;">Filter:</label>' +
             '<select id="shipping-status-filter" style="font-size:13px;">' + shippingFilterOptionsHtml() + '</select>' +
+            '<input type="text" id="shipping-search" placeholder="Search name, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="font-size:13px; width:190px;">' +
+            '<button type="button" class="btn btn-secondary btn-small" id="btn-shipping-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
           '</div>'
         : '') +
       (editingShippedTemplate ?
@@ -5706,7 +6082,7 @@
       return;
     }
     if (queue.length === 0) {
-      content.innerHTML = summary + '<div class="empty">No orders in the queue match this filter.</div>' + deliveredSection + glassStrawSection;
+      content.innerHTML = summary + '<div class="empty">No orders in the queue match ' + (shippingSearchText ? 'this search.' : 'this filter.') + '</div>' + deliveredSection + glassStrawSection;
       return;
     }
     content.innerHTML = summary + queue.map(function (o) {
@@ -5755,6 +6131,10 @@
         '</div>' +
         shippingBarcodeControl(o) +
         ((isOrderShipment || isShipped) ? trackingSectionControl(o) : '') +
+        orderReplacementsHtml(o) +
+        (editingReplacementOrderId === o.id
+          ? replacementFormHtml(o)
+          : '<div style="margin-top:8px;"><button type="button" class="btn-text" data-toggle-replacement="' + o.id + '" style="font-size:12px;">🔁 Send replacement</button></div>') +
       '</div>';
     }).join('') + deliveredSection + glassStrawSection;
   }
@@ -5895,6 +6275,29 @@
       if (barcodeOrder) { barcodeOrder.shippingBarcodePhoto = ''; save(); renderShipping(); }
       return;
     }
+    var toggleRepId = e.target.getAttribute && e.target.getAttribute('data-toggle-replacement');
+    if (toggleRepId) { editingReplacementOrderId = toggleRepId; renderShipping(); return; }
+    var cancelRepId = e.target.getAttribute && e.target.getAttribute('data-cancel-replacement');
+    if (cancelRepId) { editingReplacementOrderId = null; renderShipping(); return; }
+    var saveRepId = e.target.getAttribute && e.target.getAttribute('data-save-replacement');
+    if (saveRepId) { saveReplacement(saveRepId); return; }
+    var gotoRepEl = e.target.closest ? e.target.closest('[data-goto-replacement]') : null;
+    if (gotoRepEl) { goToOrder(gotoRepEl.getAttribute('data-goto-replacement')); return; }
+    if (e.target.id === 'btn-shipping-search-go') {
+      var shipSearchInp = e.target.previousElementSibling;
+      shippingSearchText = shipSearchInp ? shipSearchInp.value : '';
+      renderShipping();
+      return;
+    }
+  });
+
+  document.getElementById('shipping-content').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    if (e.target.id === 'shipping-search') {
+      e.preventDefault();
+      shippingSearchText = e.target.value;
+      renderShipping();
+    }
   });
 
   document.getElementById('shipping-content').addEventListener('change', function (e) {
@@ -5999,10 +6402,22 @@
     var todayStr = todayISO();
 
     var ordersByDate = {};
+    // "Ready right away" orders skip the whole rough-date/confirm flow (that's the point — she
+    // often only logs them here after she's already made and packed the item), so they'd never
+    // otherwise show up on the Calendar. Grouped separately by the day she placed/recorded the
+    // order, with their own chip colour, so she can cross-check a day's scheduled work against
+    // same-day-ready work at a glance without having to also pick a Confirmed date for them.
+    var immediateByDate = {};
     state.orders.forEach(function (o) {
-      if (o.status === 'cancelled' || !o.scheduledDate) return;
-      if (!ordersByDate[o.scheduledDate]) ordersByDate[o.scheduledDate] = [];
-      ordersByDate[o.scheduledDate].push(o);
+      if (o.status === 'cancelled') return;
+      if (o.scheduledDate) {
+        if (!ordersByDate[o.scheduledDate]) ordersByDate[o.scheduledDate] = [];
+        ordersByDate[o.scheduledDate].push(o);
+      }
+      if (o.immediate && o.date) {
+        if (!immediateByDate[o.date]) immediateByDate[o.date] = [];
+        immediateByDate[o.date].push(o);
+      }
     });
 
     var weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -6015,6 +6430,7 @@
       var dateStr = calYear + '-' + pad2(calMonth + 1) + '-' + pad2(d);
       var isBlocked = state.blockedDates.hasOwnProperty(dateStr);
       var dayOrders = ordersByDate[dateStr] || [];
+      var dayImmediateOrders = immediateByDate[dateStr] || [];
       var isConflict = isBlocked && dayOrders.length > 0;
       var isToday = dateStr === todayStr;
       var isEditing = dateStr === calEditingDate;
@@ -6028,6 +6444,14 @@
             (dayOrders.length > CAL_CHIP_CAP ? '<div class="muted" style="font-size:10px;">+' + (dayOrders.length - CAL_CHIP_CAP) + ' more</div>' : '') +
           '</div>'
         : '';
+      var immediateChipsHtml = dayImmediateOrders.length
+        ? '<div class="cal-chip-row">' +
+            dayImmediateOrders.slice(0, CAL_CHIP_CAP).map(function (o) {
+              return '<div class="cal-order-chip-immediate" data-cal-order="' + o.id + '" title="⚡ Ready now — ' + escapeHtml(o.buyerName || 'Order') + '">⚡ ' + escapeHtml(o.buyerName || 'Order') + '</div>';
+            }).join('') +
+            (dayImmediateOrders.length > CAL_CHIP_CAP ? '<div class="muted" style="font-size:10px;">+' + (dayImmediateOrders.length - CAL_CHIP_CAP) + ' more</div>' : '') +
+          '</div>'
+        : '';
       var blockedTag = isBlocked ? '<span class="cal-blocked-tag">Personal</span>' : '';
       var noteText = (isBlocked && state.blockedDates[dateStr]) ? '<div class="muted" style="font-size:10px;">' + escapeHtml(state.blockedDates[dateStr]) + '</div>' : '';
       cellsHtml += '<div class="' + classes + '" data-cal-day="' + dateStr + '">' +
@@ -6035,6 +6459,7 @@
         blockedTag +
         noteText +
         chipsHtml +
+        immediateChipsHtml +
         '</div>';
     }
 
@@ -6048,6 +6473,7 @@
       var editIsBlocked = state.blockedDates.hasOwnProperty(calEditingDate);
       var editNote = editIsBlocked ? (state.blockedDates[calEditingDate] || '') : '';
       var editDayOrders = ordersByDate[calEditingDate] || [];
+      var editDayImmediateOrders = immediateByDate[calEditingDate] || [];
       var ordersListHtml = editDayOrders.length
         ? '<div style="grid-column: 1 / -1;"><label class="field-label">Scheduled orders (' + editDayOrders.length + ')</label>' +
             '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
@@ -6056,9 +6482,18 @@
               }).join('') +
             '</div></div>'
         : '';
+      var immediateListHtml = editDayImmediateOrders.length
+        ? '<div style="grid-column: 1 / -1;"><label class="field-label">⚡ Ready now, placed this day (' + editDayImmediateOrders.length + ')</label>' +
+            '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
+              editDayImmediateOrders.map(function (o) {
+                return '<div class="cal-order-chip-immediate cal-order-chip-lg" data-cal-order="' + o.id + '">' + escapeHtml(o.buyerName || 'Order') + '</div>';
+              }).join('') +
+            '</div></div>'
+        : '';
       editPanelHtml = '<div class="order-edit-grid" style="margin-top:14px;">' +
           '<div style="grid-column: 1 / -1; font-weight:600; font-size:13px;">Editing ' + escapeHtml(formatDateLong(calEditingDate)) + '</div>' +
           ordersListHtml +
+          immediateListHtml +
           '<div class="field-block checkbox-row" style="padding-top:0;">' +
             '<input type="checkbox" id="cal-edit-blocked"' + (editIsBlocked ? ' checked' : '') + '>' +
             '<label for="cal-edit-blocked">Mark as personal day (unavailable for customer slots)</label>' +
@@ -6072,7 +6507,28 @@
         '</div>';
     }
 
+    var WEEKDAY_LABELS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var productionSettingsHtml = '<div class="card" style="margin-bottom:10px;">' +
+      '<div style="font-weight:600; margin-bottom:4px;">⚙️ Production settings</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px;">Used to auto-suggest a rough target date for new Tumbler orders — skips your day(s) off and spreads orders out under your daily limit.</div>' +
+      '<div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">' +
+        '<div>' +
+          '<div class="field-label" style="margin-bottom:4px;">Weekly day(s) off</div>' +
+          '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
+            WEEKDAY_LABELS_SHORT.map(function (label, idx) {
+              var checked = (state.weeklyBreakDays || []).indexOf(idx) !== -1;
+              return '<label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" class="cal-break-day-checkbox" data-day="' + idx + '"' + (checked ? ' checked' : '') + '> ' + label + '</label>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="field-block" style="margin:0;">' +
+          '<label class="field-label">Max Tumblers/day</label>' +
+          '<input type="number" min="1" id="cal-daily-capacity" value="' + (Number(state.dailyTumblerCapacity) || 5) + '" style="width:70px;">' +
+        '</div>' +
+      '</div>' +
+    '</div>';
     container.innerHTML =
+      productionSettingsHtml +
       '<div class="card">' +
         '<div class="cal-header">' +
           '<button class="btn btn-secondary btn-small" data-cal-prev="1">‹ Prev</button>' +
@@ -6084,6 +6540,7 @@
         '</div>' +
         '<div class="cal-legend">' +
           '<span><span class="cal-dot" style="background:var(--blue);"></span> Scheduled order</span>' +
+          '<span><span class="cal-dot" style="background:#b5680a;"></span> ⚡ Ready now (placed this day)</span>' +
           '<span><span class="cal-dot" style="background:#c9c2dd;"></span> Personal day (click a day to edit)</span>' +
           '<span><span class="cal-dot" style="background:var(--red);"></span> Conflict — order scheduled on a personal day</span>' +
         '</div>' +
@@ -6097,10 +6554,38 @@
     if (!calEditingDate) return;
     var blocked = document.getElementById('cal-edit-blocked').checked;
     var note = document.getElementById('cal-edit-note').value.trim();
+    var dateBeingBlocked = calEditingDate;
     if (blocked) {
-      state.blockedDates[calEditingDate] = note;
+      state.blockedDates[dateBeingBlocked] = note;
+      // Marking a day off (e.g. she's unwell today) doesn't move any order sitting on it —
+      // she'd otherwise have to go reschedule each one by hand. If any order's rough target
+      // (estimatedDate) or already-confirmed date (scheduledDate) falls on this day, offer to
+      // bump it forward by exactly one production day (see nextProductionDayAfter above — not
+      // a capacity search, just the next day she's actually working), which is fair to
+      // customers since nothing jumps further than one day. Cancelled orders are skipped —
+      // they're not real work anymore. A moved scheduledDate also clears customerNotified,
+      // same as every other place in the app that changes a confirmed date, since she'll need
+      // to tell that customer the new date.
+      var affected = state.orders.filter(function (o) {
+        return o.status !== 'cancelled' && (o.estimatedDate === dateBeingBlocked || o.scheduledDate === dateBeingBlocked);
+      });
+      if (affected.length > 0) {
+        var newDate = nextProductionDayAfter(dateBeingBlocked);
+        var promptMsg = affected.length === 1
+          ? 'There\'s 1 order on this day. Push it forward to ' + formatDateLong(newDate) + ' (the next day you\'re working)?'
+          : 'There are ' + affected.length + ' orders on this day. Push them forward to ' + formatDateLong(newDate) + ' (the next day you\'re working)?';
+        if (confirm(promptMsg)) {
+          affected.forEach(function (o) {
+            if (o.estimatedDate === dateBeingBlocked) o.estimatedDate = newDate;
+            if (o.scheduledDate === dateBeingBlocked) {
+              o.scheduledDate = newDate;
+              o.customerNotified = false;
+            }
+          });
+        }
+      }
     } else {
-      delete state.blockedDates[calEditingDate];
+      delete state.blockedDates[dateBeingBlocked];
     }
     calEditingDate = null;
     save();
@@ -6146,6 +6631,25 @@
     var dayEl = e.target.closest ? e.target.closest('.cal-day[data-cal-day]') : null;
     if (dayEl) {
       calEditingDate = dayEl.getAttribute('data-cal-day');
+      renderCalendar();
+    }
+  });
+
+  document.getElementById('calendar-content').addEventListener('change', function (e) {
+    if (e.target.classList.contains('cal-break-day-checkbox')) {
+      var day = Number(e.target.getAttribute('data-day'));
+      if (!state.weeklyBreakDays) state.weeklyBreakDays = [];
+      var idx = state.weeklyBreakDays.indexOf(day);
+      if (e.target.checked && idx === -1) state.weeklyBreakDays.push(day);
+      else if (!e.target.checked && idx !== -1) state.weeklyBreakDays.splice(idx, 1);
+      save();
+      renderCalendar();
+      return;
+    }
+    if (e.target.id === 'cal-daily-capacity') {
+      var cap = Number(e.target.value);
+      state.dailyTumblerCapacity = (cap > 0) ? cap : 5;
+      save();
       renderCalendar();
     }
   });
@@ -6219,8 +6723,12 @@
   // the chat bubble's color in renderQuickAdd — every bubble used to look identical grey
   // regardless of whether it was a successful add, a deletion, or a cancellation, which made a
   // long chat history hard to scan back through.
-  function pushChatMsg(role, text, kind) {
-    state.chatLog.push({ id: uid(), role: role, text: text, ts: new Date().toISOString(), kind: kind || null });
+  // costId (optional) links a "✓ Logged: ..." bot message back to the Cost entry it just
+  // created, so chatBubbleHtml can show a "Mark as self-paid" quick-action under it — for when
+  // she forgot to type "self paid"/"自己垫" on the line itself and wants to fix it right there
+  // without digging through the Costs table.
+  function pushChatMsg(role, text, kind, costId) {
+    state.chatLog.push({ id: uid(), role: role, text: text, ts: new Date().toISOString(), kind: kind || null, costId: costId || null });
     save();
   }
 
@@ -6248,6 +6756,17 @@
 
   function normalizeDesc(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9一-鿿]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // Recognizes a "paid with my own money" marker typed anywhere in a Quick Add line (e.g.
+  // "glitter 45 self paid", "自己垫 材料 45"), strips it out of the line so it doesn't get
+  // mistaken for part of the description, and reports whether it was found. Mirrors
+  // extractDateFromLine's shape (return the cleaned rest, plus what was detected).
+  var PAID_BY_OWNER_RE = /(自己垫的钱|自己垫钱|自己垫的|自己垫付|自己垫|自己的钱|self[\s-]?paid|own money|own card|out of pocket)/i;
+  function extractPaidByOwnerFromLine(line) {
+    var m = String(line || '').match(PAID_BY_OWNER_RE);
+    if (!m) return { paidByOwner: false, rest: line };
+    return { paidByOwner: true, rest: (line.slice(0, m.index) + line.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim() };
   }
 
   // A size written per-colour ("6 colours 20g", "6 colours x 20ml") means she bought that
@@ -6882,6 +7401,7 @@
       productId: productId || null,
       description: item.description
     };
+    if (item.paidByOwner) entry.paidByOwner = true;
     if (!productId) {
       if (platform) entry.platform = platform;
       if (seller) entry.seller = seller;
@@ -6925,7 +7445,8 @@
     var linkedProduct = productId ? state.products.find(function (p) { return p.id === productId; }) : null;
     var sellerNote = (!productId && (platform || seller)) ? ' · ' + [platform, seller].filter(Boolean).join(' / ') : '';
     var shipNote = shippingFeeAmount ? ' (incl. shipping ' + money(shippingFeeAmount) + ')' : '';
-    pushChatMsg('bot', '✓ Logged: ' + item.description + ' — ' + money(entry.amount) + ' (' + category + ')' + (linkedProduct ? ' · linked to ' + linkedProduct.name : '') + sellerNote + shipNote + perUnitNote);
+    var ownerNote = entry.paidByOwner ? ' · 💳 self-paid (to claim)' : '';
+    pushChatMsg('bot', '✓ Logged: ' + item.description + ' — ' + money(entry.amount) + ' (' + category + ')' + (linkedProduct ? ' · linked to ' + linkedProduct.name : '') + sellerNote + shipNote + perUnitNote + ownerNote, null, entry.id);
     quickAddPending.shift();
     processNextQuickAdd();
     renderAll();
@@ -6968,11 +7489,13 @@
       entry.originalCurrency = item.fxCurrency || 'CNY';
       entry.exchangeRate = item.fxRate;
     }
+    if (item.paidByOwner) entry.paidByOwner = true;
     state.costs.push(entry);
     quickAddLastEntryId = entry.id;
     if (quickAddBatchMode) quickAddBatchIds.push(entry.id);
     var qtyNote = (entry.qty != null) ? ' · ' + entry.qty + entry.unit : '';
-    pushChatMsg('bot', '✓ Logged testing/R&D: ' + item.description + ' — ' + money(entry.amount) + qtyNote);
+    var ownerNoteTesting = entry.paidByOwner ? ' · 💳 self-paid (to claim)' : '';
+    pushChatMsg('bot', '✓ Logged testing/R&D: ' + item.description + ' — ' + money(entry.amount) + qtyNote + ownerNoteTesting, null, entry.id);
     quickAddPending.shift();
     processNextQuickAdd();
     renderAll();
@@ -7218,13 +7741,15 @@
     // A bare "restock" line has no amount typed yet — fall back to cost-per-unit x stock.
     var totalAmt = (item.amount != null) ? item.amount : Math.round(cost * stock * 100) / 100;
     var entryDate = item.date || todayISO();
-    state.costs.push({
+    var newInvEntry = {
       id: costId, category: 'new_inventory', date: entryDate, amount: totalAmt,
       productId: newProduct.id, qty: stock, description: item.description
-    });
+    };
+    if (item.paidByOwner) newInvEntry.paidByOwner = true;
+    state.costs.push(newInvEntry);
     if (stock > 0) logStock(newProduct.id, stock, 'restock', 'Initial stock (via Quick Add)', entryDate, costId);
     quickAddLastEntryId = costId;
-    pushChatMsg('bot', '✓ Created new product "' + name + '" and logged ' + money(totalAmt) + ' as new inventory.');
+    pushChatMsg('bot', '✓ Created new product "' + name + '" and logged ' + money(totalAmt) + ' as new inventory.' + (item.paidByOwner ? ' · 💳 self-paid (to claim)' : ''), null, costId);
     quickAddPending.shift();
     processNextQuickAdd();
     renderAll();
@@ -7334,9 +7859,22 @@
     var isUser = m.role === 'user';
     var bubbleClass = isUser ? 'qa-bubble-user' : (m.kind === 'delete' ? 'qa-bubble-delete' : m.kind === 'move' ? 'qa-bubble-move' : m.kind === 'externaladd' ? 'qa-bubble-externaladd' : m.kind === 'cancel' ? 'qa-bubble-cancel' : 'qa-bubble-bot');
     var tsLabel = formatChatTimestamp(m.ts);
+    // A logged-cost message with no self-paid marker yet gets a quick-action to fix it right
+    // here if she forgot to type "self paid"/"自己垫" — no forced question, doesn't block typing
+    // the next line, just an easy correction sitting right under the entry it applies to. Once
+    // already marked (whether from the typed keyword or from tapping this), show a plain
+    // confirmation instead of a button — nothing left to do there.
+    var selfPaidHtml = '';
+    var linkedCost = m.costId ? state.costs.find(function (c) { return c.id === m.costId; }) : null;
+    if (linkedCost) {
+      selfPaidHtml = linkedCost.paidByOwner
+        ? '<div class="muted" style="font-size:11px; margin:2px 4px 4px;">✓ Marked self-paid</div>'
+        : '<button type="button" class="btn-text" data-mark-selfpaid="' + linkedCost.id + '" style="font-size:11px; margin:2px 4px 4px;">💳 Mark as self-paid</button>';
+    }
     return '<div class="qa-row" style="justify-content:' + (isUser ? 'flex-end' : 'flex-start') + '; flex-direction:column; align-items:' + (isUser ? 'flex-end' : 'flex-start') + ';">' +
       '<div class="qa-bubble ' + bubbleClass + '">' + escapeHtml(m.text) + '</div>' +
       (tsLabel ? '<div class="muted qa-bubble-ts" style="font-size:10px; margin:1px 4px 4px;">' + escapeHtml(tsLabel) + '</div>' : '') +
+      selfPaidHtml +
     '</div>';
   }
 
@@ -7653,6 +8191,16 @@
   }
 
   document.getElementById('quickadd-content').addEventListener('click', function (e) {
+    var markSelfPaidId = e.target.getAttribute && e.target.getAttribute('data-mark-selfpaid');
+    if (markSelfPaidId) {
+      var costToMark = state.costs.find(function (c) { return c.id === markSelfPaidId; });
+      if (costToMark) {
+        costToMark.paidByOwner = true;
+        save();
+        renderAll();
+      }
+      return;
+    }
     var chatMonthToggle = e.target.closest ? e.target.closest('[data-toggle-chatmonth]') : null;
     if (chatMonthToggle) {
       var monthKey = chatMonthToggle.getAttribute('data-toggle-chatmonth');
@@ -7694,15 +8242,23 @@
         // of the amount/description, and carry it through to whatever Cost entry results.
         var dateMatch = extractDateFromLine(line);
         var workingLine = dateMatch ? dateMatch.rest : line;
+        // "self paid"/"自己垫" anywhere in the line means she fronted this with her own money —
+        // pull it out before further parsing so it isn't mistaken for part of the description,
+        // and carry the flag through to whatever Cost entry results (see finalizeQuickAddCost/
+        // finalizeQuickAddTesting/saveQuickAddNewProduct).
+        var ownerMatch = extractPaidByOwnerFromLine(workingLine);
+        workingLine = ownerMatch.rest;
         if (!testingBatch && isBareRestockLine(workingLine)) {
           var bareItem = { description: workingLine.trim(), amount: null };
           if (dateMatch) bareItem.date = dateMatch.date;
+          if (ownerMatch.paidByOwner) bareItem.paidByOwner = true;
           parsedLines.push(bareItem);
           return;
         }
         var parsed = parseAmountFromLine(workingLine);
         if (parsed) {
           if (dateMatch) parsed.date = dateMatch.date;
+          if (ownerMatch.paidByOwner) parsed.paidByOwner = true;
           if (parsed.currencyHint === 'rmb') {
             parsed.needsFx = true;
             parsed.rawAmount = parsed.amount;
@@ -7722,6 +8278,7 @@
           // her retype everything from scratch.
           var askItem = { description: workingLine.trim(), amount: null, needsAmountAsk: true };
           if (dateMatch) askItem.date = dateMatch.date;
+          if (ownerMatch.paidByOwner) askItem.paidByOwner = true;
           if (testingBatch) {
             askItem.isTesting = true;
             var tq2 = extractTestingLineQty(askItem.description);
@@ -7978,6 +8535,8 @@
         // Cloud already has a state for this account — adopt it as the source of truth.
         state = res.data.data;
         if (!state.blockedDates) state.blockedDates = {};
+        if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6];
+        if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
         if (!state.products) state.products = [];
         if (!state.costs) state.costs = [];
         if (!state.orders) state.orders = [];
