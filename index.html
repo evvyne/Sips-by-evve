@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<!-- Bump this value every time this file is redeployed. The running page compares its own copy
+     of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
+     tell it's out of date and prompt a reload instead of silently running old logic against data
+     shaped by newer code. -->
+<meta name="app-version" content="2026-09-24.1" />
 <title>❄️ Sips by Evve</title>
 <style>
   :root {
@@ -170,6 +175,7 @@
   .item-line select { flex: 1 1 140px; min-width: 120px; }
   .item-line .di-qty { flex: 0 0 70px; width: 70px; }
   .item-line .di-price { flex: 0 0 100px; width: 100px; }
+  .item-line-more { flex: 1 0 100%; display: flex; gap: 8px; margin-top: -2px; }
   .total-line { text-align: right; font-size: 14px; font-weight: 600; margin-top: 10px; }
   .order-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
   .order-edit-grid .field-block { font-size: 13px; }
@@ -244,6 +250,10 @@
     .header-inner { gap: 14px; padding-top: 16px; padding-bottom: 16px; }
     .brand-row, nav, .header-actions { padding: 2px 0; }
     .schedule-date-input { width: 118px; }
+    /* Search boxes were fixed-width (190-220px), which on a narrow phone screen either
+       overflowed the filter row or left it cramped next to the other controls — let them fill
+       the row's width instead once things wrap. */
+    .search-input { width: 100% !important; }
   }
 </style>
 </head>
@@ -298,19 +308,29 @@
   </div>
 </div>
 
+<div id="version-update-banner" style="display:none; position:sticky; top:0; z-index:60; background:var(--amber,#b45309); color:#fff; padding:8px 14px; font-size:13px; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap;">
+  <span>A newer version of this app is available.</span>
+  <button type="button" id="btn-version-reload" style="background:#fff; color:var(--amber,#b45309); border:none; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:500; cursor:pointer;">Reload now</button>
+</div>
+
 <header>
   <div class="header-inner">
     <div class="brand-row">
       <div class="brand">❄️ Sips by Evve</div>
+      <span id="viewer-mode-badge" style="display:none; font-size:12px; background:var(--amber-bg,#fef3c7); color:var(--amber,#b45309); padding:3px 10px; border-radius:12px; font-weight:500;">👁 Viewing (read-only)</span>
+      <button class="btn-text" id="btn-viewer-access">👁 Viewer access</button>
       <button class="btn-text" id="btn-reset-data" style="color:var(--red);">Reset all data</button>
     </div>
+    <div class="card" id="viewer-access-panel" style="display:none; margin-bottom:12px;"></div>
     <nav>
       <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="alerts">Alerts</button>
       <button data-tab="inventory">Inventory</button>
       <button data-tab="costs">Costs</button>
       <button data-tab="testing">Testing</button>
       <button data-tab="orders">Orders</button>
       <button data-tab="shipping">Shipping</button>
+      <button data-tab="customers">Customers</button>
       <button data-tab="schedule">Schedule</button>
       <button data-tab="calendar">Calendar</button>
       <button data-tab="quickadd">Quick Add</button>
@@ -333,6 +353,12 @@
   <section class="page active" id="page-dashboard">
     <div class="page-header"><h1>Dashboard</h1></div>
     <div id="dashboard-content"></div>
+  </section>
+
+  <!-- ALERTS (special orders + money owed/awaiting) -->
+  <section class="page" id="page-alerts">
+    <div class="page-header"><h1>Alerts</h1></div>
+    <div id="alerts-content"></div>
   </section>
 
   <!-- INVENTORY -->
@@ -632,7 +658,7 @@
       </div>
       <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
         <span style="display:inline-flex; gap:4px;">
-          <input type="text" id="cost-filter-search" placeholder="Search description/product" style="width:170px;">
+          <input type="text" id="cost-filter-search" class="search-input" placeholder="Search description/product" style="width:170px;">
           <button type="button" class="btn btn-secondary btn-small" id="btn-costfilter-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>
         </span>
         <select id="cost-filter-category" style="width:170px;">
@@ -706,7 +732,7 @@
     <div class="card" id="testing-filter-bar">
       <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
         <span style="display:inline-flex; gap:4px;">
-          <input type="text" id="testing-filter-search" placeholder="Search description" style="width:170px;">
+          <input type="text" id="testing-filter-search" class="search-input" placeholder="Search description" style="width:170px;">
           <button type="button" class="btn btn-secondary btn-small" id="btn-testingfilter-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>
         </span>
       </div>
@@ -739,10 +765,12 @@
           <label class="field-label">TikTok handle</label>
           <input id="of-buyer-handle" placeholder="@username">
         </div>
-        <div>
+        <div style="position:relative;">
           <label class="field-label">WhatsApp username / phone number</label>
-          <input id="of-buyer-whatsapp" placeholder="+60123456789 or @username">
+          <input id="of-buyer-whatsapp" placeholder="+60123456789 or @username" autocomplete="off">
+          <div id="of-whatsapp-suggest"></div>
         </div>
+        <div id="of-repeat-customer-wrap" style="grid-column: 1 / -1;"></div>
         <div>
           <label class="field-label">Order date</label>
           <input id="of-date" type="date">
@@ -856,6 +884,13 @@
     <div id="shipping-content"></div>
   </section>
 
+  <!-- CUSTOMERS -->
+  <section class="page" id="page-customers">
+    <div class="page-header"><h1>Customers</h1></div>
+    <p class="muted" style="margin-top:-8px;">Every buyer, grouped by WhatsApp/username — order history, credit balance, and last address in one place.</p>
+    <div id="customers-content"></div>
+  </section>
+
   <!-- SCHEDULE -->
   <section class="page" id="page-schedule">
     <div class="page-header"><h1>Schedule</h1></div>
@@ -892,6 +927,16 @@
   'use strict';
 
   var STORAGE_KEY = 'snowglobeTrackerData';
+  // Round 10: a Viewer is a second Supabase login that Evvyne (the owner) explicitly grants
+  // read access to — they see her real data but can never change it. isViewerMode gates the
+  // JS-side belt (never push edits to the cloud, lock the UI); the real backstop is server-side
+  // RLS on the app_state table (see the one-time SQL she runs herself), which never grants a
+  // viewer write access no matter what the client does.
+  var isViewerMode = false;
+  var viewerOwnerUserId = null;
+  var showViewerAccessPanel = false;
+  var viewerGrants = [];
+  var viewerGrantsLoaded = false;
   var PRODUCT_TYPES = ['Tumbler', 'Stickers', 'Add ons', 'Others'];
 
   // The epoxy pattern she actually used on a Tumbler, recorded once it's made (not at order
@@ -945,6 +990,13 @@
   if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
   if (!state.stockLog) state.stockLog = [];
   if (!state.chatLog) state.chatLog = [];
+  // A running ledger of goodwill credit owed to/used by a customer (e.g. a discount she promised
+  // to make up on their NEXT order, after a replacement where there was nothing to discount this
+  // time). Keyed by a normalized version of buyerWhatsapp (see normalizeIdentifier) so it doesn't
+  // matter whether it's a phone number or a @username, or how she happened to type it that day —
+  // positive amount = credit granted, negative = credit consumed against a later order.
+  if (!state.customerCredits) state.customerCredits = [];
+  if (state.lastExportDate === undefined) state.lastExportDate = null;
   if (state.startingCash == null) state.startingCash = 5000;
   if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
   var didMigrate = false;
@@ -1077,6 +1129,90 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+
+  // ---------- Repeat-customer matching (round 8) ----------
+  // buyerWhatsapp is free text — sometimes a phone number, sometimes a @username — and she rarely
+  // types it exactly the same way twice (spaces, dashes, @ signs, +60 vs a leading 0 all vary). We
+  // never want a false match (showing HER address to the wrong person), so this stays deliberately
+  // simple: strip cosmetic characters for an "exact" comparison, and separately compare just the
+  // trailing digits of a phone number for a "maybe this is her?" fuzzy comparison that always
+  // requires her own confirmation before anything is applied.
+  function normalizeIdentifier(s) {
+    return String(s || '').trim().toLowerCase().replace(/[\s\-\+@]/g, '');
+  }
+  function phoneTail(s) {
+    var digits = String(s || '').replace(/\D/g, '');
+    return digits.length >= 7 ? digits.slice(-8) : '';
+  }
+  // Returns up to `limit` past customers (deduped by normalized identifier) whose name OR
+  // WhatsApp/username contains `typed` — used to power the autocomplete dropdown as she types,
+  // in New Order and in the "Give credit" form. Only suggests, never auto-fills on its own.
+  function findCustomerMatches(typed, limit) {
+    var q = String(typed || '').trim().toLowerCase();
+    if (!q) return [];
+    var seen = {};
+    var results = [];
+    state.orders.forEach(function (o) {
+      if (!o.buyerWhatsapp) return;
+      var key = normalizeIdentifier(o.buyerWhatsapp);
+      if (seen[key]) return;
+      var hay = (o.buyerWhatsapp + ' ' + (o.buyerName || '')).toLowerCase();
+      if (hay.indexOf(q) === -1) return;
+      seen[key] = true;
+      results.push({ buyerName: o.buyerName || '', buyerWhatsapp: o.buyerWhatsapp, key: key });
+    });
+    return results.slice(0, limit || 5);
+  }
+  // Looks up a customer by WhatsApp/username for auto-detected features (repeat-customer credit
+  // banner in New Order). `exact` = normalized string match; `fuzzy` = same trailing phone digits
+  // but NOT an exact match (so she gets a "is this her?" confirmation instead of a silent match).
+  function matchCustomerByWhatsapp(waRaw) {
+    var norm = normalizeIdentifier(waRaw);
+    var tail = phoneTail(waRaw);
+    if (!norm) return null;
+    var exactOrder = null, fuzzyOrder = null;
+    for (var i = state.orders.length - 1; i >= 0; i--) {
+      var o = state.orders[i];
+      if (!o.buyerWhatsapp) continue;
+      var oNorm = normalizeIdentifier(o.buyerWhatsapp);
+      if (oNorm === norm) { exactOrder = o; break; }
+      if (!fuzzyOrder && tail && phoneTail(o.buyerWhatsapp) === tail) fuzzyOrder = o;
+    }
+    if (exactOrder) return { type: 'exact', buyerName: exactOrder.buyerName, buyerWhatsapp: exactOrder.buyerWhatsapp };
+    if (fuzzyOrder) return { type: 'fuzzy', buyerName: fuzzyOrder.buyerName, buyerWhatsapp: fuzzyOrder.buyerWhatsapp };
+    return null;
+  }
+  // Every distinct past delivery address used by this customer (matched by normalized WhatsApp),
+  // most recent first — she picks which one to reuse herself, nothing is auto-selected, since two
+  // past addresses for the same person is common (moved house, sending to a friend that one time).
+  function pastAddressesForWhatsapp(waRaw, excludeOrderId) {
+    var norm = normalizeIdentifier(waRaw);
+    if (!norm) return [];
+    var seen = {};
+    var list = [];
+    state.orders.slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).forEach(function (o) {
+      if (o.id === excludeOrderId) return;
+      if (!o.shipTo || !o.buyerWhatsapp) return;
+      if (normalizeIdentifier(o.buyerWhatsapp) !== norm) return;
+      var addrKey = (o.shipTo || '').trim().toLowerCase() + '|' + (o.postcode || '').trim().toLowerCase();
+      if (seen[addrKey]) return;
+      seen[addrKey] = true;
+      list.push({ recipientName: o.recipientName || o.buyerName || '', recipientPhone: o.recipientPhone || '', shipTo: o.shipTo, postcode: o.postcode || '', date: o.date });
+    });
+    return list;
+  }
+  // Sum of every credit ledger entry for this customer (positive = granted, negative = consumed)
+  // — see the customerCredits comment near state init for the full picture.
+  function creditBalanceForKey(waRaw) {
+    var norm = normalizeIdentifier(waRaw);
+    if (!norm) return 0;
+    return state.customerCredits.filter(function (c) { return c.key === norm; }).reduce(function (s, c) { return s + Number(c.amount || 0); }, 0);
+  }
+  function addCustomerCredit(waRaw, amount, reason, sourceOrderId) {
+    var norm = normalizeIdentifier(waRaw);
+    if (!norm || !amount) return;
+    state.customerCredits.push({ id: uid(), key: norm, rawIdentifier: waRaw, amount: Number(amount), reason: reason || '', date: todayISO(), sourceOrderId: sourceOrderId || null });
   }
 
   // ---------- Navigation ----------
@@ -1829,7 +1965,7 @@
       }).join('');
       filterHtml = '<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
         '<span style="display:inline-flex; gap:4px;">' +
-        '<input type="text" data-inv-search="' + escapeHtml(title) + '" placeholder="Search products" value="' + escapeHtml(f.search) + '" style="width:140px;">' +
+        '<input type="text" class="search-input" data-inv-search="' + escapeHtml(title) + '" placeholder="Search products" value="' + escapeHtml(f.search) + '" style="width:140px;">' +
         '<button type="button" class="btn btn-secondary btn-small" data-inv-search-go="' + escapeHtml(title) + '" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
         '</span>' +
         '<select data-inv-filter="' + escapeHtml(title) + '" style="width:200px;">' + opts + '</select>' +
@@ -1848,7 +1984,7 @@
     if (groupByTheme && items.length > 0) {
       filterHtml = '<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
         '<span style="display:inline-flex; gap:4px;">' +
-        '<input type="text" id="sticker-search" placeholder="Search name or SKU" value="' + escapeHtml(stickerSearchText) + '" style="width:150px;">' +
+        '<input type="text" id="sticker-search" class="search-input" placeholder="Search name or SKU" value="' + escapeHtml(stickerSearchText) + '" style="width:150px;">' +
         '<button type="button" class="btn btn-secondary btn-small" id="btn-sticker-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
         '</span>' +
         '<select id="sticker-sort">' +
@@ -3352,6 +3488,35 @@
   // ================= ORDERS =================
   var draftItems = [];
   var editingOrderId = null;
+  // If she applies an existing customer's credit balance while filling out a new order, we don't
+  // deduct it from her ledger until the order is actually saved (so backing out of the form, or
+  // just closing it, doesn't silently burn the credit for nothing).
+  var pendingCreditConsumption = null; // { key, amount }
+
+  // Shows a small banner once she's typed/picked a WhatsApp that matches a past customer — past
+  // addresses aren't offered here (that only happens later, on the Shipping tab, once there's
+  // actually an address to compare against), but any outstanding goodwill credit is, since the
+  // discount field lives right here on this form.
+  function renderRepeatCustomerBanner() {
+    var wrap = document.getElementById('of-repeat-customer-wrap');
+    if (!wrap) return;
+    var waVal = document.getElementById('of-buyer-whatsapp').value.trim();
+    pendingCreditConsumption = null;
+    if (!waVal) { wrap.innerHTML = ''; return; }
+    var match = matchCustomerByWhatsapp(waVal);
+    if (!match) { wrap.innerHTML = ''; return; }
+    if (match.type === 'fuzzy') {
+      wrap.innerHTML = '<div class="muted" style="font-size:12px; background:var(--bg); border-radius:6px; padding:8px 10px; margin-top:-6px;">Is this ' + escapeHtml(match.buyerName || 'the same customer') + ' (' + escapeHtml(match.buyerWhatsapp) + ')? <button type="button" class="btn-text" id="btn-confirm-repeat-customer" style="font-size:12px;">Yes, that\'s her</button></div>';
+      return;
+    }
+    var balance = creditBalanceForKey(match.buyerWhatsapp);
+    if (balance > 0) {
+      wrap.innerHTML = '<div style="background:var(--bg); border-radius:6px; padding:8px 10px; margin-top:-6px; font-size:12px;">Found a repeat customer — ' + escapeHtml(match.buyerName || 'her') + ' has <strong>' + money(balance) + '</strong> credit from before. ' +
+        '<button type="button" class="btn-text" id="btn-apply-credit" data-credit-key="' + escapeHtml(match.buyerWhatsapp) + '" data-credit-amount="' + balance + '" style="font-size:12px;">Apply credit</button></div>';
+    } else {
+      wrap.innerHTML = '';
+    }
+  }
 
   document.getElementById('order-filter-bar').addEventListener('change', function (e) {
     if (e.target.id === 'order-filter-from') { orderFilterFrom = e.target.value; renderOrders(); return; }
@@ -3392,6 +3557,7 @@
   });
   document.getElementById('btn-cancel-order').addEventListener('click', function () {
     editingOrderId = null;
+    pendingCreditConsumption = null;
     document.getElementById('order-form-wrap').style.display = 'none';
   });
   document.getElementById('of-estimated-date-clear').addEventListener('click', function () {
@@ -3423,6 +3589,11 @@
     document.getElementById('of-shipping-cost').value = 0;
     document.getElementById('of-discount').value = 0;
     document.getElementById('of-notes').value = '';
+    var repeatWrap = document.getElementById('of-repeat-customer-wrap');
+    if (repeatWrap) repeatWrap.innerHTML = '';
+    var waSuggestWrap = document.getElementById('of-whatsapp-suggest');
+    if (waSuggestWrap) waSuggestWrap.innerHTML = '';
+    pendingCreditConsumption = null;
     draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
     renderDraftItems();
   }
@@ -3459,11 +3630,25 @@
         productSelectHtml = '<select class="di-product" data-idx="' + idx + '" disabled><option value="">' + (line.type ? 'Select theme first' : 'Select type first') + '</option></select>';
       }
 
+      // Gift and Defect are both edge cases most lines never use, so they're tucked behind a
+      // "more" toggle instead of sitting on every row all the time — she found two checkboxes
+      // per line, on every line, too cluttered when most orders don't need either.
+      var moreBadges = (line.isGift ? ' 🎁' : '') + (line.isDefect ? ' 🔧' : '');
+      var moreRow = line.showMore ?
+        '<div class="item-line-more" data-idx="' + idx + '">' +
+          '<label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; white-space:nowrap; background:' + (line.isGift ? 'var(--bg-accent,#e6f1fb)' : 'transparent') + '; color:' + (line.isGift ? 'var(--text-accent,#185fa5)' : 'inherit') + '; padding:4px 6px; border-radius:6px;">' +
+            '<input type="checkbox" class="di-gift" data-idx="' + idx + '"' + (line.isGift ? ' checked' : '') + '> 🎁 Gift</label>' +
+          '<label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; white-space:nowrap; background:' + (line.isDefect ? 'var(--bg-danger,#fcebeb)' : 'transparent') + '; color:' + (line.isDefect ? 'var(--text-danger,#a32d2d)' : 'inherit') + '; padding:4px 6px; border-radius:6px;">' +
+            '<input type="checkbox" class="di-defect" data-idx="' + idx + '"' + (line.isDefect ? ' checked' : '') + '> 🔧 Defect</label>' +
+        '</div>' : '';
+
       return '<div class="item-line" data-idx="' + idx + '">' +
         typeSelect + themeSelect + productSelectHtml +
         '<input class="di-qty" type="number" min="1" value="' + line.qty + '" data-idx="' + idx + '" placeholder="Qty">' +
-        '<input class="di-price" type="number" step="0.01" min="0" value="' + line.unitPrice + '" data-idx="' + idx + '" placeholder="Unit RM">' +
+        '<input class="di-price" type="number" step="0.01" min="0" value="' + line.unitPrice + '" data-idx="' + idx + '" placeholder="Unit RM"' + (line.isGift ? ' disabled' : '') + '>' +
+        '<button type="button" class="btn-text" data-toggle-more="' + idx + '" style="font-size:12px; white-space:nowrap;">⋯ more' + moreBadges + '</button>' +
         '<button class="btn-text danger" data-remove-line="' + idx + '">Remove</button>' +
+        moreRow +
         '</div>';
     }).join('');
     updateDraftTotal();
@@ -3478,6 +3663,12 @@
     var idx = e.target.getAttribute('data-remove-line');
     if (idx !== null) {
       draftItems.splice(Number(idx), 1);
+      renderDraftItems();
+      return;
+    }
+    var moreIdx = e.target.getAttribute('data-toggle-more');
+    if (moreIdx !== null) {
+      draftItems[Number(moreIdx)].showMore = !draftItems[Number(moreIdx)].showMore;
       renderDraftItems();
     }
   });
@@ -3506,6 +3697,21 @@
     } else if (e.target.classList.contains('di-price')) {
       draftItems[idx].unitPrice = e.target.value;
       updateDraftTotal();
+    } else if (e.target.classList.contains('di-gift')) {
+      draftItems[idx].isGift = e.target.checked;
+      if (e.target.checked) draftItems[idx].unitPrice = 0;
+      renderDraftItems();
+    } else if (e.target.classList.contains('di-defect')) {
+      draftItems[idx].isDefect = e.target.checked;
+      if (e.target.checked) {
+        // Same rule as the Orders tab version: snapshot the product's normal selling price
+        // right now, so later price changes don't retroactively change past defect math.
+        var defProd = state.products.find(function (p) { return p.id === draftItems[idx].productId; });
+        draftItems[idx].defectNormalPrice = defProd ? Number(defProd.price) || 0 : Number(draftItems[idx].unitPrice) || 0;
+      } else {
+        draftItems[idx].defectNormalPrice = null;
+      }
+      renderDraftItems();
     }
   });
 
@@ -3630,6 +3836,44 @@
   document.getElementById('of-shipping').addEventListener('input', updateDraftTotal);
   document.getElementById('of-discount').addEventListener('input', updateDraftTotal);
 
+  document.getElementById('of-buyer-whatsapp').addEventListener('input', function (e) {
+    var suggestWrap = document.getElementById('of-whatsapp-suggest');
+    if (suggestWrap) suggestWrap.innerHTML = customerAutocompleteHtml(findCustomerMatches(e.target.value, 5), 'wa');
+  });
+  document.getElementById('of-buyer-whatsapp').addEventListener('blur', function () {
+    // Small delay so a click on the autocomplete dropdown (which also blurs the input) has a
+    // chance to fill the field and set its own state before we react to the final value.
+    setTimeout(renderRepeatCustomerBanner, 150);
+  });
+  document.getElementById('of-whatsapp-suggest').addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-wa-suggest]') : null;
+    if (!el) return;
+    document.getElementById('of-buyer-whatsapp').value = el.getAttribute('data-wa-suggest');
+    if (!document.getElementById('of-buyer-name').value.trim()) {
+      document.getElementById('of-buyer-name').value = el.getAttribute('data-wa-suggest-name') || '';
+    }
+    document.getElementById('of-whatsapp-suggest').innerHTML = '';
+    renderRepeatCustomerBanner();
+  });
+  document.getElementById('of-repeat-customer-wrap').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-confirm-repeat-customer') {
+      var match = matchCustomerByWhatsapp(document.getElementById('of-buyer-whatsapp').value.trim());
+      if (match) document.getElementById('of-buyer-whatsapp').value = match.buyerWhatsapp;
+      renderRepeatCustomerBanner();
+      return;
+    }
+    if (e.target.id === 'btn-apply-credit') {
+      var creditKey = e.target.getAttribute('data-credit-key');
+      var creditAmt = Number(e.target.getAttribute('data-credit-amount')) || 0;
+      var discountInputEl = document.getElementById('of-discount');
+      discountInputEl.value = (Number(discountInputEl.value) || 0) + creditAmt;
+      updateDraftTotal();
+      pendingCreditConsumption = { key: normalizeIdentifier(creditKey), amount: creditAmt };
+      document.getElementById('of-repeat-customer-wrap').innerHTML = '<div class="muted" style="font-size:12px; margin-top:-6px;">✓ Applied ' + money(creditAmt) + ' credit as a discount.</div>';
+      return;
+    }
+  });
+
   document.getElementById('btn-save-order').addEventListener('click', function () {
     var validLines = draftItems.filter(function (l) { return l.productId && Number(l.qty) > 0; });
     if (validLines.length === 0) { alert('Add at least one line item.'); return; }
@@ -3697,7 +3941,10 @@
         madeQty: Math.min(prevMade, qty),
         photo: prevPhoto,
         pattern: prevPattern,
-        patternSurcharge: prevPatternSurcharge
+        patternSurcharge: prevPatternSurcharge,
+        isGift: !!l.isGift,
+        isDefect: !!l.isDefect,
+        defectNormalPrice: l.isDefect ? (Number(l.defectNormalPrice) || 0) : null
       };
     });
 
@@ -3768,6 +4015,13 @@
       };
       if (status !== 'cancelled') deductStock(newOrder);
       state.orders.push(newOrder);
+    }
+
+    // Only actually spend her credit once the order is confirmed saved — see the comment on
+    // pendingCreditConsumption above.
+    if (pendingCreditConsumption && pendingCreditConsumption.key === normalizeIdentifier(buyerWhatsapp)) {
+      addCustomerCredit(buyerWhatsapp, -pendingCreditConsumption.amount, 'Applied to new order', null);
+      pendingCreditConsumption = null;
     }
 
     save();
@@ -4000,6 +4254,124 @@
 
   // Jump to the Orders tab with a specific order expanded — used by Calendar order chips and
   // the Dashboard's "Confirm dates soon" reminder so you can act on a nudge with one click.
+  // ---------- Customers tab: she was piecing a buyer's whole history together by searching
+  // Orders one WhatsApp number at a time. This groups every order by normalized WhatsApp/username
+  // (same normalizeIdentifier used for repeat-customer matching in round 8) so she can see a
+  // buyer's order count, total spent, credit balance, and last address all in one place.
+  var customersSearchText = '';
+  var expandedCustomerKey = null;
+
+  function customerAggregates() {
+    var groups = {};
+    state.orders.forEach(function (o) {
+      var key = normalizeIdentifier(o.buyerWhatsapp);
+      if (!key) return;
+      if (!groups[key]) {
+        groups[key] = { key: key, rawIdentifier: o.buyerWhatsapp, name: o.buyerName || '', orders: [] };
+      }
+      // Keep the most recently-dated order's name/whatsapp as the "display" version, in case
+      // she typed the name slightly differently across visits (nickname vs full name etc.).
+      if (!groups[key].orders.length || (o.date || '') >= (groups[key].orders[groups[key].orders.length - 1].date || '')) {
+        groups[key].name = o.buyerName || groups[key].name;
+        groups[key].rawIdentifier = o.buyerWhatsapp || groups[key].rawIdentifier;
+      }
+      groups[key].orders.push(o);
+    });
+    return Object.keys(groups).map(function (key) {
+      var g = groups[key];
+      var ordersSorted = g.orders.slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      var totalSpent = ordersSorted.reduce(function (s, o) { return s + orderTotal(o); }, 0);
+      return {
+        key: key,
+        name: g.name,
+        whatsapp: g.rawIdentifier,
+        orderCount: ordersSorted.length,
+        totalSpent: totalSpent,
+        creditBalance: creditBalanceForKey(g.rawIdentifier),
+        orders: ordersSorted
+      };
+    }).sort(function (a, b) { return b.totalSpent - a.totalSpent; });
+  }
+
+  function matchesCustomerSearch(c) {
+    if (!customersSearchText) return true;
+    var q = customersSearchText.toLowerCase();
+    return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.whatsapp || '').toLowerCase().indexOf(q) !== -1;
+  }
+
+  function customerDetailHtml(c) {
+    return '<div style="border-top:0.5px solid var(--border,#e5e5e5); margin-top:8px; padding-top:8px;">' +
+      (c.creditBalance ? '<div style="margin-bottom:8px;"><span class="pill pill-green">Credit ' + money(c.creditBalance) + '</span></div>' : '') +
+      c.orders.map(function (o) {
+        var tags = (o.isReplacement ? ' <span class="pill pill-blue" style="font-size:10px;">🔁 replacement</span>' : '') +
+          ((o.items || []).some(function (i) { return i.isGift; }) ? ' <span class="pill pill-amber" style="font-size:10px;">🎁 gift</span>' : '') +
+          ((o.items || []).some(function (i) { return i.isDefect; }) ? ' <span class="pill pill-red" style="font-size:10px;">🔧 defect</span>' : '');
+        var itemsSummary = (o.items || []).map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ') || 'No items';
+        return '<div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:13px; border-bottom:0.5px solid var(--border,#eee);">' +
+          '<button type="button" class="btn-text" data-cust-go-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit;">' + escapeHtml(o.date || '') + ' &middot; ' + itemsSummary + tags + '</button>' +
+          '<span class="muted">' + money(orderTotal(o)) + '</span>' +
+          '</div>';
+      }).join('') +
+      (c.orders[0] && c.orders[0].shipTo ? '<div style="margin-top:8px; font-size:12px; color:var(--text-secondary,#666);">Last address: ' + escapeHtml(c.orders[0].shipTo) + (c.orders[0].postcode ? ', ' + escapeHtml(c.orders[0].postcode) : '') + '</div>' : '') +
+      '</div>';
+  }
+
+  function renderCustomers() {
+    var content = document.getElementById('customers-content');
+    var all = customerAggregates();
+    var filtered = all.filter(matchesCustomerSearch);
+    var searchBar = '<div class="card" style="margin-bottom:10px;">' +
+      '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<input type="text" id="customers-search" class="search-input" placeholder="Search name or WhatsApp number…" value="' + escapeHtml(customersSearchText) + '" style="font-size:13px; width:220px;">' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-customers-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
+        '<span class="muted" style="font-size:12px;">' + filtered.length + ' customer' + (filtered.length !== 1 ? 's' : '') + '</span>' +
+      '</div>' +
+    '</div>';
+    if (all.length === 0) {
+      content.innerHTML = searchBar + '<div class="empty">No customers yet — orders need a WhatsApp number to show up here.</div>';
+      return;
+    }
+    if (filtered.length === 0) {
+      content.innerHTML = searchBar + '<div class="empty">No customers match this search.</div>';
+      return;
+    }
+    content.innerHTML = searchBar + filtered.map(function (c) {
+      var expanded = expandedCustomerKey === c.key;
+      return '<div class="card" style="margin-bottom:8px;">' +
+        '<button type="button" class="btn-text" data-toggle-customer="' + c.key + '" style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; color:inherit;">' +
+          '<span><strong>' + escapeHtml(c.name || 'Unnamed') + '</strong><br><span class="muted" style="font-size:12px;">' + escapeHtml(c.whatsapp || '') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
+          '<span style="text-align:right;"><strong>' + money(c.totalSpent) + '</strong>' + (c.creditBalance ? '<br><span style="font-size:11px; color:var(--green,#3b6d11);">Credit ' + money(c.creditBalance) + '</span>' : '') + '</span>' +
+        '</button>' +
+        (expanded ? customerDetailHtml(c) : '') +
+        '</div>';
+    }).join('');
+  }
+
+  document.getElementById('customers-content').addEventListener('click', function (e) {
+    var toggleKey = e.target.closest('[data-toggle-customer]');
+    if (toggleKey) {
+      var key = toggleKey.getAttribute('data-toggle-customer');
+      expandedCustomerKey = expandedCustomerKey === key ? null : key;
+      renderCustomers();
+      return;
+    }
+    var goOrderBtn = e.target.closest('[data-cust-go-order]');
+    if (goOrderBtn) {
+      goToOrder(goOrderBtn.getAttribute('data-cust-go-order'));
+      return;
+    }
+    if (e.target.id === 'btn-customers-search-go') {
+      customersSearchText = document.getElementById('customers-search').value.trim();
+      renderCustomers();
+    }
+  });
+  document.getElementById('customers-content').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id === 'customers-search') {
+      customersSearchText = e.target.value.trim();
+      renderCustomers();
+    }
+  });
+
   function goToOrder(orderId) {
     document.querySelectorAll('nav button').forEach(function (b) { b.classList.remove('active'); });
     document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
@@ -4278,7 +4650,7 @@
         '<td style="white-space:nowrap;">' + formatDate(o.date) + '</td>' +
         '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + (o.buyerHandle ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 replacement</span>' : '') + '</div></td>' +
         '<td class="muted">' + (escapeHtml(o.buyerWhatsapp) || '—') + '</td>' +
-        '<td><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit;">' + (o.items.length ? escapeHtml(o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ')) : 'No items') + '</button>' +
+        '<td><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (o.items.length ? o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty + (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : ''); }).join('<br>') : 'No items') + '</button>' +
           (function () {
             if (o.status === 'cancelled') return '';
             var ms = orderMadeSummary(o);
@@ -4404,7 +4776,7 @@
     draftItems = order.items.map(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
       if (!p) return null;
-      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice };
+      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice, isGift: !!item.isGift, isDefect: !!item.isDefect, defectNormalPrice: item.isDefect ? item.defectNormalPrice : null };
     }).filter(function (l) { return l; });
     if (draftItems.length === 0) draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
     renderDraftItems();
@@ -5044,6 +5416,42 @@
       defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount, refundsGiven: refundsGiven };
   }
 
+  // She wanted a quick "is business up or down" read without doing the maths herself — this
+  // month's Revenue/Net profit vs the same figures for last calendar month, as a plain percent
+  // change. Always compares actual calendar months regardless of whatever date-range filter she
+  // has selected above, since "vs last month" only makes sense against a fixed, known baseline.
+  function monthRangeStrings(monthOffset) {
+    var d = new Date(todayISO() + 'T00:00:00');
+    d.setDate(1);
+    d.setMonth(d.getMonth() + monthOffset);
+    var from = d.toISOString().slice(0, 10);
+    var end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    var to = end.toISOString().slice(0, 10);
+    return { from: from, to: to };
+  }
+  function pctChangeLabel(cur, prev) {
+    if (prev === 0) return cur === 0 ? '—' : 'new';
+    var pct = Math.round(((cur - prev) / Math.abs(prev)) * 100);
+    return (pct > 0 ? '+' : '') + pct + '%';
+  }
+  function monthComparisonHtml() {
+    var curR = monthRangeStrings(0);
+    var prevR = monthRangeStrings(-1);
+    var cur = financialsForRange(curR.from, curR.to);
+    var prev = financialsForRange(prevR.from, prevR.to);
+    var revChange = pctChangeLabel(cur.revenue, prev.revenue);
+    var profitChange = pctChangeLabel(cur.netProfit, prev.netProfit);
+    var revColor = cur.revenue >= prev.revenue ? 'var(--green,#3b6d11)' : 'var(--red,#a32d2d)';
+    var profitColor = cur.netProfit >= prev.netProfit ? 'var(--green,#3b6d11)' : 'var(--red,#a32d2d)';
+    return '<div class="card" style="margin-bottom:14px;">' +
+      '<div style="font-weight:500; margin-bottom:8px;">This month vs last month</div>' +
+      '<div style="display:flex; gap:24px; flex-wrap:wrap;">' +
+        '<div><span class="muted" style="font-size:12px;">Revenue</span><br>' + money(cur.revenue) + ' <span style="color:' + revColor + '; font-weight:500;">' + revChange + '</span></div>' +
+        '<div><span class="muted" style="font-size:12px;">Net profit</span><br>' + money(cur.netProfit) + ' <span style="color:' + profitColor + '; font-weight:500;">' + profitChange + '</span></div>' +
+      '</div>' +
+    '</div>';
+  }
+
   function dashboardDateRangeHtml() {
     return '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; justify-content:flex-end; align-items:center;">' +
       '<button class="btn btn-secondary btn-small" id="btn-export-investor-report" style="margin-right:auto;">📊 Export Investor Report</button>' +
@@ -5117,6 +5525,31 @@
     });
   }
 
+  // She only has one copy of her data (this device + Supabase) — if she's never exported, or
+  // it's been a while, a stale cache or a Supabase hiccup could mean losing everything with no
+  // way to recover it. This nudges her without being naggy: only shows once there's meaningful
+  // data to lose, and only past a 14-day threshold.
+  var BACKUP_REMINDER_DAYS = 14;
+  function daysSinceLastExport() {
+    if (!state.lastExportDate) return null;
+    var last = new Date(state.lastExportDate + 'T00:00:00');
+    var today = new Date(todayISO() + 'T00:00:00');
+    return Math.round((today - last) / 86400000);
+  }
+  function backupReminderBannerHtml() {
+    if (state.orders.length === 0) return '';
+    var days = daysSinceLastExport();
+    var shouldRemind = days === null || days >= BACKUP_REMINDER_DAYS;
+    if (!shouldRemind) return '';
+    var message = days === null
+      ? "You haven't exported a backup yet."
+      : "It's been " + days + ' days since your last backup.';
+    return '<div class="card" id="backup-reminder-banner" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; border-left:3px solid var(--amber,#ba7517);">' +
+      '<span>💾 ' + message + ' Export a copy so you never lose your data.</span>' +
+      '<button type="button" class="btn btn-secondary btn-small" id="btn-backup-reminder-export">Export now</button>' +
+      '</div>';
+  }
+
   function renderDashboard() {
     var fin = financials();
     var invValue = fin.invValue;
@@ -5125,60 +5558,25 @@
     var netProfitPeriod = periodFin ? periodFin.netProfit : fin.netProfit;
     var totalSpentPeriod = periodFin ? periodFin.allCostsSpent : fin.allCostsSpent;
     var testingSpendPeriod = periodFin ? periodFin.testingSpend : fin.testingSpend;
-    var defectLossPeriod = periodFin ? periodFin.defectLoss : fin.defectLoss;
-    var defectCountPeriod = periodFin ? periodFin.defectCount : fin.defectCount;
-    var refundsGivenPeriod = periodFin ? periodFin.refundsGiven : fin.refundsGiven;
     var orderCountLabel = periodFin ? periodFin.orderCount + ' orders in range (excl. cancelled)' : fin.active.length + ' orders (excl. cancelled)';
-    var active = fin.active;
     var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
-    var lowStock = state.products.filter(function (p) { return p.stock <= p.threshold; });
     var pendingCount = state.orders.filter(function (o) { return o.status === 'queueing'; }).length;
     var recent = state.orders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 6);
-    var unpaid = active.filter(function (o) { return !orderFullyPaid(o); });
-    var unpaidTotal = unpaid.reduce(function (s, o) { return s + unpaidAmountFor(o); }, 0);
-    var needsDateConfirm = ordersNeedingDateConfirmation();
 
-    var html = dashboardDateRangeHtml() +
+    var html = backupReminderBannerHtml() +
+      monthComparisonHtml() +
+      dashboardDateRangeHtml() +
       '<div class="stat-grid">' +
       statCard('Total account value', money(fin.totalAccountValue), 'Cash + inventory value') +
       cashStatCard(fin.cash, state.startingCash) +
-      statCard('💳 Owed to you', money(fin.unclaimedOwed), 'Purchases paid with your own money, not yet claimed back', fin.unclaimedOwed > 0 ? 'var(--red)' : 'var(--green)') +
       statCard('Expense', money(fin.expense), 'Ads, shipping, packaging, fees etc. + courier paid') +
       statCard('Inventory value', money(invValue), unitsInStock + ' units in stock') +
       statCard('Revenue', money(revenue), orderCountLabel) +
       statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense − testing − refunds' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
       totalSpentStatCard(totalSpentPeriod, testingSpendPeriod, !!periodFin) +
       statCard('Testing spent', money(fin.testingSpend), 'Samples/materials for testing — not counted as Expense') +
-      statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
-      statCard('🔧 Defect loss', money(defectLossPeriod), defectCountPeriod + ' item' + (defectCountPeriod === 1 ? '' : 's') + ' sold cheap due to defect' + (periodFin ? ' (for the selected range)' : '') + ' — already reflected in Revenue, shown here separately for visibility') +
-      statCard('💸 Refunds given', money(refundsGivenPeriod), 'Cash given back to customers (e.g. a cheaper replacement item)' + (periodFin ? ' (for the selected range)' : ''), refundsGivenPeriod > 0 ? 'var(--red)' : 'var(--green)') +
       '</div>' +
       '<div class="panel-grid">' +
-      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Low stock alerts</div>' +
-      (lowStock.length === 0 ? '<div class="empty">All stocked up.</div>' :
-        lowStock.map(function (p) {
-          return '<div class="row-line"><span>' + escapeHtml(p.name) + (p.variant ? ' <span class="muted">— ' + escapeHtml(p.variant) + '</span>' : '') + '</span><span style="color:var(--red); font-weight:500;">' + p.stock + ' left</span></div>';
-        }).join('')) +
-      '</div>' +
-      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Awaiting payment</div>' +
-      (unpaid.length === 0 ? '<div class="empty">All paid up.</div>' :
-        unpaid.slice(0, 8).map(function (o) {
-          return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.paid ? ' <span class="muted">(add-on)</span>' : '') + '</span><span style="color:var(--red); font-weight:500;">' + money(unpaidAmountFor(o)) + '</span></div>';
-        }).join('')) +
-      '</div>' +
-      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">🔔 Confirm dates soon</div>' +
-      (needsDateConfirm.length === 0 ? '<div class="empty">Nothing due for confirmation.</div>' :
-        needsDateConfirm.slice(0, 8).map(function (o) {
-          var todayD = new Date(todayISO() + 'T00:00:00');
-          var est = new Date(o.estimatedDate + 'T00:00:00');
-          var diffDays = Math.round((est - todayD) / 86400000);
-          var whenLabel = diffDays < 0 ? Math.abs(diffDays) + 'd overdue' : (diffDays === 0 ? 'today' : 'in ' + diffDays + 'd');
-          var statusTag = o.customerNotified
-            ? '<span class="muted">✓ notified</span>'
-            : '<span style="color:var(--red);">⚠ notify</span>';
-          return '<div class="row-line" data-dash-order="' + o.id + '" style="cursor:pointer;"><span>' + (escapeHtml(o.buyerName) || 'Unknown buyer') + ' <span class="muted">— target ' + escapeHtml(formatDate(o.estimatedDate)) + '</span></span><span style="display:flex; align-items:center; gap:8px; font-weight:500;">' + statusTag + '<span style="color:' + (diffDays < 0 ? 'var(--red)' : 'var(--muted)') + ';">' + whenLabel + '</span></span></div>';
-        }).join('')) +
-      '</div>' +
       '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' queueing)</div>' +
       (recent.length === 0 ? '<div class="empty">No orders yet.</div>' :
         recent.map(function (o) {
@@ -5198,6 +5596,7 @@
     var el = e.target.closest ? e.target.closest('[data-dash-order]') : null;
     if (el) { goToOrder(el.getAttribute('data-dash-order')); return; }
     if (e.target.id === 'btn-export-investor-report') { exportInvestorReport(); return; }
+    if (e.target.id === 'btn-backup-reminder-export') { document.getElementById('btn-export').click(); return; }
     if (e.target.id === 'btn-dash-edit-startingcash') { dashboardEditingCash = true; renderDashboard(); return; }
     if (e.target.id === 'btn-dash-startingcash-cancel') { dashboardEditingCash = false; renderDashboard(); return; }
     if (e.target.id === 'btn-dash-startingcash-save') {
@@ -5280,6 +5679,125 @@
       '<div class="stat-sub">Starting ' + money(startingCash) + ' <button class="btn-text" id="btn-dash-edit-startingcash">✏️ Edit</button></div>' +
       '</div>';
   }
+
+  // How many Tumbler bottles she's given away for free as replacements, and what that's cost her
+  // — she asked to see this as its own number (separate from the general wastage total) since
+  // replacement-driven loss is a different thing to track than, say, breakage during packing.
+  // Only counts FREE Tumbler lines (isReplacement order, unitPrice 0) — a paid add-on item on the
+  // same replacement (she now supports mixing in a paid sticker, say) doesn't count as "given away".
+  var dashboardShowReplacementBreakdown = false;
+  function replacementBottleStats() {
+    var rows = [];
+    var totalQty = 0, totalCost = 0;
+    state.orders.filter(function (o) { return o.isReplacement; }).forEach(function (o) {
+      var freeTumblerItems = (o.items || []).filter(function (i) {
+        var p = state.products.find(function (pp) { return pp.id === i.productId; });
+        return p && p.type === 'Tumbler' && Number(i.unitPrice) === 0;
+      });
+      if (freeTumblerItems.length === 0) return;
+      var qty = freeTumblerItems.reduce(function (s, i) { return s + i.qty; }, 0);
+      var cost = freeTumblerItems.reduce(function (s, i) { return s + i.qty * (Number(i.unitCost) || 0); }, 0);
+      totalQty += qty;
+      totalCost += cost;
+      var otherItems = (o.items || []).filter(function (i) { return freeTumblerItems.indexOf(i) === -1; });
+      rows.push({
+        orderId: o.id, originalOrderId: o.replacementForOrderId, buyerName: o.buyerName || o.recipientName || 'Unknown buyer',
+        itemsSummary: (o.items || []).map(function (i) { return i.qty + '× ' + i.productName + (i.unitPrice > 0 ? ' (paid)' : ''); }).join(', ')
+      });
+    });
+    return { totalQty: totalQty, totalCost: totalCost, rows: rows };
+  }
+  function replacementBottlesStatCardHtml() {
+    var stats = replacementBottleStats();
+    return '<div class="stat-card"><div class="stat-label">Replacement bottles sent</div>' +
+      '<div class="stat-value">' + stats.totalQty + '</div>' +
+      '<div class="stat-sub">' + money(stats.totalCost) + ' total cost' + (stats.rows.length ? ' — <button class="btn-text" id="btn-toggle-replacement-breakdown" style="font-size:12px;">' + (dashboardShowReplacementBreakdown ? 'Hide' : 'View') + ' breakdown</button>' : '') + '</div>' +
+      '</div>';
+  }
+  function replacementBreakdownHtml() {
+    var stats = replacementBottleStats();
+    if (stats.rows.length === 0) return '';
+    return '<div class="card" style="margin-bottom:14px;"><div style="font-weight:500; margin-bottom:10px;">🔁 Replacement breakdown</div>' +
+      stats.rows.map(function (r) {
+        return '<div class="row-line"><span>' + escapeHtml(r.buyerName) + ' — ' + escapeHtml(r.itemsSummary) + '</span>' +
+          (r.originalOrderId ? '<span class="pill" style="cursor:pointer;" data-dash-order="' + r.originalOrderId + '">view original</span>' : '') +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  // She wanted Defect/Replacement/Gift/Refund pulled into one list instead of checking separate
+  // cards/tags across Orders and Dashboard — "how many special-situation orders this month".
+  var dashboardShowSpecialOrders = false;
+  function specialOrdersList() {
+    return state.orders.filter(function (o) {
+      return o.isReplacement || Number(o.refundAmount || 0) > 0 || (o.items || []).some(function (i) { return i.isDefect || i.isGift; });
+    }).slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+  }
+  function specialOrderTagsHtml(o) {
+    var tags = '';
+    if (o.isReplacement) tags += ' <span class="pill pill-blue" style="font-size:10px;">🔁 replacement</span>';
+    if ((o.items || []).some(function (i) { return i.isDefect; })) tags += ' <span class="pill pill-red" style="font-size:10px;">🔧 defect</span>';
+    if ((o.items || []).some(function (i) { return i.isGift; })) tags += ' <span class="pill pill-amber" style="font-size:10px;">🎁 gift</span>';
+    if (Number(o.refundAmount || 0) > 0) tags += ' <span class="pill pill-purple" style="font-size:10px;">💸 refund ' + money(o.refundAmount) + '</span>';
+    return tags;
+  }
+  function specialOrdersStatCardHtml() {
+    var list = specialOrdersList();
+    return '<div class="stat-card"><div class="stat-label">🏷️ Special orders</div>' +
+      '<div class="stat-value">' + list.length + '</div>' +
+      '<div class="stat-sub">Defect / Replacement / Gift / Refund' + (list.length ? ' — <button class="btn-text" id="btn-toggle-special-orders" style="font-size:12px;">' + (dashboardShowSpecialOrders ? 'Hide' : 'View') + ' list</button>' : '') + '</div>' +
+      '</div>';
+  }
+  function specialOrdersBreakdownHtml() {
+    var list = specialOrdersList();
+    if (list.length === 0) return '';
+    return '<div class="card" style="margin-bottom:14px;"><div style="font-weight:500; margin-bottom:10px;">🏷️ Special orders</div>' +
+      list.map(function (o) {
+        return '<div class="row-line" data-dash-order="' + o.id + '" style="cursor:pointer;"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + specialOrderTagsHtml(o) + '</span></div>';
+      }).join('') +
+    '</div>';
+  }
+
+  // ================= ALERTS =================
+  // Her own request: pull the "money owed/awaiting/lost" stats and the special-orders list off
+  // the Dashboard into their own tab so Dashboard stays to-the-point. These figures are always
+  // shown all-time (not affected by the Dashboard date-range filter, which is a Dashboard-only
+  // feature) since this tab has no date filter of its own.
+  function renderAlerts() {
+    var fin = financials();
+    var active = fin.active;
+    var unpaid = active.filter(function (o) { return !orderFullyPaid(o); });
+    var unpaidTotal = unpaid.reduce(function (s, o) { return s + unpaidAmountFor(o); }, 0);
+
+    var html = '<div class="stat-grid">' +
+      statCard('💳 Owed to you', money(fin.unclaimedOwed), 'Purchases paid with your own money, not yet claimed back', fin.unclaimedOwed > 0 ? 'var(--red)' : 'var(--green)') +
+      statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
+      statCard('🔧 Defect loss', money(fin.defectLoss), fin.defectCount + ' item' + (fin.defectCount === 1 ? '' : 's') + ' sold cheap due to defect — already reflected in Revenue, shown here separately for visibility') +
+      statCard('💸 Refunds given', money(fin.refundsGiven), 'Cash given back to customers (e.g. a cheaper replacement item)', fin.refundsGiven > 0 ? 'var(--red)' : 'var(--green)') +
+      replacementBottlesStatCardHtml() +
+      specialOrdersStatCardHtml() +
+      '</div>' +
+      (dashboardShowReplacementBreakdown ? replacementBreakdownHtml() : '') +
+      (dashboardShowSpecialOrders ? specialOrdersBreakdownHtml() : '') +
+      '<div class="panel-grid">' +
+      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Awaiting payment</div>' +
+      (unpaid.length === 0 ? '<div class="empty">All paid up.</div>' :
+        unpaid.slice(0, 8).map(function (o) {
+          return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.paid ? ' <span class="muted">(add-on)</span>' : '') + '</span><span style="color:var(--red); font-weight:500;">' + money(unpaidAmountFor(o)) + '</span></div>';
+        }).join('')) +
+      '</div>' +
+      '</div>';
+
+    document.getElementById('alerts-content').innerHTML = html;
+  }
+
+  document.getElementById('alerts-content').addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-dash-order]') : null;
+    if (el) { goToOrder(el.getAttribute('data-dash-order')); return; }
+    if (e.target.id === 'btn-toggle-replacement-breakdown') { dashboardShowReplacementBreakdown = !dashboardShowReplacementBreakdown; renderAlerts(); return; }
+    if (e.target.id === 'btn-toggle-special-orders') { dashboardShowSpecialOrders = !dashboardShowSpecialOrders; renderAlerts(); return; }
+  });
 
   // ================= SCHEDULE =================
   var showCompletedSchedule = false;
@@ -5437,6 +5955,12 @@
     a.download = 'sips-by-evve-backup-' + todayISO() + '.json';
     a.click();
     URL.revokeObjectURL(url);
+    // Remember when she last exported so the Dashboard can nudge her if it's been a while —
+    // her data only lives on this device/Supabase, so a stale phone cache or a Supabase hiccup
+    // without a recent backup could mean losing everything.
+    state.lastExportDate = todayISO();
+    save();
+    renderDashboard();
   });
 
   document.getElementById('btn-import').addEventListener('click', function () {
@@ -5557,10 +6081,51 @@
   // to ship — not when the order is first created — so the New/Edit order form no longer asks for
   // it at all. This is the one place that address now gets added: right here on the Shipping tab,
   // exactly when she needs it, without detouring back to Orders > Edit details.
+  // Standalone way to grant a customer goodwill credit without needing to open a replacement (or
+  // any order at all) — e.g. she just wants to make it up to someone, no item involved this time.
+  var showGiveCreditForm = false;
+  var giveCreditSelectedLabel = ''; // set once she picks a suggestion, just for on-screen confirmation
+  function giveCreditFormHtml() {
+    return '<div style="background:var(--bg); border-radius:8px; padding:10px 12px; margin-top:8px;">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px; font-weight:600;">Give a customer credit</div>' +
+      '<div style="display:flex; gap:8px; margin-bottom:2px; flex-wrap:wrap;">' +
+        '<div style="position:relative; flex:1; min-width:160px;">' +
+          '<input type="text" id="gc-identifier" placeholder="WhatsApp number or username" style="width:100%;" autocomplete="off">' +
+          '<div id="gc-identifier-suggest"></div>' +
+        '</div>' +
+        '<input type="number" min="0" step="0.01" id="gc-amount" placeholder="RM amount" style="width:110px;">' +
+      '</div>' +
+      (giveCreditSelectedLabel ? '<div class="muted" style="font-size:11px; margin-bottom:6px;">Selected: ' + escapeHtml(giveCreditSelectedLabel) + '</div>' : '') +
+      '<input type="text" id="gc-reason" placeholder="Reason (e.g. wrong colour sent)" style="width:100%; margin-bottom:8px;">' +
+      '<div style="display:flex; gap:8px;">' +
+        '<button type="button" class="btn btn-primary btn-small" id="btn-save-give-credit">Save credit</button>' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-cancel-give-credit">Cancel</button>' +
+      '</div>' +
+    '</div>';
+  }
   var editingShippingAddressOrderId = null;
+  // Suggestion cards are only shown the first time (o.shipTo still empty) — once an address is
+  // already on file, "Edit address" is presumably a small correction, not a "which of her past
+  // addresses is this" decision, so we don't re-surface the picker there.
+  function pastAddressSuggestionsHtml(o) {
+    if (o.shipTo || !o.buyerWhatsapp) return '';
+    var matches = pastAddressesForWhatsapp(o.buyerWhatsapp, o.id);
+    if (matches.length === 0) return '';
+    return '<div style="background:var(--bg-blue,#e6f1fb); border-radius:8px; padding:10px 12px; margin-bottom:10px;">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px; font-weight:600;">Found a repeat customer — reuse a past address?</div>' +
+      matches.map(function (m, idx) {
+        return '<div style="background:var(--card-bg,#fff); border-radius:6px; padding:8px 10px; margin-bottom:6px;">' +
+          '<div class="muted" style="font-size:11px; margin-bottom:2px;">Used ' + escapeHtml(formatDate(m.date)) + '</div>' +
+          '<div style="font-size:13px; white-space:pre-wrap;">' + escapeHtml(m.recipientName) + (m.recipientPhone ? ' — ' + escapeHtml(m.recipientPhone) : '') + '<br>' + escapeHtml(m.shipTo) + (m.postcode ? ', ' + escapeHtml(m.postcode) : '') + '</div>' +
+          '<button type="button" class="btn-text" data-use-address="' + o.id + '" data-address-idx="' + idx + '" style="font-size:12px; margin-top:4px;">Use this address</button>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
   function shippingAddressBlockHtml(o) {
     if (editingShippingAddressOrderId === o.id) {
       return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
+        pastAddressSuggestionsHtml(o) +
         '<div class="field-block"><label class="field-label">Recipient name</label><input id="sa-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '" placeholder="e.g. name on the parcel/courier label"></div>' +
         '<div class="field-block" style="margin-top:6px;"><label class="field-label">Recipient phone <span class="muted">(blank = use WhatsApp number)</span></label><input id="sa-recipientPhone-' + o.id + '" value="' + escapeHtml(o.recipientPhone || '') + '" placeholder="+60123456789"></div>' +
         '<div class="field-block" style="margin-top:6px;"><label class="field-label">Ship to (address)</label><textarea id="sa-shipTo-' + o.id + '" rows="2" style="resize:vertical; width:100%;" placeholder="e.g. 12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
@@ -5615,7 +6180,7 @@
     var product = state.products.find(function (p) { return p.id === item.productId; });
     var style = SHIPPING_TYPE_STYLE[product ? product.type : 'Others'] || SHIPPING_TYPE_STYLE['Others'];
     return '<span style="display:inline-flex; align-items:center; gap:5px; background:' + style.bg + '; color:' + style.color + '; border-radius:8px; padding:6px 12px; font-size:13px; font-weight:600;">' +
-      shippingItemIconHtml(product && product.image, style.icon) + ' ' + escapeHtml(item.productName) + ' ×' + qty +
+      shippingItemIconHtml(product && product.image, style.icon) + ' ' + escapeHtml(item.productName) + ' ×' + qty + (item.isGift ? ' 🎁' : '') +
     '</span>';
   }
   function addOnBoxHtml(a) {
@@ -5717,10 +6282,61 @@
   // order. The replacement item's cost is still logged as a 'wastage' Cost entry (same bucket as
   // other write-offs) so the giveaway shows up as a real loss instead of vanishing with no trace.
   var editingReplacementOrderId = null;
-  function replacementProductOptionsHtml() {
-    return '<option value="">Select product…</option>' + state.products.map(function (p) {
-      return '<option value="' + p.id + '">' + escapeHtml(p.name) + (p.variant ? ' — ' + escapeHtml(p.variant) : '') + '</option>';
+  // Draft item lines for whichever order's replacement form is currently open, keyed by order id
+  // (not a single shared array) so re-rendering the Shipping page mid-edit never mixes up two
+  // different orders' in-progress replacement drafts. She originally asked for just a single
+  // product+qty here, then realised a replacement often needs more than one thing (e.g. a
+  // Tumbler AND a sticker in the same package) — so this mirrors the same Type -> Theme -> Product
+  // cascading multi-line picker already used on the New/Edit Order form, just restricted to
+  // Tumbler/Stickers (Add ons/Others were never relevant to a "arrived broken" replacement).
+  var replacementDraftItems = {};
+  var REPLACEMENT_TYPES = ['Tumbler', 'Stickers'];
+  function replacementItemLineHtml(orderId, line, idx) {
+    var typeOptions = REPLACEMENT_TYPES.map(function (t) {
+      return '<option value="' + t + '"' + (t === line.type ? ' selected' : '') + '>' + t + '</option>';
     }).join('');
+    var typeSelect = '<select class="rep-di-type" data-order-id="' + orderId + '" data-idx="' + idx + '"><option value="">Type…</option>' + typeOptions + '</select>';
+
+    var themeSelect = '';
+    if (line.type === 'Stickers') {
+      var themes = productThemes('Stickers');
+      var themeOptions = themes.map(function (th) {
+        return '<option value="' + escapeHtml(th) + '"' + (th === line.theme ? ' selected' : '') + '>' + escapeHtml(th) + '</option>';
+      }).join('');
+      themeSelect = '<select class="rep-di-theme" data-order-id="' + orderId + '" data-idx="' + idx + '"><option value="">Sticker theme…</option>' + themeOptions + '</select>';
+    }
+
+    var readyForProduct = line.type && (line.type !== 'Stickers' || line.theme);
+    var productSelectHtml;
+    if (readyForProduct) {
+      var opts = state.products.filter(function (p) {
+        if (p.type !== line.type) return false;
+        if (line.type === 'Stickers' && p.theme !== line.theme) return false;
+        return true;
+      }).map(function (p) {
+        return '<option value="' + p.id + '"' + (p.id === line.productId ? ' selected' : '') + '>' + escapeHtml(productLabel(p)) + '</option>';
+      }).join('');
+      productSelectHtml = '<select class="rep-di-product" data-order-id="' + orderId + '" data-idx="' + idx + '"><option value="">Select item…</option>' + opts + '</select>';
+    } else {
+      productSelectHtml = '<select class="rep-di-product" data-order-id="' + orderId + '" data-idx="' + idx + '" disabled><option value="">' + (line.type ? 'Select theme first' : 'Select type first') + '</option></select>';
+    }
+
+    // Most replacements are free (arrived broken/wrong colour — her mistake), but sometimes the
+    // customer is asking to ADD something extra (e.g. an extra sticker) and expects to pay for
+    // it. Each line defaults to Free (wastage); unticking it reveals a price field so this
+    // particular line is treated as a real sale instead.
+    var isFree = line.free !== false;
+    var freeToggle = '<label style="display:inline-flex; align-items:center; gap:4px; font-size:12px; white-space:nowrap;">' +
+      '<input type="checkbox" class="rep-di-free" data-order-id="' + orderId + '" data-idx="' + idx + '"' + (isFree ? ' checked' : '') + '> Free</label>';
+    var priceInputHtml = isFree ? '' :
+      '<input class="rep-di-price" type="number" min="0" step="0.01" value="' + (line.price !== undefined && line.price !== '' ? line.price : '') + '" data-order-id="' + orderId + '" data-idx="' + idx + '" placeholder="Price ea.">';
+
+    return '<div class="item-line" data-idx="' + idx + '">' +
+      typeSelect + themeSelect + productSelectHtml +
+      '<input class="rep-di-qty" type="number" min="1" value="' + line.qty + '" data-order-id="' + orderId + '" data-idx="' + idx + '" placeholder="Qty">' +
+      freeToggle + priceInputHtml +
+      '<button type="button" class="btn-text danger" data-rep-remove-line="' + idx + '" data-order-id="' + orderId + '">Remove</button>' +
+    '</div>';
   }
   // Shows any replacement order(s) already created FROM this order — she can tap through to see
   // its own status/tracking on the Orders tab, same as opening any other order.
@@ -5739,13 +6355,26 @@
     '</div>';
   }
   function replacementFormHtml(o) {
+    var lines = replacementDraftItems[o.id] || (replacementDraftItems[o.id] = [{ type: '', theme: '', productId: '', qty: 1 }]);
+    var anyPaidLine = lines.some(function (l) { return l.free === false; });
     return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
-      '<div class="muted" style="font-size:12px; margin-bottom:6px;">Sending a free replacement (e.g. arrived cracked or wrong colour)? This opens a new RM0 order for the same buyer/address — it\'ll flow through your normal queue/pack/ship steps, and the item\'s cost is recorded as wastage.</div>' +
-      '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">' +
-        '<div class="field-block"><label class="field-label">Product</label><select id="rep-product-' + o.id + '">' + replacementProductOptionsHtml() + '</select></div>' +
-        '<div class="field-block"><label class="field-label">Qty</label><input type="number" min="1" id="rep-qty-' + o.id + '" value="1" style="width:64px;"></div>' +
-        '<div class="field-block" style="flex:1; min-width:140px;"><label class="field-label">Note (optional)</label><input type="text" id="rep-note-' + o.id + '" placeholder="e.g. arrived cracked" style="width:100%;"></div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">Sending a free replacement (e.g. arrived cracked or wrong colour)? This opens a new order for the same buyer/address — it\'ll flow through your normal queue/pack/ship steps. Free items are recorded as wastage; untick "Free" on a line if the customer\'s actually paying for that extra item (e.g. she asked to add a sticker).</div>' +
+      '<div id="rep-items-' + o.id + '">' +
+        lines.map(function (line, idx) { return replacementItemLineHtml(o.id, line, idx); }).join('') +
       '</div>' +
+      '<div style="margin-top:6px;"><button type="button" class="btn-text" data-rep-add-item="' + o.id + '">+ Add item</button></div>' +
+      '<div class="field-block" style="margin-top:8px;"><label class="field-label">Note (optional)</label><input type="text" id="rep-note-' + o.id + '" placeholder="e.g. arrived cracked" style="width:100%;"></div>' +
+      (anyPaidLine ?
+        '<div class="field-block" style="margin-top:8px; max-width:260px;">' +
+          '<label class="field-label">Discount on paid item(s) (optional)</label>' +
+          '<input type="number" min="0" step="0.01" id="rep-discount-' + o.id + '" placeholder="0.00">' +
+          '<div class="muted" style="font-size:11px; margin-top:2px;">e.g. giving her the extra sticker at a lower price since the mix-up was your mistake.</div>' +
+        '</div>' :
+        '<div class="field-block" style="margin-top:8px; max-width:260px;">' +
+          '<label class="field-label">Give credit for next order (optional)</label>' +
+          '<input type="number" min="0" step="0.01" id="rep-credit-' + o.id + '" placeholder="0.00">' +
+          '<div class="muted" style="font-size:11px; margin-top:2px;">Nothing to discount this time (everything\'s free) — but you\'d like to make it up to her next time she orders.</div>' +
+        '</div>') +
       '<div class="field-block" style="margin-top:8px; max-width:260px;">' +
         '<label class="field-label">Refund amount (optional)</label>' +
         '<input type="number" min="0" step="0.01" id="rep-refund-' + o.id + '" placeholder="0.00">' +
@@ -5758,55 +6387,90 @@
   function saveReplacement(orderId) {
     var original = state.orders.find(function (o) { return o.id === orderId; });
     if (!original) return;
-    var productId = document.getElementById('rep-product-' + orderId).value;
-    var product = state.products.find(function (p) { return p.id === productId; });
-    if (!product) { alert('Pick which product is being sent as a replacement.'); return; }
-    var qty = Number(document.getElementById('rep-qty-' + orderId).value);
-    if (!qty || qty <= 0) { alert('Enter a valid quantity.'); return; }
+    var lines = replacementDraftItems[orderId] || [];
+    var validLines = lines.filter(function (l) { return l.productId && Number(l.qty) > 0; });
+    if (validLines.length === 0) { alert('Add at least one item being sent as a replacement.'); return; }
     var note = document.getElementById('rep-note-' + orderId).value.trim();
     var refundInput = document.getElementById('rep-refund-' + orderId);
     var refundAmount = refundInput ? (Number(refundInput.value) || 0) : 0;
+    var discountInput = document.getElementById('rep-discount-' + orderId);
+    var discount = discountInput ? (Number(discountInput.value) || 0) : 0;
+    var creditInput = document.getElementById('rep-credit-' + orderId);
+    var creditAmount = creditInput ? (Number(creditInput.value) || 0) : 0;
     var buyerLabel = original.buyerName || original.recipientName || 'Unknown buyer';
 
-    // Enough on the shelf already? Ship it straight away. Otherwise it needs remaking first, so
-    // it joins the normal production queue — auto-scheduled just like a fresh Tumbler order.
-    var stockReady = product.stock >= qty;
-    var needsTumblerSlot = product.type === 'Tumbler' && !stockReady;
+    var newItems = [];
+    var costEntries = [];
+    var totalWastageAmount = 0;
+    var totalPaidAmount = 0;
+    var anyPaidLine2 = validLines.some(function (l) { return l.free === false; });
+    // Every line is checked independently for stock/production readiness — a replacement with a
+    // Tumbler (needs remaking, no stock) AND a Sticker (already in stock) shouldn't be forced to
+    // wait on the Tumbler; the order as a whole only counts as fully "ready to ship" once every
+    // line is covered.
+    var anyNeedsProduction = false;
+    var maxTumblerQtyNeeded = 0;
+    validLines.forEach(function (l) {
+      var product = state.products.find(function (p) { return p.id === l.productId; });
+      if (!product) return;
+      var qty = Number(l.qty);
+      var stockReady = product.stock >= qty;
+      if (!stockReady) anyNeedsProduction = true;
+      if (product.type === 'Tumbler' && !stockReady) maxTumblerQtyNeeded += qty;
+      var isFree = l.free !== false;
+      var unitPrice = isFree ? 0 : (Number(l.price) || 0);
+      newItems.push({ productId: product.id, productName: product.name, qty: qty, unitPrice: unitPrice, unitCost: product.cost, madeQty: stockReady ? qty : 0 });
+      if (isFree) {
+        var lineAmount = qty * product.cost;
+        totalWastageAmount += lineAmount;
+        costEntries.push({
+          id: uid(),
+          category: 'wastage',
+          date: todayISO(),
+          amount: lineAmount,
+          productId: product.id,
+          qty: -qty,
+          description: 'Replacement sent — ' + buyerLabel + ' — ' + product.name + (product.variant ? ' — ' + product.variant : '') + ' (' + qty + ' units)' + (note ? ' — ' + note : '')
+        });
+      } else {
+        totalPaidAmount += qty * unitPrice;
+      }
+    });
+    if (newItems.length === 0) { alert('Could not find the selected product(s) — try again.'); return; }
+    var amountOwed = Math.max(0, totalPaidAmount - discount);
+
     var newOrder = {
       id: uid(),
       buyerName: original.buyerName, buyerHandle: original.buyerHandle, buyerWhatsapp: original.buyerWhatsapp,
       recipientName: original.recipientName || original.buyerName, recipientPhone: original.recipientPhone,
       date: todayISO(),
-      status: stockReady ? 'ready to ship' : 'queueing',
-      paid: true, paymentDate: '', paymentRef: '', paymentBankName: '',
+      status: anyNeedsProduction ? 'queueing' : 'ready to ship',
+      paid: amountOwed === 0, paymentDate: '', paymentRef: '', paymentBankName: '',
       shipTo: original.shipTo, postcode: original.postcode,
       shippingZone: original.shippingZone, shippingWeight: 0, shippingFee: 0, shippingCostActual: 0,
       trackingNumber: '', courier: '', trackingMessageSent: false,
-      scheduledDate: '', estimatedDate: needsTumblerSlot ? nextAvailableProductionDate(qty, todayISO()) : '',
-      customerNotified: false, discount: 0,
+      scheduledDate: '', estimatedDate: maxTumblerQtyNeeded > 0 ? nextAvailableProductionDate(maxTumblerQtyNeeded, todayISO()) : '',
+      customerNotified: false, discount: discount,
       notes: 'Replacement for order — ' + buyerLabel + (note ? ' — ' + note : '') + (refundAmount > 0 ? ' — refunded ' + money(refundAmount) : ''),
       addOns: [], parcels: [],
-      items: [{ productId: product.id, productName: product.name, qty: qty, unitPrice: 0, unitCost: product.cost, madeQty: stockReady ? qty : 0 }],
+      items: newItems,
       isReplacement: true,
       replacementForOrderId: original.id,
       refundAmount: refundAmount > 0 ? refundAmount : 0
     };
     state.orders.push(newOrder);
     deductStock(newOrder);
+    costEntries.forEach(function (c) { state.costs.push(c); });
+    if (!anyPaidLine2 && creditAmount > 0 && original.buyerWhatsapp) {
+      addCustomerCredit(original.buyerWhatsapp, creditAmount, 'Replacement goodwill — ' + buyerLabel + (note ? ' — ' + note : ''), newOrder.id);
+    }
 
-    var costId = uid();
-    state.costs.push({
-      id: costId,
-      category: 'wastage',
-      date: todayISO(),
-      amount: qty * product.cost,
-      productId: product.id,
-      qty: -qty,
-      description: 'Replacement sent — ' + buyerLabel + ' — ' + product.name + (product.variant ? ' — ' + product.variant : '') + ' (' + qty + ' units)' + (note ? ' — ' + note : '')
-    });
-
-    logAddToQuickAdd('Opened a replacement order for ' + buyerLabel + ': ' + qty + '× ' + product.name + ' (' + money(qty * product.cost) + ' recorded as wastage).' + (refundAmount > 0 ? ' Also refunded ' + money(refundAmount) + ' to the customer.' : ''));
+    var itemsSummaryForLog = newItems.map(function (i) { return i.qty + '× ' + i.productName + (i.unitPrice > 0 ? ' (paid ' + money(i.unitPrice) + ' ea.)' : ''); }).join(', ');
+    var paidNote = totalPaidAmount > 0 ? (' Customer owes ' + money(amountOwed) + (discount > 0 ? ' after ' + money(discount) + ' discount' : '') + ' for the paid item(s).') : '';
+    var creditNote = (!anyPaidLine2 && creditAmount > 0) ? (' Gave her ' + money(creditAmount) + ' credit for next time.') : '';
+    logAddToQuickAdd('Opened a replacement order for ' + buyerLabel + ': ' + itemsSummaryForLog + (totalWastageAmount > 0 ? ' (' + money(totalWastageAmount) + ' recorded as wastage).' : '.') + paidNote + creditNote + (refundAmount > 0 ? ' Also refunded ' + money(refundAmount) + ' to the customer.' : ''));
     editingReplacementOrderId = null;
+    delete replacementDraftItems[orderId];
     save();
     renderShipping();
   }
@@ -5817,6 +6481,10 @@
   // to customer" requires ALL parcels to be marked sent (a half-notified split order isn't fully
   // "sent" yet).
   var shippingStatusFilter = 'all';
+  // She said the queue gets messy — she couldn't tell which orders were the most recently added
+  // or updated. A simple newest/oldest toggle on the same scheduledDate/date sort she already had
+  // (which always ran oldest-first) lets her flip direction without hunting through everything.
+  var shippingSortNewestFirst = false;
   function orderHasTracking(o) {
     if (o.parcels && o.parcels.length) return o.parcels.some(function (p) { return !!p.trackingNumber; });
     return !!o.trackingNumber;
@@ -5830,6 +6498,7 @@
     if (shippingStatusFilter === 'shipped') return o.status === 'shipped';
     if (shippingStatusFilter === 'tracking') return orderHasTracking(o);
     if (shippingStatusFilter === 'sent') return orderMessageSent(o);
+    if (shippingStatusFilter === 'replacements') return !!o.isReplacement;
     return true;
   }
   function shippingFilterOptionsHtml() {
@@ -5838,7 +6507,8 @@
       ['notshipped', 'Not yet shipped'],
       ['shipped', 'Shipped'],
       ['tracking', 'Has tracking number'],
-      ['sent', 'Sent to customer']
+      ['sent', 'Sent to customer'],
+      ['replacements', '🔁 Replacements']
     ];
     return opts.map(function (pair) { return '<option value="' + pair[0] + '"' + (pair[0] === shippingStatusFilter ? ' selected' : '') + '>' + pair[1] + '</option>'; }).join('');
   }
@@ -6045,7 +6715,11 @@
 
   function renderShipping() {
     var fullQueue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
-      .slice().sort(function (a, b) { return (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date); });
+      .slice().sort(function (a, b) {
+        return shippingSortNewestFirst
+          ? (b.scheduledDate || b.date).localeCompare(a.scheduledDate || a.date)
+          : (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date);
+      });
     var queue = fullQueue.filter(matchesShippingFilter).filter(matchesShippingSearch);
     var delivered = state.orders.filter(function (o) { return o.status === 'delivered'; })
       .slice().sort(function (a, b) { return (b.scheduledDate || b.date).localeCompare(a.scheduledDate || a.date); });
@@ -6059,10 +6733,13 @@
         ? '<div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
             '<label class="muted" style="font-size:12px;">Filter:</label>' +
             '<select id="shipping-status-filter" style="font-size:13px;">' + shippingFilterOptionsHtml() + '</select>' +
-            '<input type="text" id="shipping-search" placeholder="Search name, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="font-size:13px; width:190px;">' +
+            '<button type="button" class="btn btn-secondary btn-small" id="btn-toggle-shipping-sort" style="padding:6px 9px; font-size:13px;">' + (shippingSortNewestFirst ? '↓ Newest first' : '↑ Oldest first') + '</button>' +
+            '<input type="text" id="shipping-search" class="search-input" placeholder="Search name, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="font-size:13px; width:190px;">' +
             '<button type="button" class="btn btn-secondary btn-small" id="btn-shipping-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
+            '<button type="button" class="btn btn-secondary btn-small" id="btn-toggle-give-credit" style="padding:6px 9px;">🎁 Give credit</button>' +
           '</div>'
         : '') +
+      (showGiveCreditForm ? giveCreditFormHtml() : '') +
       (editingShippedTemplate ?
         '<div style="margin-top:8px;">' +
           '<div class="muted" style="font-size:12px; margin-bottom:6px;">Use <code>{link}</code> where the tracking link should go, and <code>{buyerName}</code> where the buyer\'s name should go.</div>' +
@@ -6148,6 +6825,22 @@
     if (saveAddrId) { saveShippingAddress(saveAddrId); return; }
     var cancelAddrId = e.target.getAttribute && e.target.getAttribute('data-cancel-shipaddr');
     if (cancelAddrId) { editingShippingAddressOrderId = null; renderShipping(); return; }
+    var useAddrId = e.target.getAttribute && e.target.getAttribute('data-use-address');
+    if (useAddrId) {
+      var useAddrOrder = state.orders.find(function (o) { return o.id === useAddrId; });
+      var useAddrIdx = Number(e.target.getAttribute('data-address-idx'));
+      if (useAddrOrder) {
+        var pastMatches = pastAddressesForWhatsapp(useAddrOrder.buyerWhatsapp, useAddrOrder.id);
+        var picked = pastMatches[useAddrIdx];
+        if (picked) {
+          document.getElementById('sa-recipientName-' + useAddrId).value = picked.recipientName;
+          document.getElementById('sa-recipientPhone-' + useAddrId).value = picked.recipientPhone;
+          document.getElementById('sa-shipTo-' + useAddrId).value = picked.shipTo;
+          document.getElementById('sa-postcode-' + useAddrId).value = picked.postcode;
+        }
+      }
+      return;
+    }
     var startSplitId = e.target.getAttribute && e.target.getAttribute('data-start-split');
     if (startSplitId) { splittingOrderId = startSplitId; splitDraftParcelCount = 2; renderShipping(); return; }
     var addSplitParcelId = e.target.getAttribute && e.target.getAttribute('data-add-split-parcel');
@@ -6201,6 +6894,11 @@
     }
     if (e.target.id === 'btn-toggle-delivered') {
       showDeliveredHistory = !showDeliveredHistory;
+      renderShipping();
+      return;
+    }
+    if (e.target.id === 'btn-toggle-shipping-sort') {
+      shippingSortNewestFirst = !shippingSortNewestFirst;
       renderShipping();
       return;
     }
@@ -6276,11 +6974,27 @@
       return;
     }
     var toggleRepId = e.target.getAttribute && e.target.getAttribute('data-toggle-replacement');
-    if (toggleRepId) { editingReplacementOrderId = toggleRepId; renderShipping(); return; }
+    if (toggleRepId) { editingReplacementOrderId = toggleRepId; replacementDraftItems[toggleRepId] = [{ type: '', theme: '', productId: '', qty: 1 }]; renderShipping(); return; }
     var cancelRepId = e.target.getAttribute && e.target.getAttribute('data-cancel-replacement');
-    if (cancelRepId) { editingReplacementOrderId = null; renderShipping(); return; }
+    if (cancelRepId) { editingReplacementOrderId = null; delete replacementDraftItems[cancelRepId]; renderShipping(); return; }
     var saveRepId = e.target.getAttribute && e.target.getAttribute('data-save-replacement');
     if (saveRepId) { saveReplacement(saveRepId); return; }
+    var repAddItemId = e.target.getAttribute && e.target.getAttribute('data-rep-add-item');
+    if (repAddItemId) {
+      if (!replacementDraftItems[repAddItemId]) replacementDraftItems[repAddItemId] = [];
+      replacementDraftItems[repAddItemId].push({ type: '', theme: '', productId: '', qty: 1 });
+      renderShipping();
+      return;
+    }
+    var repRemoveIdx = e.target.getAttribute && e.target.getAttribute('data-rep-remove-line');
+    if (repRemoveIdx !== null && repRemoveIdx !== undefined) {
+      var repRemoveOrderId = e.target.getAttribute('data-order-id');
+      if (replacementDraftItems[repRemoveOrderId]) {
+        replacementDraftItems[repRemoveOrderId].splice(Number(repRemoveIdx), 1);
+        renderShipping();
+      }
+      return;
+    }
     var gotoRepEl = e.target.closest ? e.target.closest('[data-goto-replacement]') : null;
     if (gotoRepEl) { goToOrder(gotoRepEl.getAttribute('data-goto-replacement')); return; }
     if (e.target.id === 'btn-shipping-search-go') {
@@ -6288,6 +7002,62 @@
       shippingSearchText = shipSearchInp ? shipSearchInp.value : '';
       renderShipping();
       return;
+    }
+    if (e.target.id === 'btn-toggle-give-credit') {
+      showGiveCreditForm = !showGiveCreditForm;
+      giveCreditSelectedLabel = '';
+      renderShipping();
+      return;
+    }
+    if (e.target.id === 'btn-cancel-give-credit') {
+      showGiveCreditForm = false;
+      giveCreditSelectedLabel = '';
+      renderShipping();
+      return;
+    }
+    if (e.target.id === 'btn-save-give-credit') {
+      var gcIdentifier = document.getElementById('gc-identifier').value.trim();
+      var gcAmount = Number(document.getElementById('gc-amount').value) || 0;
+      var gcReason = document.getElementById('gc-reason').value.trim();
+      if (!gcIdentifier) { alert('Enter her WhatsApp number or username first.'); return; }
+      if (gcAmount <= 0) { alert('Enter how much credit to give her.'); return; }
+      addCustomerCredit(gcIdentifier, gcAmount, gcReason, null);
+      logAddToQuickAdd('Gave ' + money(gcAmount) + ' credit to ' + gcIdentifier + (gcReason ? ' — ' + gcReason : '') + '.');
+      save();
+      showGiveCreditForm = false;
+      giveCreditSelectedLabel = '';
+      renderShipping();
+      return;
+    }
+    var gcSuggestEl = e.target.closest ? e.target.closest('[data-gc-suggest]') : null;
+    if (gcSuggestEl) {
+      var gcWa = gcSuggestEl.getAttribute('data-gc-suggest');
+      document.getElementById('gc-identifier').value = gcWa;
+      giveCreditSelectedLabel = gcSuggestEl.getAttribute('data-gc-suggest-name') + ' — ' + gcWa;
+      document.getElementById('gc-identifier-suggest').innerHTML = '';
+      return;
+    }
+  });
+
+  // Small typeahead dropdown shared by the New order WhatsApp field and this Give-credit form —
+  // just a list of past customers matching what's been typed so far; picking one only fills the
+  // field, it never applies anything by itself.
+  function customerAutocompleteHtml(matches, prefix) {
+    if (!matches.length) return '';
+    return '<div style="position:absolute; z-index:5; background:var(--card-bg,#fff); border:1px solid var(--border); border-radius:6px; margin-top:2px; width:100%; max-width:260px; box-shadow:0 2px 6px rgba(0,0,0,0.08);">' +
+      matches.map(function (m) {
+        return '<div data-' + prefix + '-suggest="' + escapeHtml(m.buyerWhatsapp) + '" data-' + prefix + '-suggest-name="' + escapeHtml(m.buyerName) + '" style="padding:6px 10px; cursor:pointer; border-bottom:1px solid var(--border); font-size:12px;">' +
+          '<div>' + (escapeHtml(m.buyerName) || 'Unknown') + '</div>' +
+          '<div class="muted" style="font-size:11px;">' + escapeHtml(m.buyerWhatsapp) + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  document.getElementById('shipping-content').addEventListener('input', function (e) {
+    if (e.target.id === 'gc-identifier') {
+      var gcSuggestWrap = document.getElementById('gc-identifier-suggest');
+      if (gcSuggestWrap) gcSuggestWrap.innerHTML = customerAutocompleteHtml(findCustomerMatches(e.target.value, 5), 'gc');
     }
   });
 
@@ -6301,6 +7071,49 @@
   });
 
   document.getElementById('shipping-content').addEventListener('change', function (e) {
+    if (e.target.classList.contains('rep-di-type') || e.target.classList.contains('rep-di-theme') || e.target.classList.contains('rep-di-product') || e.target.classList.contains('rep-di-qty')) {
+      var repOrderId = e.target.getAttribute('data-order-id');
+      var repIdx = Number(e.target.getAttribute('data-idx'));
+      var repLines = replacementDraftItems[repOrderId];
+      if (!repLines || !repLines[repIdx]) return;
+      if (e.target.classList.contains('rep-di-type')) {
+        repLines[repIdx].type = e.target.value;
+        repLines[repIdx].theme = '';
+        repLines[repIdx].productId = '';
+      } else if (e.target.classList.contains('rep-di-theme')) {
+        repLines[repIdx].theme = e.target.value;
+        repLines[repIdx].productId = '';
+      } else if (e.target.classList.contains('rep-di-product')) {
+        repLines[repIdx].productId = e.target.value;
+        // If she's already marked this line as Paid, default the price to the product's normal
+        // selling price so she's not starting from a blank field — still fully editable.
+        if (repLines[repIdx].free === false && !repLines[repIdx].price) {
+          var repProd = state.products.find(function (p) { return p.id === e.target.value; });
+          if (repProd) repLines[repIdx].price = repProd.price;
+        }
+      } else if (e.target.classList.contains('rep-di-qty')) {
+        repLines[repIdx].qty = e.target.value;
+      }
+      renderShipping();
+      return;
+    }
+    if (e.target.classList.contains('rep-di-free') || e.target.classList.contains('rep-di-price')) {
+      var repOrderId2 = e.target.getAttribute('data-order-id');
+      var repIdx2 = Number(e.target.getAttribute('data-idx'));
+      var repLines2 = replacementDraftItems[repOrderId2];
+      if (!repLines2 || !repLines2[repIdx2]) return;
+      if (e.target.classList.contains('rep-di-free')) {
+        repLines2[repIdx2].free = e.target.checked;
+        if (!e.target.checked && !repLines2[repIdx2].price && repLines2[repIdx2].productId) {
+          var repProd2 = state.products.find(function (p) { return p.id === repLines2[repIdx2].productId; });
+          if (repProd2) repLines2[repIdx2].price = repProd2.price;
+        }
+      } else {
+        repLines2[repIdx2].price = e.target.value;
+      }
+      renderShipping();
+      return;
+    }
     if (e.target.classList.contains('shipping-barcode-file')) {
       var file = e.target.files[0];
       if (!file) return;
@@ -8430,17 +9243,112 @@
   function renderAll() {
     refreshProductDropdowns();
     renderDashboard();
+    renderAlerts();
     renderInventory();
     renderCosts();
     renderTesting();
     renderOrders();
     renderShipping();
+    renderCustomers();
     renderSchedule();
     renderCalendar();
     renderQuickAdd();
+    applyViewerLock();
   }
 
+  // Round 10: everything a Viewer can reach visually stays IDENTICAL to what Evvyne sees — same
+  // tabs, same tables, same numbers — the only difference is every control that would change
+  // data gets disabled. Rather than hand-tag every button/input across this whole file (easy to
+  // miss one and leave a real hole), this locks down by DEFAULT and only spares controls whose
+  // id/class matches a known "this just changes what you're LOOKING at" naming pattern already
+  // used consistently throughout this app (toggle/expand rows, filters, search, sort, copy,
+  // photo lightbox). Over-disabling a rare view-only control is a minor annoyance; under-disabling
+  // a real edit control would be a real data-safety hole — so ties go to "disabled".
+  var VIEWER_SAFE_CONTROL_PATTERN = /toggle|dash-order|cust-go-order|preset|filter|search|sort|copy|lightbox|reload|export|logout/i;
+  function applyViewerLock() {
+    document.getElementById('viewer-mode-badge').style.display = isViewerMode ? 'inline-block' : 'none';
+    document.getElementById('btn-viewer-access').style.display = isViewerMode ? 'none' : '';
+    document.getElementById('viewer-access-panel').style.display = (isViewerMode || !showViewerAccessPanel) ? 'none' : '';
+    var resetBtn = document.getElementById('btn-reset-data');
+    var importBtn = document.getElementById('btn-import');
+    if (resetBtn) resetBtn.style.display = isViewerMode ? 'none' : '';
+    if (importBtn) importBtn.disabled = !!isViewerMode;
+    var scope = document.querySelector('main');
+    if (!scope) return;
+    var isSafe = function (el) {
+      var signature = (el.id || '') + ' ' + (el.className || '') + ' ' + Array.prototype.map.call(el.attributes, function (a) { return a.name; }).join(' ');
+      return VIEWER_SAFE_CONTROL_PATTERN.test(signature);
+    };
+    // Always recompute for every control, in both directions — a flip back to owner mode must
+    // re-enable everything that was locked, not just skip re-locking (see below: the shipping
+    // and orders tabs render their own detail rows outside the top-level renderAll() cycle, e.g.
+    // expanding an order, so this can't assume it only ever runs once right after a full render).
+    scope.querySelectorAll('input, select, textarea').forEach(function (el) { el.disabled = isViewerMode && !isSafe(el); });
+    scope.querySelectorAll('button').forEach(function (el) { el.disabled = isViewerMode && !isSafe(el); });
+  }
+  // renderAll() covers most page loads, but expanding a row (an order, a customer, a replacement
+  // form, a give-credit form...) often only re-renders that one small piece of the DOM via its
+  // own smaller render*() function, not the whole page — so newly-inserted controls would slip
+  // through unlocked if this only ran from renderAll(). Watching `main` for any DOM change and
+  // re-applying the lock (only while actually in viewer mode) catches all of those automatically
+  // without needing every individual render function to remember to call this itself.
+  (function () {
+    var mainEl = document.querySelector('main');
+    if (!mainEl || typeof MutationObserver === 'undefined') return;
+    var pending = false;
+    var observer = new MutationObserver(function () {
+      if (!isViewerMode || pending) return;
+      pending = true;
+      setTimeout(function () { pending = false; applyViewerLock(); }, 0);
+    });
+    observer.observe(mainEl, { childList: true, subtree: true });
+  })();
+  // Exposed only so automated tests can simulate viewer mode without a real second Supabase
+  // account signed in. Flipping this client-side has no security effect by itself — the real
+  // access boundary is the server-side RLS policy on app_state/viewer_grants (see the one-time
+  // SQL), so this can only ever affect this browser's own UI, never grant or block real data.
+  window.__setViewerModeForTests = function (flag) {
+    isViewerMode = !!flag;
+    applyViewerLock();
+  };
+
   renderAll();
+
+  // ================= VERSION-CHECK RELOAD PROMPT =================
+  // A homescreen/cached tab keeps running the JS it loaded, even after a newer index.html is
+  // deployed — this can silently run old logic against data shaped by newer code. Periodically
+  // re-fetch this same file (bypassing cache) and compare its <meta name="app-version"> against
+  // the one already running; if they differ, a newer file has been deployed, so prompt a reload
+  // rather than nagging automatically (a reload mid-typing would lose unsaved form input).
+  (function () {
+    var metaTag = document.querySelector('meta[name="app-version"]');
+    var currentVersion = metaTag ? metaTag.getAttribute('content') : '';
+    var banner = document.getElementById('version-update-banner');
+    var alreadyShown = false;
+    function checkForNewVersion() {
+      if (alreadyShown || !currentVersion) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      fetch(location.pathname + '?_v=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) { return r.text(); })
+        .then(function (text) {
+          var match = text.match(/<meta\s+name="app-version"\s+content="([^"]+)"/);
+          var fetchedVersion = match ? match[1] : null;
+          if (fetchedVersion && fetchedVersion !== currentVersion && !alreadyShown) {
+            alreadyShown = true;
+            banner.style.display = 'flex';
+          }
+        })
+        .catch(function () { /* offline or blocked — just skip this check, try again later */ });
+    }
+    setTimeout(checkForNewVersion, 4000);
+    setInterval(checkForNewVersion, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') checkForNewVersion();
+    });
+    document.getElementById('btn-version-reload').addEventListener('click', function () {
+      location.reload();
+    });
+  })();
 
   // ================= SUPABASE SYNC (cross-device) =================
   // The whole app state (products/costs/orders/blockedDates) is stored as a single
@@ -8493,7 +9401,7 @@
   }
 
   function scheduleCloudPush() {
-    if (!sb || cloudSyncSuspended) return;
+    if (!sb || cloudSyncSuspended || isViewerMode) return;
     setSyncStatus('syncing');
     clearTimeout(cloudPushTimer);
     cloudPushTimer = setTimeout(pushStateToCloud, 800);
@@ -8511,7 +9419,80 @@
     }).catch(function () { setSyncStatus('offline'); });
   }
 
-  function pullStateFromCloud(userId) {
+  // Round 10: if this signed-in account has no app_state row of its OWN, before assuming
+  // "brand new owner, seed the cloud" (the old behavior — see the else-branch below), check
+  // whether someone has granted this email viewer access to their data. If so, load THAT
+  // owner's data read-only instead of creating a blank row of the viewer's own.
+  // Owner-managed settings: add/remove which email addresses can sign in and see her data
+  // read-only. Writes straight to the viewer_grants table (RLS restricts this to rows this
+  // owner created — see the one-time SQL). Never available to a viewer themselves (see
+  // applyViewerLock, which hides this whole button in viewer mode).
+  function renderViewerAccessPanel() {
+    var panel = document.getElementById('viewer-access-panel');
+    if (isViewerMode || !showViewerAccessPanel) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+    panel.innerHTML = '<div style="font-weight:500; margin-bottom:8px;">👁 Viewer access</div>' +
+      '<p class="muted" style="font-size:13px; margin:0 0 10px;">Anyone on this list can sign in (with their own password) and see all your data, but can never add, edit, or delete anything.</p>' +
+      (viewerGrants.length === 0 ? '<div class="empty" style="margin-bottom:10px;">No one has viewer access yet.</div>' :
+        viewerGrants.map(function (g) {
+          return '<div class="row-line"><span>' + escapeHtml(g.viewer_email) + '</span><button type="button" class="btn-text danger" data-remove-viewer-grant="' + g.id + '">Remove</button></div>';
+        }).join('')) +
+      '<div style="display:flex; gap:8px; margin-top:10px;">' +
+        '<input type="email" id="new-viewer-email" placeholder="name@example.com" style="flex:1;">' +
+        '<button type="button" class="btn btn-primary btn-small" id="btn-add-viewer-grant">Add</button>' +
+      '</div>';
+  }
+  function loadViewerGrants() {
+    if (!sb) return;
+    sb.auth.getUser().then(function (res) {
+      var user = res.data && res.data.user;
+      if (!user) return;
+      sb.from('viewer_grants').select('id, viewer_email').eq('owner_user_id', user.id).then(function (r) {
+        viewerGrants = (r.data || []);
+        viewerGrantsLoaded = true;
+        renderViewerAccessPanel();
+      });
+    });
+  }
+  document.getElementById('btn-viewer-access').addEventListener('click', function () {
+    showViewerAccessPanel = !showViewerAccessPanel;
+    if (showViewerAccessPanel && !viewerGrantsLoaded) loadViewerGrants();
+    renderViewerAccessPanel();
+  });
+  document.getElementById('viewer-access-panel').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-add-viewer-grant') {
+      var input = document.getElementById('new-viewer-email');
+      var email = input.value.trim().toLowerCase();
+      if (!email || email.indexOf('@') === -1) { alert('Enter a valid email address.'); return; }
+      if (!sb) return;
+      sb.auth.getUser().then(function (res) {
+        var user = res.data && res.data.user;
+        if (!user) return;
+        sb.from('viewer_grants').insert({ owner_user_id: user.id, viewer_email: email }).then(function (r) {
+          if (r.error) { alert('Could not add that email: ' + r.error.message); return; }
+          loadViewerGrants();
+        });
+      });
+      return;
+    }
+    var removeId = e.target.getAttribute('data-remove-viewer-grant');
+    if (removeId) {
+      if (!confirm('Remove this person\'s viewer access?')) return;
+      sb.from('viewer_grants').delete().eq('id', removeId).then(function (r) {
+        if (r.error) { alert('Could not remove: ' + r.error.message); return; }
+        loadViewerGrants();
+      });
+    }
+  });
+
+  function checkViewerGrant(email) {
+    if (!email) return Promise.resolve(null);
+    return sb.from('viewer_grants').select('owner_user_id').eq('viewer_email', email.toLowerCase()).maybeSingle()
+      .then(function (res) { return (res.data && res.data.owner_user_id) || null; })
+      .catch(function () { return null; });
+  }
+
+  function pullStateFromCloud(userId, userEmail) {
     return sb.from('app_state').select('data').eq('user_id', userId).maybeSingle().then(function (res) {
       if (res.error) { setSyncStatus('offline'); return; }
       if (res.data && res.data.data) {
@@ -8559,11 +9540,40 @@
         }
         save();
         renderAll();
+        setSyncStatus('synced');
       } else {
-        // First time syncing this account — seed the cloud with whatever's on this device already.
-        pushStateToCloud();
+        // No app_state row of this account's own — check whether someone granted this email
+        // viewer access before assuming this is a brand-new owner account.
+        checkViewerGrant(userEmail).then(function (ownerUserId) {
+          if (!ownerUserId) {
+            // Genuinely a new owner account — seed the cloud with whatever's on this device already.
+            pushStateToCloud();
+            setSyncStatus('synced');
+            return;
+          }
+          isViewerMode = true;
+          viewerOwnerUserId = ownerUserId;
+          return sb.from('app_state').select('data').eq('user_id', ownerUserId).maybeSingle().then(function (ownerRes) {
+            if (ownerRes.error || !ownerRes.data || !ownerRes.data.data) { setSyncStatus('offline'); return; }
+            state = ownerRes.data.data;
+            if (!state.blockedDates) state.blockedDates = {};
+            if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6];
+            if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
+            if (!state.products) state.products = [];
+            if (!state.costs) state.costs = [];
+            if (!state.orders) state.orders = [];
+            if (!state.stockLog) state.stockLog = [];
+            if (!state.chatLog) state.chatLog = [];
+            if (!state.customerCredits) state.customerCredits = [];
+            if (state.lastExportDate === undefined) state.lastExportDate = null;
+            if (state.startingCash == null) state.startingCash = 5000;
+            if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
+            renderAll();
+            applyViewerLock();
+            setSyncStatus('synced');
+          });
+        });
       }
-      setSyncStatus('synced');
     });
   }
 
@@ -8756,7 +9766,7 @@
         hasAdoptedCloudStateThisSession = true;
         cloudSyncSuspended = true;
         setSyncStatus('syncing');
-        pullStateFromCloud(session.user.id).catch(function () {
+        pullStateFromCloud(session.user.id, session.user.email).catch(function () {
           setSyncStatus('offline'); // couldn't reach Supabase — carry on with whatever's in localStorage
         }).then(function () {
           cloudSyncSuspended = false;
