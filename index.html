@@ -821,7 +821,7 @@
         </div>
         <div>
           <label class="field-label">Shipping cost you paid (courier)</label>
-          <input id="of-shipping-cost" type="number" step="0.01" min="0" value="0">
+          <input id="of-shipping-cost" type="number" step="0.01" min="0" placeholder="0.00">
         </div>
         <div>
           <label class="field-label">Discount</label>
@@ -867,9 +867,10 @@
         <input id="order-filter-to" type="date" style="width:150px;">
       </div>
     </div>
+    <div id="order-bulk-bar" style="margin-bottom:10px;"></div>
     <div class="card" style="overflow-x:auto;">
       <table id="order-table">
-        <thead><tr><th>Date</th><th>Buyer</th><th>WhatsApp</th><th>Items</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th><input type="checkbox" id="order-select-all"></th><th>Date</th><th>Buyer</th><th>WhatsApp</th><th>Items</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="order-empty" style="display:none;">No orders yet.</div>
@@ -997,6 +998,11 @@
   // positive amount = credit granted, negative = credit consumed against a later order.
   if (!state.customerCredits) state.customerCredits = [];
   if (state.lastExportDate === undefined) state.lastExportDate = null;
+  // Weekly automatic cloud backup — a full snapshot of her data, silently uploaded to Supabase
+  // Storage on login if it's been a while, so a lost phone or corrupted localStorage never means
+  // losing everything. Purely a timestamp of the last successful upload; the actual backup files
+  // live in Storage, not in this state blob.
+  if (state.lastBackupDate === undefined) state.lastBackupDate = null;
   if (state.startingCash == null) state.startingCash = 5000;
   if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
   var didMigrate = false;
@@ -3586,7 +3592,7 @@
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
     document.getElementById('of-shipping-weight').value = '';
     document.getElementById('of-shipping').value = 0;
-    document.getElementById('of-shipping-cost').value = 0;
+    document.getElementById('of-shipping-cost').value = '';
     document.getElementById('of-discount').value = 0;
     document.getElementById('of-notes').value = '';
     var repeatWrap = document.getElementById('of-repeat-customer-wrap');
@@ -3912,7 +3918,9 @@
     var shippingZone = document.getElementById('of-shipping-zone').value;
     var shippingWeight = Number(document.getElementById('of-shipping-weight').value) || 0;
     var shippingFee = Number(document.getElementById('of-shipping').value) || 0;
-    var shippingCostActual = Number(document.getElementById('of-shipping-cost').value) || 0;
+    var shippingCostRaw = document.getElementById('of-shipping-cost').value;
+    var shippingCostEntered = shippingCostRaw !== '';
+    var shippingCostActual = shippingCostEntered ? (Number(shippingCostRaw) || 0) : 0;
     var discount = Number(document.getElementById('of-discount').value) || 0;
     var notes = document.getElementById('of-notes').value.trim();
     // If she's editing an order, carry over how many of each line item were already marked as
@@ -3965,6 +3973,7 @@
         order.shippingWeight = shippingWeight;
         order.shippingFee = shippingFee;
         order.shippingCostActual = shippingCostActual;
+        order.shippingCostEntered = shippingCostEntered;
         // Tracking number/courier are entered later, from the Shipping tab once she's actually
         // booked the shipment — this form no longer touches them, so an edit here never
         // clobbers what she already filled in over there.
@@ -3980,6 +3989,10 @@
     } else {
       var newOrder = {
         id: uid(),
+        // Recorded automatically the moment she hits Save — not something she types in herself.
+        // Lets the Shipping sort tell apart two orders that share the same Date (she often logs
+        // several in one sitting), which the Date field alone (day only, no time) can't do.
+        createdAt: new Date().toISOString(),
         buyerName: buyerName,
         buyerHandle: buyerHandle,
         buyerWhatsapp: buyerWhatsapp,
@@ -3999,6 +4012,7 @@
         shippingWeight: shippingWeight,
         shippingFee: shippingFee,
         shippingCostActual: shippingCostActual,
+        shippingCostEntered: shippingCostEntered,
         trackingNumber: '',
         courier: '',
         trackingMessageSent: false,
@@ -4099,9 +4113,10 @@
     renderOrders();
   }
 
-  function changeOrderStatus(id, newStatus) {
-    var order = state.orders.find(function (o) { return o.id === id; });
-    if (!order) return;
+  // The actual status-change mechanics (stock restore/deduct, packaging prompt) with no save() or
+  // renderAll() of its own — shared by the single-row change below and the bulk-apply toolbar, so
+  // a bulk change over many orders only saves/re-renders once at the end instead of once per row.
+  function changeOrderStatusCore(order, newStatus) {
     var wasCancelled = order.status === 'cancelled';
     var willBeCancelled = newStatus === 'cancelled';
     if (!wasCancelled && willBeCancelled) restoreStock(order);
@@ -4120,6 +4135,32 @@
       pendingPackagingChoiceOrderId = null;
     }
     order.status = newStatus;
+  }
+
+  function changeOrderStatus(id, newStatus) {
+    var order = state.orders.find(function (o) { return o.id === id; });
+    if (!order) return;
+    changeOrderStatusCore(order, newStatus);
+    save();
+    renderAll();
+  }
+
+  // Applies one status to every selected order in the Orders table at once. A single confirm
+  // upfront (mentioning how many aren't fully paid, if any) instead of the per-row "not fully
+  // paid, mark anyway?" popup firing once per selected order — that would mean clicking through a
+  // wall of identical dialogs for a 10-order batch.
+  function bulkChangeOrderStatus(ids, newStatus) {
+    var orders = ids.map(function (id) { return state.orders.find(function (o) { return o.id === id; }); }).filter(Boolean);
+    if (orders.length === 0 || !newStatus) return;
+    var unpaidCount = 0;
+    if (newStatus === 'shipped' || newStatus === 'delivered') {
+      unpaidCount = orders.filter(function (o) { return !orderFullyPaid(o); }).length;
+    }
+    var msg = 'Change ' + orders.length + ' selected order' + (orders.length === 1 ? '' : 's') + ' to "' + newStatus + '"?' +
+      (unpaidCount > 0 ? ' (' + unpaidCount + ' of them ' + (unpaidCount === 1 ? 'is' : 'are') + ' not fully paid yet.)' : '');
+    if (!confirm(msg)) return;
+    orders.forEach(function (order) { changeOrderStatusCore(order, newStatus); });
+    selectedOrderIds = [];
     save();
     renderAll();
   }
@@ -4381,6 +4422,15 @@
     renderAll();
   }
 
+  // Jumps straight to an order's shipping-cost field (from the Shipping tab's "missing shipping
+  // cost" list) — same navigation as goToOrder, but also opens the Edit details panel where that
+  // field actually lives, so she doesn't have to expand the row and click Edit details herself.
+  function goToOrderShippingCost(orderId) {
+    goToOrder(orderId);
+    editingDetailsOrderId = orderId;
+    renderAll();
+  }
+
   // ---------- Add-ons: items the customer decides on after the order/payment already exists
   // (e.g. an extra sticker requested live). Each has its own separate Paid toggle, since it's
   // a second payment, and "fully paid" (orderFullyPaid) gates whether it's safe to ship.
@@ -4544,7 +4594,7 @@
           '<div class="field-block"><label class="field-label">Recipient phone <span class="muted">(blank = use WhatsApp number)</span></label><input id="def-recipientPhone-' + o.id + '" value="' + escapeHtml(o.recipientPhone || '') + '"></div>' +
           '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Ship to (address)</label><textarea id="def-shipTo-' + o.id + '" rows="2" style="resize:vertical;">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
           '<div class="field-block"><label class="field-label">Postcode</label><input id="def-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '"></div>' +
-          '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostActual || 0) + '"></div>' +
+          '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" placeholder="0.00" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostEntered ? (o.shippingCostActual || 0) : '') + '"></div>' +
         '</div>' +
         '<div class="form-actions" style="margin-top:10px;">' +
           '<button class="btn btn-primary btn-small" data-save-details="' + o.id + '">Save</button> ' +
@@ -4559,7 +4609,7 @@
         detailRow('Recipient name', o.recipientName || '—') +
         detailRow('Recipient phone', o.recipientPhone || o.buyerWhatsapp || '—') +
         detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
-        detailRow('Shipping cost paid', money(o.shippingCostActual || 0)) +
+        detailRow('Shipping cost paid', o.shippingCostEntered ? money(o.shippingCostActual || 0) : '⚠️ Not entered yet') +
       '</div>' +
       '<div style="margin-top:10px;"><button class="btn btn-secondary btn-small" data-edit-details="' + o.id + '">Edit details</button></div>';
   }
@@ -4576,7 +4626,9 @@
     order.recipientPhone = document.getElementById('def-recipientPhone-' + id).value.trim();
     order.shipTo = document.getElementById('def-shipTo-' + id).value.trim();
     order.postcode = document.getElementById('def-postcode-' + id).value.trim();
-    order.shippingCostActual = Number(document.getElementById('def-shippingCostActual-' + id).value) || 0;
+    var shipCostRawDetails = document.getElementById('def-shippingCostActual-' + id).value;
+    order.shippingCostEntered = shipCostRawDetails !== '';
+    order.shippingCostActual = order.shippingCostEntered ? (Number(shipCostRawDetails) || 0) : 0;
     save();
     editingDetailsOrderId = null;
     renderAll();
@@ -4596,6 +4648,27 @@
   // actually entered it. false = newest added shown first (the long-standing default).
   var orderSortAscending = false;
 
+  // Lets her apply one status change to several orders at once (e.g. a whole batch that's all
+  // ready to ship together) instead of clicking each row's dropdown one at a time. Cleared
+  // whenever the visible list re-renders after an apply, or when she flips a checkbox back off.
+  var selectedOrderIds = [];
+
+  function renderOrderBulkBar() {
+    var bar = document.getElementById('order-bulk-bar');
+    if (!bar) return;
+    if (selectedOrderIds.length === 0) { bar.innerHTML = ''; return; }
+    var statuses = ['queueing', 'uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered', 'cancelled'];
+    bar.innerHTML = '<div class="card" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
+      '<span style="font-weight:500;">' + selectedOrderIds.length + ' selected</span>' +
+      '<select id="order-bulk-status" style="width:auto;">' +
+        '<option value="">Change status to…</option>' +
+        statuses.map(function (s) { return '<option value="' + s + '">' + s + '</option>'; }).join('') +
+      '</select>' +
+      '<button type="button" class="btn btn-primary btn-small" id="btn-order-bulk-apply">Apply</button>' +
+      '<button type="button" class="btn-text" id="btn-order-bulk-clear">Clear selection</button>' +
+    '</div>';
+  }
+
   function renderOrderFilterBar() {
     var from = document.getElementById('order-filter-from');
     var to = document.getElementById('order-filter-to');
@@ -4609,6 +4682,10 @@
 
   function renderOrders() {
     renderOrderFilterBar();
+    // Drop any selected id that no longer exists (e.g. that order was just deleted) so the bulk
+    // bar's count and the header "select all" checkbox never lie about what's actually selectable.
+    selectedOrderIds = selectedOrderIds.filter(function (id) { return state.orders.some(function (o) { return o.id === id; }); });
+    renderOrderBulkBar();
     var tbody = document.querySelector('#order-table tbody');
     var empty = document.getElementById('order-empty');
     var countEl = document.getElementById('order-filter-count');
@@ -4647,6 +4724,7 @@
         return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
       }).join('');
       var rows = '<tr>' +
+        '<td><input type="checkbox" class="order-row-checkbox" data-order-id="' + o.id + '"' + (selectedOrderIds.indexOf(o.id) !== -1 ? ' checked' : '') + '></td>' +
         '<td style="white-space:nowrap;">' + formatDate(o.date) + '</td>' +
         '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + (o.buyerHandle ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 replacement</span>' : '') + '</div></td>' +
         '<td class="muted">' + (escapeHtml(o.buyerWhatsapp) || '—') + '</td>' +
@@ -4669,7 +4747,7 @@
         '</td>' +
         '</tr>';
       if (pendingPackagingChoiceOrderId === o.id) {
-        rows += '<tr><td colspan="8" style="background:#fffaf0; padding:8px 12px;">' +
+        rows += '<tr><td colspan="9" style="background:#fffaf0; padding:8px 12px;">' +
           '<span style="font-size:13px;">📦 Which packaging did you use for this order?</span> ' +
           '<button class="btn btn-secondary btn-small" data-packaging-choice="box" data-packaging-order="' + o.id + '">📦 Parcel Box</button> ' +
           '<button class="btn btn-secondary btn-small" data-packaging-choice="bag" data-packaging-order="' + o.id + '">🛍️ Parcel Bag</button> ' +
@@ -4677,7 +4755,7 @@
         '</td></tr>';
       }
       if (expandedOrderId === o.id) {
-        rows += '<tr class="order-items-row"><td colspan="8">' +
+        rows += '<tr class="order-items-row"><td colspan="9">' +
           o.items.map(function (i, idx) {
             var madeQty = Number(i.madeQty) || 0;
             var madeControl = o.status === 'cancelled' ? '' :
@@ -4752,6 +4830,10 @@
       }
       return rows;
     }).join('');
+    var selectAllBox = document.getElementById('order-select-all');
+    if (selectAllBox) {
+      selectAllBox.checked = sorted.length > 0 && sorted.every(function (o) { return selectedOrderIds.indexOf(o.id) !== -1; });
+    }
   }
 
   function editOrder(id) {
@@ -4770,7 +4852,7 @@
     document.getElementById('of-shipping-zone').value = order.shippingZone || 'west_malaysia';
     document.getElementById('of-shipping-weight').value = order.shippingWeight || '';
     document.getElementById('of-shipping').value = order.shippingFee || 0;
-    document.getElementById('of-shipping-cost').value = order.shippingCostActual || 0;
+    document.getElementById('of-shipping-cost').value = order.shippingCostEntered ? (order.shippingCostActual || 0) : '';
     document.getElementById('of-discount').value = order.discount || 0;
     document.getElementById('of-notes').value = order.notes || '';
     draftItems = order.items.map(function (item) {
@@ -4916,6 +4998,19 @@
       confirmAndChangeOrderStatus(orderId, newStatus, function (order) { e.target.value = order.status; });
       return;
     }
+    if (e.target.classList.contains('order-row-checkbox')) {
+      var rowId = e.target.getAttribute('data-order-id');
+      var idx = selectedOrderIds.indexOf(rowId);
+      if (e.target.checked && idx === -1) selectedOrderIds.push(rowId);
+      else if (!e.target.checked && idx !== -1) selectedOrderIds.splice(idx, 1);
+      renderOrderBulkBar();
+      var selectAllBox2 = document.getElementById('order-select-all');
+      if (selectAllBox2) {
+        var visibleIds = Array.from(document.querySelectorAll('#order-table tbody .order-row-checkbox')).map(function (el) { return el.getAttribute('data-order-id'); });
+        selectAllBox2.checked = visibleIds.length > 0 && visibleIds.every(function (vid) { return selectedOrderIds.indexOf(vid) !== -1; });
+      }
+      return;
+    }
     if (e.target.classList.contains('order-paid-checkbox')) {
       var id1 = e.target.getAttribute('data-order-id');
       var order1 = state.orders.find(function (o) { return o.id === id1; });
@@ -5043,6 +5138,34 @@
         renderOrders();
         renderDashboard();
       }
+    }
+  });
+
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'order-select-all') {
+      var visibleIds = Array.from(document.querySelectorAll('#order-table tbody .order-row-checkbox')).map(function (el) { return el.getAttribute('data-order-id'); });
+      if (e.target.checked) {
+        visibleIds.forEach(function (id) { if (selectedOrderIds.indexOf(id) === -1) selectedOrderIds.push(id); });
+      } else {
+        selectedOrderIds = selectedOrderIds.filter(function (id) { return visibleIds.indexOf(id) === -1; });
+      }
+      renderOrderBulkBar();
+      Array.from(document.querySelectorAll('#order-table tbody .order-row-checkbox')).forEach(function (cb) {
+        cb.checked = selectedOrderIds.indexOf(cb.getAttribute('data-order-id')) !== -1;
+      });
+    }
+  });
+
+  document.getElementById('order-bulk-bar').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-order-bulk-apply') {
+      var statusSel = document.getElementById('order-bulk-status');
+      var newStatus = statusSel ? statusSel.value : '';
+      if (!newStatus) { alert('Please choose a status first.'); return; }
+      bulkChangeOrderStatus(selectedOrderIds.slice(), newStatus);
+    }
+    if (e.target.id === 'btn-order-bulk-clear') {
+      selectedOrderIds = [];
+      renderOrders();
     }
   });
 
@@ -6441,6 +6564,7 @@
 
     var newOrder = {
       id: uid(),
+      createdAt: new Date().toISOString(),
       buyerName: original.buyerName, buyerHandle: original.buyerHandle, buyerWhatsapp: original.buyerWhatsapp,
       recipientName: original.recipientName || original.buyerName, recipientPhone: original.recipientPhone,
       date: todayISO(),
@@ -6713,17 +6837,38 @@
     '</div>';
   }
 
+  // Prefers an explicit scheduledDate, then falls back to the precise createdAt timestamp (so two
+  // orders logged on the same calendar day still sort correctly by when she actually added them),
+  // then finally the plain Date field for older orders saved before createdAt existed — those can
+  // only be told apart by day, not by time, since that data was never recorded for them.
+  function shippingSortKey(o) {
+    return o.scheduledDate || o.createdAt || o.date;
+  }
+  // She wants to catch orders where she forgot to fill in "Shipping cost you paid" — that field
+  // defaults to 0 the same as a genuine free-shipping order, so a blank field and a confirmed
+  // RM0 look identical unless she explicitly touched it. shippingCostEntered (set the moment she
+  // saves that field, from either the order form or Shipping tab's Edit details panel) is the
+  // real signal. Orders saved before this feature existed have no such flag — for those, a
+  // positive existing amount is treated as "she clearly already filled something in" (not
+  // flagged), while a zero/blank one is treated as unconfirmed (flagged), so she isn't suddenly
+  // asked to re-confirm hundreds of already-correct historical orders.
+  var showMissingShippingCost = false;
+  function isShippingCostMissing(o) {
+    if (o.shippingCostEntered) return false;
+    return !(Number(o.shippingCostActual) > 0);
+  }
   function renderShipping() {
     var fullQueue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
       .slice().sort(function (a, b) {
         return shippingSortNewestFirst
-          ? (b.scheduledDate || b.date).localeCompare(a.scheduledDate || a.date)
-          : (a.scheduledDate || a.date).localeCompare(b.scheduledDate || b.date);
+          ? shippingSortKey(b).localeCompare(shippingSortKey(a))
+          : shippingSortKey(a).localeCompare(shippingSortKey(b));
       });
     var queue = fullQueue.filter(matchesShippingFilter).filter(matchesShippingSearch);
     var delivered = state.orders.filter(function (o) { return o.status === 'delivered'; })
-      .slice().sort(function (a, b) { return (b.scheduledDate || b.date).localeCompare(a.scheduledDate || a.date); });
+      .slice().sort(function (a, b) { return shippingSortKey(b).localeCompare(shippingSortKey(a)); });
     var content = document.getElementById('shipping-content');
+    var missingShippingCostList = fullQueue.filter(isShippingCostMissing);
     var summary = '<div class="card" style="margin-bottom:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
         '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</span>' +
@@ -6738,6 +6883,18 @@
             '<button type="button" class="btn btn-secondary btn-small" id="btn-shipping-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
             '<button type="button" class="btn btn-secondary btn-small" id="btn-toggle-give-credit" style="padding:6px 9px;">🎁 Give credit</button>' +
           '</div>'
+        : '') +
+      (missingShippingCostList.length > 0
+        ? '<button type="button" id="btn-toggle-missing-shipcost" style="margin-top:8px; width:100%; text-align:left; background:var(--bg-warning, #FAEEDA); border:1px solid var(--border-warning, #EF9F27); border-radius:8px; padding:8px 12px; color:var(--text-warning, #854F0B); font-size:13px; cursor:pointer;">' +
+            '⚠️ ' + missingShippingCostList.length + ' order' + (missingShippingCostList.length !== 1 ? 's' : '') + " haven't had shipping cost entered yet — tap to see which" +
+          '</button>' +
+          (showMissingShippingCost
+            ? '<div style="margin-top:6px; padding:8px 12px; border:1px solid var(--border); border-radius:8px;">' +
+                missingShippingCostList.map(function (o) {
+                  return '<div style="padding:4px 0;"><button type="button" class="btn-text" data-missing-shipcost-order="' + o.id + '">' + escapeHtml(o.recipientName || o.buyerName || 'Unknown') + '</button></div>';
+                }).join('') +
+              '</div>'
+            : '')
         : '') +
       (showGiveCreditForm ? giveCreditFormHtml() : '') +
       (editingShippedTemplate ?
@@ -6791,6 +6948,7 @@
             (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
             shippingAddressBlockHtml(o) +
             '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
+            (isShippingCostMissing(o) ? '<div style="margin-top:6px; display:inline-block; background:var(--bg-warning, #FAEEDA); color:var(--text-warning, #854F0B); font-size:11px; padding:2px 8px; border-radius:6px;">⚠️ Shipping cost not entered</div>' : '') +
             (o.parcels && o.parcels.length
               ? addOnsOnlyBoxesHtml(o) +
                 '<div style="margin-top:6px;"><button type="button" class="btn-text danger" data-remove-split="' + o.id + '" style="font-size:12px;">↩️ Remove split</button></div>' +
@@ -6907,6 +7065,13 @@
       renderShipping();
       return;
     }
+    if (e.target.id === 'btn-toggle-missing-shipcost') {
+      showMissingShippingCost = !showMissingShippingCost;
+      renderShipping();
+      return;
+    }
+    var missingShipcostOrderId = e.target.getAttribute && e.target.getAttribute('data-missing-shipcost-order');
+    if (missingShipcostOrderId) { goToOrderShippingCost(missingShipcostOrderId); return; }
     if (e.target.id === 'btn-edit-shipped-template') {
       editingShippedTemplate = true;
       renderShipping();
@@ -9566,6 +9731,7 @@
             if (!state.chatLog) state.chatLog = [];
             if (!state.customerCredits) state.customerCredits = [];
             if (state.lastExportDate === undefined) state.lastExportDate = null;
+            if (state.lastBackupDate === undefined) state.lastBackupDate = null;
             if (state.startingCash == null) state.startingCash = 5000;
             if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
             renderAll();
@@ -9683,6 +9849,52 @@
     }).catch(function () { photoSyncInFlight = false; });
   }
 
+  // ---- Automatic weekly cloud backup ----
+  // She wanted this to require zero effort from her: a full JSON snapshot of her data is
+  // uploaded to its own Supabase Storage bucket automatically, checked once per sign-in (not on
+  // a fixed schedule — this is a browser page with no server always running, so "check on login"
+  // is the only reliable trigger point). Only the last 4 snapshots are kept; older ones are
+  // deleted automatically so Storage usage doesn't grow forever. There's no restore button in the
+  // app yet — if she ever needs one of these back, she'd need to ask for it manually — but having
+  // the safety net in place is the priority for now.
+  var BACKUP_BUCKET = 'backups';
+  var MAX_BACKUPS = 4;
+  var BACKUP_INTERVAL_DAYS = 7;
+  var backupInFlight = false;
+
+  function maybeRunAutoBackup(userId) {
+    if (!sb || backupInFlight) return;
+    var last = state.lastBackupDate;
+    var daysSince = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
+    if (daysSince < BACKUP_INTERVAL_DAYS) return;
+    backupInFlight = true;
+    var snapshot = JSON.stringify(state);
+    var blob = new Blob([snapshot], { type: 'application/json' });
+    // ISO timestamps (colons/dots swapped for filename-safety) sort correctly as plain strings,
+    // so listing this folder and sorting by name alone gives chronological order — no need to
+    // parse dates back out of the filename later.
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    var path = userId + '/backup-' + stamp + '.json';
+    sb.storage.from(BACKUP_BUCKET).upload(path, blob, { upsert: false, contentType: 'application/json' }).then(function (res) {
+      backupInFlight = false;
+      if (res.error) return; // bucket may not exist yet, or offline — just try again next login
+      state.lastBackupDate = new Date().toISOString();
+      save();
+      pruneOldBackups(userId);
+    }).catch(function () { backupInFlight = false; });
+  }
+
+  function pruneOldBackups(userId) {
+    sb.storage.from(BACKUP_BUCKET).list(userId, { limit: 100 }).then(function (res) {
+      if (res.error || !res.data) return;
+      var files = res.data.filter(function (f) { return /\.json$/.test(f.name); })
+        .sort(function (a, b) { return a.name.localeCompare(b.name); });
+      if (files.length <= MAX_BACKUPS) return;
+      var toDelete = files.slice(0, files.length - MAX_BACKUPS).map(function (f) { return userId + '/' + f.name; });
+      sb.storage.from(BACKUP_BUCKET).remove(toDelete);
+    }).catch(function () {});
+  }
+
   function showApp() {
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-shell').style.display = 'block';
@@ -9772,6 +9984,7 @@
           cloudSyncSuspended = false;
           showApp();
           syncPhotosToCloud(); // pick up any photo still sitting locally from before this feature existed
+          maybeRunAutoBackup(session.user.id); // silent weekly safety-net snapshot, no UI unless it fails
         });
       } else {
         hasAdoptedCloudStateThisSession = false; // signed out — a genuine next sign-in should pull fresh
