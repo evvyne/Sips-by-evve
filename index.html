@@ -863,6 +863,10 @@
           <option value="delivered">delivered</option>
           <option value="cancelled">cancelled</option>
         </select>
+        <select id="order-filter-type" style="width:170px;">
+          <option value="">All orders</option>
+          <option value="replacement">🔁 Replacement only</option>
+        </select>
         <input id="order-filter-from" type="date" style="width:150px;">
         <input id="order-filter-to" type="date" style="width:150px;">
       </div>
@@ -3528,6 +3532,7 @@
     if (e.target.id === 'order-filter-from') { orderFilterFrom = e.target.value; renderOrders(); return; }
     if (e.target.id === 'order-filter-to') { orderFilterTo = e.target.value; renderOrders(); return; }
     if (e.target.id === 'order-filter-status') { orderFilterStatus = e.target.value; renderOrders(); return; }
+    if (e.target.id === 'order-filter-type') { orderFilterType = e.target.value; renderOrders(); return; }
   });
   document.getElementById('order-filter-bar').addEventListener('click', function (e) {
     if (e.target.id === 'btn-order-sort-toggle') {
@@ -4036,9 +4041,12 @@
     }
 
     // Only actually spend her credit once the order is confirmed saved — see the comment on
-    // pendingCreditConsumption above.
+    // pendingCreditConsumption above. Records WHICH order actually used the credit (previously
+    // always saved as null) so the Customers tab can show "used on order X" instead of just a
+    // bare negative amount with no way to tell which sale it went towards.
     if (pendingCreditConsumption && pendingCreditConsumption.key === normalizeIdentifier(buyerWhatsapp)) {
-      addCustomerCredit(buyerWhatsapp, -pendingCreditConsumption.amount, 'Applied to new order', null);
+      var consumedOnOrderId = (typeof order !== 'undefined' && order) ? order.id : ((typeof newOrder !== 'undefined' && newOrder) ? newOrder.id : null);
+      addCustomerCredit(buyerWhatsapp, -pendingCreditConsumption.amount, 'Applied to new order', consumedOnOrderId);
       pendingCreditConsumption = null;
     }
 
@@ -4305,6 +4313,10 @@
   // buyer's order count, total spent, credit balance, and last address all in one place.
   var customersSearchText = '';
   var expandedCustomerKey = null;
+  // Which customer currently has the inline "give credit" mini-form open — she asked for a way
+  // to grant credit right from a customer's own card here, instead of having to go to the
+  // Shipping tab or a replacement form (and re-type/search for their WhatsApp number there).
+  var showGiveCreditForCustomerKey = null;
 
   function customerAggregates() {
     var groups = {};
@@ -4344,9 +4356,44 @@
     return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.whatsapp || '').toLowerCase().indexOf(q) !== -1;
   }
 
+  // Every credit ledger entry for this one customer — grants (positive) and consumptions
+  // (negative) — newest first, so "why is her balance what it is" is readable at a glance
+  // without her having to add up a pile of numbers herself.
+  function customerCreditLedgerHtml(c) {
+    var entries = state.customerCredits.filter(function (x) { return x.key === c.key; })
+      .slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    if (entries.length === 0) return '';
+    return '<div style="margin-top:8px;">' +
+      '<div class="muted" style="font-size:11px; font-weight:600; margin-bottom:4px;">Credit history</div>' +
+      entries.map(function (e) {
+        var isGrant = Number(e.amount) >= 0;
+        var linkedOrder = e.sourceOrderId ? state.orders.find(function (o) { return o.id === e.sourceOrderId; }) : null;
+        return '<div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-size:12px; border-bottom:0.5px solid var(--border,#eee);">' +
+          '<span>' + escapeHtml(formatDate(e.date)) + ' — ' + escapeHtml(e.reason || (isGrant ? 'Credit given' : 'Credit used')) +
+          (linkedOrder ? ' <button type="button" class="btn-text" data-cust-go-order="' + linkedOrder.id + '" style="font-size:11px;">(' + (isGrant ? 'from' : 'used on') + ' ' + escapeHtml(linkedOrder.date || '') + ' order)</button>' : '') +
+          '</span>' +
+          '<span style="color:' + (isGrant ? 'var(--green,#3b6d11)' : 'var(--red,#a32d2d)') + ';">' + (isGrant ? '+' : '') + money(e.amount) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+  function giveCreditToCustomerFormHtml(c) {
+    return '<div style="background:var(--bg); border-radius:8px; padding:10px 12px; margin-top:8px;">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px; font-weight:600;">Give ' + escapeHtml(c.name || 'her') + ' credit</div>' +
+      '<input type="number" min="0" step="0.01" id="cust-gc-amount" placeholder="RM amount" style="width:120px; margin-bottom:8px;"> ' +
+      '<input type="text" id="cust-gc-reason" placeholder="Reason (e.g. wrong colour sent)" style="width:calc(100% - 130px); margin-bottom:8px;">' +
+      '<div style="display:flex; gap:8px;">' +
+        '<button type="button" class="btn btn-primary btn-small" data-save-cust-credit="' + c.key + '" data-cust-whatsapp="' + escapeHtml(c.whatsapp || '') + '">Save credit</button>' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-cancel-cust-credit">Cancel</button>' +
+      '</div>' +
+    '</div>';
+  }
   function customerDetailHtml(c) {
     return '<div style="border-top:0.5px solid var(--border,#e5e5e5); margin-top:8px; padding-top:8px;">' +
       (c.creditBalance ? '<div style="margin-bottom:8px;"><span class="pill pill-green">Credit ' + money(c.creditBalance) + '</span></div>' : '') +
+      '<div style="margin-bottom:8px;"><button type="button" class="btn-text" data-toggle-cust-credit="' + c.key + '">🎁 Give credit</button></div>' +
+      (showGiveCreditForCustomerKey === c.key ? giveCreditToCustomerFormHtml(c) : '') +
+      customerCreditLedgerHtml(c) +
       c.orders.map(function (o) {
         var tags = (o.isReplacement ? ' <span class="pill pill-blue" style="font-size:10px;">🔁 replacement</span>' : '') +
           ((o.items || []).some(function (i) { return i.isGift; }) ? ' <span class="pill pill-amber" style="font-size:10px;">🎁 gift</span>' : '') +
@@ -4397,12 +4444,39 @@
     if (toggleKey) {
       var key = toggleKey.getAttribute('data-toggle-customer');
       expandedCustomerKey = expandedCustomerKey === key ? null : key;
+      showGiveCreditForCustomerKey = null;
       renderCustomers();
       return;
     }
     var goOrderBtn = e.target.closest('[data-cust-go-order]');
     if (goOrderBtn) {
       goToOrder(goOrderBtn.getAttribute('data-cust-go-order'));
+      return;
+    }
+    var toggleCustCredit = e.target.closest('[data-toggle-cust-credit]');
+    if (toggleCustCredit) {
+      var custCreditKey = toggleCustCredit.getAttribute('data-toggle-cust-credit');
+      showGiveCreditForCustomerKey = showGiveCreditForCustomerKey === custCreditKey ? null : custCreditKey;
+      renderCustomers();
+      return;
+    }
+    if (e.target.id === 'btn-cancel-cust-credit') {
+      showGiveCreditForCustomerKey = null;
+      renderCustomers();
+      return;
+    }
+    var saveCustCreditBtn = e.target.closest('[data-save-cust-credit]');
+    if (saveCustCreditBtn) {
+      var custWhatsapp = saveCustCreditBtn.getAttribute('data-cust-whatsapp');
+      var custGcAmount = Number(document.getElementById('cust-gc-amount').value) || 0;
+      var custGcReason = document.getElementById('cust-gc-reason').value.trim();
+      if (!custWhatsapp) { alert('This customer has no WhatsApp number on file — cannot record credit for them.'); return; }
+      if (custGcAmount <= 0) { alert('Enter how much credit to give her.'); return; }
+      addCustomerCredit(custWhatsapp, custGcAmount, custGcReason, null);
+      logAddToQuickAdd('Gave ' + money(custGcAmount) + ' credit to ' + custWhatsapp + (custGcReason ? ' — ' + custGcReason : '') + '.');
+      save();
+      showGiveCreditForCustomerKey = null;
+      renderCustomers();
       return;
     }
     if (e.target.id === 'btn-customers-search-go') {
@@ -4645,6 +4719,10 @@
   // (queueing, uv curing, ready to ship, etc.) — this lets her narrow the table down to just one
   // stage at a time, e.g. "show me only what still needs uv curing".
   var orderFilterStatus = '';
+  // Same idea as orderFilterStatus above, but for order TYPE — she asked for an easy way to see
+  // just the replacement orders on their own, since they're easy to lose track of buried among
+  // all her regular orders once the table gets long.
+  var orderFilterType = '';
 
   // Sorts by the order they were actually ADDED into the app (state.orders is only ever
   // appended to via push, so its natural array order already IS that add-sequence) — not by the
@@ -4680,6 +4758,8 @@
     if (to) to.value = orderFilterTo;
     var statusSel = document.getElementById('order-filter-status');
     if (statusSel) statusSel.value = orderFilterStatus;
+    var typeSel = document.getElementById('order-filter-type');
+    if (typeSel) typeSel.value = orderFilterType;
     var sortBtn = document.getElementById('btn-order-sort-toggle');
     if (sortBtn) sortBtn.textContent = orderSortAscending ? '↑ Oldest added first' : '↓ Newest added first';
   }
@@ -4703,12 +4783,13 @@
       if (orderFilterFrom && o.date < orderFilterFrom) return false;
       if (orderFilterTo && o.date > orderFilterTo) return false;
       if (orderFilterStatus && o.status !== orderFilterStatus) return false;
+      if (orderFilterType === 'replacement' && !o.isReplacement) return false;
       return true;
     });
     if (filteredOrders.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
-      empty.textContent = orderFilterStatus ? 'No orders match this status/date range.' : 'No orders match this date range.';
+      empty.textContent = (orderFilterStatus || orderFilterType) ? 'No orders match this status/type/date range.' : 'No orders match this date range.';
       if (countEl) countEl.textContent = '';
       return;
     }
@@ -6829,7 +6910,7 @@
               '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
               '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' +
               (o.trackingNumber ? '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(courierLabel) + escapeHtml(o.trackingNumber) + '</div>' : '') +
-              (isShippingCostMissing(o) ? '<div style="margin-top:6px; display:inline-block; background:var(--bg-warning, #FAEEDA); color:var(--text-warning, #854F0B); font-size:11px; padding:2px 8px; border-radius:6px;">⚠️ Shipping cost not entered</div>' : '') +
+              shippingCostInlineHtml(o) +
             '</div>' +
             '<span class="pill pill-green">Delivered</span>' +
           '</div>' +
@@ -6876,6 +6957,26 @@
     var costEntered = isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual);
     var feeEntered = isShippingFieldEntered(o.shippingFeeEntered, o.shippingFee);
     return !(costEntered || feeEntered);
+  }
+  // Which missing-shipping-cost order cards currently have their inline fill-in form expanded —
+  // keyed by order id. Collapsed by default so a long Shipping queue doesn't turn into a wall of
+  // input boxes; she taps the warning tag to expand just the one order she wants to fix right now,
+  // fills in either field (or both) without ever leaving the Shipping tab, and it collapses again
+  // once saved.
+  var expandedShippingCostOrderIds = {};
+  function shippingCostInlineHtml(o) {
+    if (!isShippingCostMissing(o)) return '';
+    var expanded = !!expandedShippingCostOrderIds[o.id];
+    return '<div style="margin-top:6px;" id="shipcost-warn-' + o.id + '">' +
+      '<button type="button" data-toggle-shipcost-inline="' + o.id + '" style="display:inline-block; background:var(--bg-warning, #FAEEDA); color:var(--text-warning, #854F0B); font-size:11px; padding:2px 8px; border-radius:6px; border:none; cursor:pointer;">⚠️ Shipping cost not entered</button>' +
+      (expanded
+        ? '<div style="margin-top:8px; padding:10px; border:1px solid var(--border); border-radius:8px; display:grid; grid-template-columns:1fr 1fr; gap:8px; max-width:360px;">' +
+            '<div><label class="field-label" style="font-size:11px;">Paid by customer (RM)</label><input type="number" step="0.01" min="0" placeholder="0.00" id="inline-shipfee-' + o.id + '" value="' + (isShippingFieldEntered(o.shippingFeeEntered, o.shippingFee) ? (o.shippingFee || 0) : '') + '" style="width:100%;"></div>' +
+            '<div><label class="field-label" style="font-size:11px;">Paid by me (RM)</label><input type="number" step="0.01" min="0" placeholder="0.00" id="inline-shipcost-' + o.id + '" value="' + (isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual) ? (o.shippingCostActual || 0) : '') + '" style="width:100%;"></div>' +
+            '<button type="button" class="btn btn-primary btn-small" data-save-shipcost-inline="' + o.id + '" style="grid-column: 1 / -1;">Save</button>' +
+          '</div>'
+        : '') +
+    '</div>';
   }
   function renderShipping() {
     var fullQueue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
@@ -6971,7 +7072,7 @@
             (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
             shippingAddressBlockHtml(o) +
             '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
-            (isShippingCostMissing(o) ? '<div style="margin-top:6px; display:inline-block; background:var(--bg-warning, #FAEEDA); color:var(--text-warning, #854F0B); font-size:11px; padding:2px 8px; border-radius:6px;">⚠️ Shipping cost not entered</div>' : '') +
+            shippingCostInlineHtml(o) +
             (o.parcels && o.parcels.length
               ? addOnsOnlyBoxesHtml(o) +
                 '<div style="margin-top:6px;"><button type="button" class="btn-text danger" data-remove-split="' + o.id + '" style="font-size:12px;">↩️ Remove split</button></div>' +
@@ -7094,7 +7195,38 @@
       return;
     }
     var missingShipcostOrderId = e.target.getAttribute && e.target.getAttribute('data-missing-shipcost-order');
-    if (missingShipcostOrderId) { goToOrderShippingCost(missingShipcostOrderId); return; }
+    if (missingShipcostOrderId) {
+      // Expand that order's own inline fill-in form right where its card already sits in the
+      // queue/delivered list, and scroll to it — no more jumping over to the Orders tab and
+      // hunting for the name there.
+      expandedShippingCostOrderIds[missingShipcostOrderId] = true;
+      renderShipping();
+      var warnEl = document.getElementById('shipcost-warn-' + missingShipcostOrderId);
+      if (warnEl && warnEl.scrollIntoView) warnEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    var toggleShipcostInlineId = e.target.getAttribute && e.target.getAttribute('data-toggle-shipcost-inline');
+    if (toggleShipcostInlineId) {
+      expandedShippingCostOrderIds[toggleShipcostInlineId] = !expandedShippingCostOrderIds[toggleShipcostInlineId];
+      renderShipping();
+      return;
+    }
+    var saveShipcostInlineId = e.target.getAttribute && e.target.getAttribute('data-save-shipcost-inline');
+    if (saveShipcostInlineId) {
+      var inlineOrder = state.orders.find(function (x) { return x.id === saveShipcostInlineId; });
+      if (inlineOrder) {
+        var inlineFeeRaw = document.getElementById('inline-shipfee-' + saveShipcostInlineId).value;
+        inlineOrder.shippingFeeEntered = inlineFeeRaw !== '';
+        inlineOrder.shippingFee = inlineOrder.shippingFeeEntered ? (Number(inlineFeeRaw) || 0) : 0;
+        var inlineCostRaw = document.getElementById('inline-shipcost-' + saveShipcostInlineId).value;
+        inlineOrder.shippingCostEntered = inlineCostRaw !== '';
+        inlineOrder.shippingCostActual = inlineOrder.shippingCostEntered ? (Number(inlineCostRaw) || 0) : 0;
+        delete expandedShippingCostOrderIds[saveShipcostInlineId];
+        save();
+        renderShipping();
+      }
+      return;
+    }
     if (e.target.id === 'btn-edit-shipped-template') {
       editingShippedTemplate = true;
       renderShipping();
