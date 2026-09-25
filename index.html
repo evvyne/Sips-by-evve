@@ -328,6 +328,7 @@
       <button data-tab="inventory">Inventory</button>
       <button data-tab="costs">Costs</button>
       <button data-tab="testing">Testing</button>
+      <button data-tab="wastage">Wastage</button>
       <button data-tab="orders">Orders</button>
       <button data-tab="shipping">Shipping</button>
       <button data-tab="customers">Customers</button>
@@ -747,6 +748,56 @@
     </div>
   </section>
 
+  <!-- WASTAGE -->
+  <section class="page" id="page-wastage">
+    <div class="page-header">
+      <h1>Wastage</h1>
+      <button class="btn btn-primary" id="btn-add-wastage">+ Add</button>
+    </div>
+    <div class="muted" style="font-size:12px; margin:-8px 0 14px;">For stock that left without being sold — broken, given away as a sample, or a stock count correction. This updates Inventory automatically.</div>
+    <div class="card" style="display:flex; gap:28px; flex-wrap:wrap; margin-bottom:16px;">
+      <div>
+        <div class="muted" style="font-size:12px;">Samples given out</div>
+        <div style="font-size:20px; font-weight:700;" id="wastage-sample-stat">0</div>
+      </div>
+      <div>
+        <div class="muted" style="font-size:12px;">Total wastage value</div>
+        <div style="font-size:20px; font-weight:700;" id="wastage-total-stat">RM0</div>
+      </div>
+    </div>
+    <div class="card" id="wastage-form-wrap" style="display:none; margin-bottom:16px;">
+      <div class="form-grid">
+        <div style="grid-column: 1 / -1;">
+          <label class="field-label">Which product?</label>
+          <select id="wf-product"></select>
+        </div>
+        <div>
+          <label class="field-label">How many?</label>
+          <input id="wf-qty" type="number" min="1" step="1" value="1">
+        </div>
+        <div>
+          <label class="field-label">Why?</label>
+          <select id="wf-reason"></select>
+        </div>
+        <div>
+          <label class="field-label">Date</label>
+          <input id="wf-date" type="date">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-wastage">Save</button>
+        <button class="btn btn-secondary" id="btn-cancel-wastage">Cancel</button>
+      </div>
+    </div>
+    <div class="card" style="overflow-x:auto;">
+      <table id="wastage-table">
+        <thead><tr><th>Date</th><th>Product</th><th>Why</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="wastage-empty" style="display:none;">No wastage entries yet.</div>
+    </div>
+  </section>
+
   <!-- ORDERS -->
   <section class="page" id="page-orders">
     <div class="page-header">
@@ -842,11 +893,16 @@
       <p class="muted" style="margin: 0 0 10px;">Payment info (paid, reference number, bank name) is recorded after you save this order — tick "Paid" in the table, or open an order and click "Edit details".</p>
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-order">Save order</button>
+        <button class="btn btn-secondary" id="btn-save-order-addanother">Save + add another order</button>
         <button class="btn btn-secondary" id="btn-cancel-order">Cancel</button>
       </div>
     </div>
     <div class="card" id="order-filter-bar">
-      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:flex-end;">
+      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:space-between; align-items:center;">
+        <span style="display:inline-flex; gap:4px;">
+          <input type="text" id="order-search" class="search-input" placeholder="Search buyer name or WhatsApp…" style="width:200px;">
+          <button type="button" class="btn btn-secondary btn-small" id="btn-order-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>
+        </span>
         <button class="btn btn-secondary btn-small" id="btn-order-sort-toggle"></button>
         <button class="btn btn-secondary btn-small" id="btn-orderfilter-7d">Last 7 days</button>
         <button class="btn btn-secondary btn-small" id="btn-orderfilter-month">This month</button>
@@ -1367,6 +1423,7 @@
   var STOCK_ADJUST_REASONS = {
     wastage: 'Wastage / spillage',
     damaged: 'Damaged',
+    sample: 'Used as sample',
     recount: 'Recount correction',
     other: 'Other'
   };
@@ -1925,6 +1982,7 @@
       state.costs.push({
         id: wastageCostId,
         category: 'wastage',
+        reason: reason,
         date: todayISO(),
         amount: lost * p.cost,
         productId: p.id,
@@ -3495,6 +3553,100 @@
     }
   });
 
+  // ================= WASTAGE =================
+  // A dedicated, deliberately bare-bones page for stock that leaves Inventory without being
+  // sold: broken/damaged, given away as a sample, or a plain recount fix. She said her mum might
+  // be the one using this, so it's one product + one qty + one reason + Save — no filters, no
+  // search, no edit-in-place. Under the hood it's the exact same mechanism as Inventory's
+  // per-product "Adjust stock" (a wastage Cost entry + a stock-history row), just reachable from
+  // its own page instead of hunting through Inventory row-by-row. "Used as sample" is tracked as
+  // its own STOCK_ADJUST_REASONS key (see above) so this page can show a separate running count
+  // of samples given out, distinct from real breakage/loss.
+  function wastageReasonOptionsHtml(selected) {
+    return Object.keys(STOCK_ADJUST_REASONS).map(function (key) {
+      return '<option value="' + key + '"' + (key === selected ? ' selected' : '') + '>' + STOCK_ADJUST_REASONS[key] + '</option>';
+    }).join('');
+  }
+
+  function clearWastageForm() {
+    var prodSel = document.getElementById('wf-product');
+    prodSel.innerHTML = productOptionsHtml(null, false);
+    document.getElementById('wf-qty').value = 1;
+    document.getElementById('wf-reason').innerHTML = wastageReasonOptionsHtml('wastage');
+    document.getElementById('wf-date').value = todayISO();
+  }
+
+  function saveWastageEntry() {
+    var productId = document.getElementById('wf-product').value;
+    var p = state.products.find(function (x) { return x.id === productId; });
+    if (!p) { alert('Pick a product.'); return; }
+    var qty = Number(document.getElementById('wf-qty').value);
+    if (!qty || qty <= 0) { alert('Enter how many.'); return; }
+    var reason = document.getElementById('wf-reason').value;
+    var date = document.getElementById('wf-date').value || todayISO();
+    p.stock = Math.max(0, p.stock - qty);
+    var wastageCostId = uid();
+    state.costs.push({
+      id: wastageCostId,
+      category: 'wastage',
+      reason: reason,
+      date: date,
+      amount: qty * p.cost,
+      productId: p.id,
+      qty: -qty,
+      description: (STOCK_ADJUST_REASONS[reason] || reason) + ' — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + qty + ' units)'
+    });
+    logStock(p.id, -qty, 'wastage', STOCK_ADJUST_REASONS[reason] || reason, date, wastageCostId);
+    logAddToQuickAdd('Logged ' + qty + ' unit(s) of "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" as ' + (STOCK_ADJUST_REASONS[reason] || reason).toLowerCase() + ' — ' + money(qty * p.cost) + '.');
+    document.getElementById('wastage-form-wrap').style.display = 'none';
+    save();
+    renderAll();
+  }
+
+  function renderWastage() {
+    var entries = state.costs.filter(function (c) { return c.category === 'wastage'; })
+      .slice()
+      .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || (b.id || '').localeCompare(a.id || ''); });
+    var tbody = document.querySelector('#wastage-table tbody');
+    var empty = document.getElementById('wastage-empty');
+    if (!entries.length) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+      tbody.innerHTML = entries.map(function (c) {
+        var p = c.productId ? state.products.find(function (x) { return x.id === c.productId; }) : null;
+        var qtyShown = typeof c.qty === 'number' ? Math.abs(c.qty) : '—';
+        return '<tr>' +
+          '<td style="white-space:nowrap;">' + formatDate(c.date) + '</td>' +
+          '<td class="muted">' + escapeHtml(p ? (p.name + (p.variant ? ' — ' + p.variant : '')) : '—') + '</td>' +
+          '<td class="muted">' + escapeHtml(STOCK_ADJUST_REASONS[c.reason] || c.reason || '—') + '</td>' +
+          '<td class="muted">' + qtyShown + '</td>' +
+          '<td>' + money(c.amount) + '</td>' +
+          '<td style="text-align:right;"><button class="btn-text danger" data-delete-wastage="' + c.id + '">Delete</button></td>' +
+          '</tr>';
+      }).join('');
+    }
+    var sampleEntries = entries.filter(function (c) { return c.reason === 'sample'; });
+    var sampleQty = sampleEntries.reduce(function (s, c) { return s + (typeof c.qty === 'number' ? Math.abs(c.qty) : 0); }, 0);
+    var totalValue = entries.reduce(function (s, c) { return s + Number(c.amount || 0); }, 0);
+    document.getElementById('wastage-sample-stat').textContent = sampleQty;
+    document.getElementById('wastage-total-stat').textContent = money(totalValue);
+  }
+
+  document.getElementById('btn-add-wastage').addEventListener('click', function () {
+    clearWastageForm();
+    document.getElementById('wastage-form-wrap').style.display = 'block';
+  });
+  document.getElementById('btn-cancel-wastage').addEventListener('click', function () {
+    document.getElementById('wastage-form-wrap').style.display = 'none';
+  });
+  document.getElementById('btn-save-wastage').addEventListener('click', saveWastageEntry);
+  document.querySelector('#wastage-table tbody').addEventListener('click', function (e) {
+    var delId = e.target.getAttribute('data-delete-wastage');
+    if (delId) deleteCost(delId);
+  });
+
   // ================= ORDERS =================
   var draftItems = [];
   var editingOrderId = null;
@@ -3558,10 +3710,25 @@
       renderOrders();
       return;
     }
+    if (e.target.id === 'btn-order-search-go') {
+      var orderSearchInp = document.getElementById('order-search');
+      orderSearchText = orderSearchInp ? orderSearchInp.value.trim() : '';
+      renderOrders();
+      return;
+    }
+  });
+  document.getElementById('order-filter-bar').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id === 'order-search') {
+      e.preventDefault();
+      orderSearchText = e.target.value.trim();
+      renderOrders();
+    }
   });
 
   document.getElementById('btn-add-order').addEventListener('click', function () {
     editingOrderId = null;
+    pendingShipGroupId = null;
+    pendingChainBuyer = null;
     clearOrderForm();
     document.getElementById('order-form-title').textContent = 'New order';
     document.getElementById('order-form-wrap').style.display = 'block';
@@ -3569,6 +3736,8 @@
   document.getElementById('btn-cancel-order').addEventListener('click', function () {
     editingOrderId = null;
     pendingCreditConsumption = null;
+    pendingShipGroupId = null;
+    pendingChainBuyer = null;
     document.getElementById('order-form-wrap').style.display = 'none';
   });
   document.getElementById('of-estimated-date-clear').addEventListener('click', function () {
@@ -3885,9 +4054,23 @@
     }
   });
 
-  document.getElementById('btn-save-order').addEventListener('click', function () {
+  // Multiple orders from the same buyer that need to ship together (she buys 2-3 separate
+  // tumblers in one sitting, but wants them packed as one parcel) get linked via a shared
+  // shipGroupId — set below by whichever save button she uses. Keeping them as separate Order
+  // records (rather than merging into one order with several line items) means order count,
+  // revenue and profit stay accurate per sale; shipGroupId is purely a "ship these together" tag
+  // read by the Shipping tab (see renderShipping/shipGroupSiblings below).
+  var pendingShipGroupId = null;
+  // Carried across a "Save + add another order" chain so the next form opens pre-filled with the
+  // same buyer instead of her retyping it — cleared once a plain "Save order" ends the chain.
+  var pendingChainBuyer = null;
+
+  // Does everything the old inline btn-save-order handler used to do, EXCEPT closing the form —
+  // returns the saved order object (so callers can attach a shipGroupId / decide whether to keep
+  // the form open for another order), or null if validation failed and nothing was saved.
+  function performSaveOrder() {
     var validLines = draftItems.filter(function (l) { return l.productId && Number(l.qty) > 0; });
-    if (validLines.length === 0) { alert('Add at least one line item.'); return; }
+    if (validLines.length === 0) { alert('Add at least one line item.'); return null; }
 
     var status = document.getElementById('of-status').value;
     var buyerName = document.getElementById('of-buyer-name').value.trim();
@@ -3917,7 +4100,7 @@
     }
     if (!editingOrderId && !estimatedDate && !immediate) {
       if (!confirm("You haven't set a rough target date for this order — it helps you keep track of scheduling later. Save without one anyway?")) {
-        return;
+        return null;
       }
     }
     var shippingZone = document.getElementById('of-shipping-zone').value;
@@ -3963,9 +4146,11 @@
       };
     });
 
+    var savedOrder = null;
     if (editingOrderId) {
       var order = state.orders.find(function (o) { return o.id === editingOrderId; });
       if (order) {
+        savedOrder = order;
         if (order.status !== 'cancelled') restoreStock(order);
         order.buyerName = buyerName;
         order.buyerHandle = buyerHandle;
@@ -4038,6 +4223,7 @@
       };
       if (status !== 'cancelled') deductStock(newOrder);
       state.orders.push(newOrder);
+      savedOrder = newOrder;
     }
 
     // Only actually spend her credit once the order is confirmed saved — see the comment on
@@ -4045,14 +4231,65 @@
     // always saved as null) so the Customers tab can show "used on order X" instead of just a
     // bare negative amount with no way to tell which sale it went towards.
     if (pendingCreditConsumption && pendingCreditConsumption.key === normalizeIdentifier(buyerWhatsapp)) {
-      var consumedOnOrderId = (typeof order !== 'undefined' && order) ? order.id : ((typeof newOrder !== 'undefined' && newOrder) ? newOrder.id : null);
-      addCustomerCredit(buyerWhatsapp, -pendingCreditConsumption.amount, 'Applied to new order', consumedOnOrderId);
+      addCustomerCredit(buyerWhatsapp, -pendingCreditConsumption.amount, 'Applied to new order', savedOrder ? savedOrder.id : null);
       pendingCreditConsumption = null;
     }
 
+    return savedOrder;
+  }
+
+  // Lets her come back to a buyer's already-saved (but not-yet-shipped) order later — e.g. found
+  // via the new Orders search bar the next day — and start a second order for the same buyer that
+  // ships together with it, without retyping their name/WhatsApp. Same shipGroupId mechanism as
+  // the in-form "Save + add another order" chain above; just entered from an existing row instead.
+  function startLinkedOrderFrom(id) {
+    var source = state.orders.find(function (o) { return o.id === id; });
+    if (!source) return;
+    if (!source.shipGroupId) { source.shipGroupId = uid(); save(); }
+    pendingShipGroupId = source.shipGroupId;
+    pendingChainBuyer = { buyerName: source.buyerName, buyerHandle: source.buyerHandle, buyerWhatsapp: source.buyerWhatsapp };
+    editingOrderId = null;
+    clearOrderForm();
+    document.getElementById('of-buyer-name').value = pendingChainBuyer.buyerName || '';
+    document.getElementById('of-buyer-handle').value = pendingChainBuyer.buyerHandle || '';
+    document.getElementById('of-buyer-whatsapp').value = pendingChainBuyer.buyerWhatsapp || '';
+    document.getElementById('order-form-title').textContent = 'New order — linked with ' + (pendingChainBuyer.buyerName || 'this buyer') + "'s other order(s)";
+    document.getElementById('order-form-wrap').style.display = 'block';
+    var formWrapEl = document.getElementById('order-form-wrap');
+    if (typeof formWrapEl.scrollIntoView === 'function') formWrapEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.getElementById('btn-save-order').addEventListener('click', function () {
+    var savedOrder = performSaveOrder();
+    if (!savedOrder) return;
+    if (pendingShipGroupId) savedOrder.shipGroupId = pendingShipGroupId;
+    pendingShipGroupId = null;
+    pendingChainBuyer = null;
     save();
     document.getElementById('order-form-wrap').style.display = 'none';
     renderAll();
+  });
+
+  // "Save + add another order" — for a buyer placing two or three separate purchases in one
+  // sitting that need to ship together. Keeps them as distinct Order records (so order count and
+  // per-order revenue/profit stay accurate) but tags them with a shared shipGroupId that the
+  // Shipping tab uses to show them linked (see shipGroupSiblings) — then reopens a fresh form
+  // with the same buyer info already filled in, so she only has to type the new items.
+  document.getElementById('btn-save-order-addanother').addEventListener('click', function () {
+    var savedOrder = performSaveOrder();
+    if (!savedOrder) return;
+    if (!savedOrder.shipGroupId) savedOrder.shipGroupId = uid();
+    pendingShipGroupId = savedOrder.shipGroupId;
+    pendingChainBuyer = { buyerName: savedOrder.buyerName, buyerHandle: savedOrder.buyerHandle, buyerWhatsapp: savedOrder.buyerWhatsapp };
+    save();
+    renderAll();
+    editingOrderId = null;
+    clearOrderForm();
+    document.getElementById('of-buyer-name').value = pendingChainBuyer.buyerName || '';
+    document.getElementById('of-buyer-handle').value = pendingChainBuyer.buyerHandle || '';
+    document.getElementById('of-buyer-whatsapp').value = pendingChainBuyer.buyerWhatsapp || '';
+    document.getElementById('order-form-title').textContent = 'New order — linked with ' + (pendingChainBuyer.buyerName || 'this buyer') + "'s other order(s)";
+    document.getElementById('order-form-wrap').style.display = 'block';
   });
 
   function restoreStock(order) {
@@ -4312,6 +4549,9 @@
   // (same normalizeIdentifier used for repeat-customer matching in round 8) so she can see a
   // buyer's order count, total spent, credit balance, and last address all in one place.
   var customersSearchText = '';
+  // She asked for a quick way to see who still has outstanding credit, without having to expand
+  // every single customer card to check.
+  var customersOnlyWithCredit = false;
   var expandedCustomerKey = null;
   // Which customer currently has the inline "give credit" mini-form open — she asked for a way
   // to grant credit right from a customer's own card here, instead of having to go to the
@@ -4338,9 +4578,18 @@
       var g = groups[key];
       var ordersSorted = g.orders.slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
       var totalSpent = ordersSorted.reduce(function (s, o) { return s + orderTotal(o); }, 0);
+      // Her shipping/recipient name (from the Shipping tab) sometimes differs from the buyer name
+      // she typed on the order — e.g. ordering as herself but shipping to a friend, or the parcel
+      // needs to go under a nickname. Shown alongside the buyer name so she can recognise the
+      // customer either way. Most-recent order with one actually filled in wins.
+      var recipientName = '';
+      for (var ri = 0; ri < ordersSorted.length; ri++) {
+        if (ordersSorted[ri].recipientName) { recipientName = ordersSorted[ri].recipientName; break; }
+      }
       return {
         key: key,
         name: g.name,
+        recipientName: recipientName,
         whatsapp: g.rawIdentifier,
         orderCount: ordersSorted.length,
         totalSpent: totalSpent,
@@ -4411,11 +4660,12 @@
   function renderCustomers() {
     var content = document.getElementById('customers-content');
     var all = customerAggregates();
-    var filtered = all.filter(matchesCustomerSearch);
+    var filtered = all.filter(matchesCustomerSearch).filter(function (c) { return !customersOnlyWithCredit || c.creditBalance > 0; });
     var searchBar = '<div class="card" style="margin-bottom:10px;">' +
       '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
         '<input type="text" id="customers-search" class="search-input" placeholder="Search name or WhatsApp number…" value="' + escapeHtml(customersSearchText) + '" style="font-size:13px; width:220px;">' +
         '<button type="button" class="btn btn-secondary btn-small" id="btn-customers-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
+        '<label class="checkbox-row" style="font-size:12px;"><input type="checkbox" id="customers-only-credit"' + (customersOnlyWithCredit ? ' checked' : '') + '> Only with credit</label>' +
         '<span class="muted" style="font-size:12px;">' + filtered.length + ' customer' + (filtered.length !== 1 ? 's' : '') + '</span>' +
       '</div>' +
     '</div>';
@@ -4431,7 +4681,7 @@
       var expanded = expandedCustomerKey === c.key;
       return '<div class="card" style="margin-bottom:8px;">' +
         '<button type="button" class="btn-text" data-toggle-customer="' + c.key + '" style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; color:inherit;">' +
-          '<span><strong>' + escapeHtml(c.name || 'Unnamed') + '</strong><br><span class="muted" style="font-size:12px;">' + escapeHtml(c.whatsapp || '') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
+          '<span><strong>' + escapeHtml(c.name || 'Unnamed') + (c.recipientName && c.recipientName !== c.name ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(c.recipientName) + ')</span>' : '') + '</strong><br><span class="muted" style="font-size:12px;">' + escapeHtml(c.whatsapp || '') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
           '<span style="text-align:right;"><strong>' + money(c.totalSpent) + '</strong>' + (c.creditBalance ? '<br><span style="font-size:11px; color:var(--green,#3b6d11);">Credit ' + money(c.creditBalance) + '</span>' : '') + '</span>' +
         '</button>' +
         (expanded ? customerDetailHtml(c) : '') +
@@ -4481,6 +4731,12 @@
     }
     if (e.target.id === 'btn-customers-search-go') {
       customersSearchText = document.getElementById('customers-search').value.trim();
+      renderCustomers();
+    }
+  });
+  document.getElementById('customers-content').addEventListener('change', function (e) {
+    if (e.target.id === 'customers-only-credit') {
+      customersOnlyWithCredit = e.target.checked;
       renderCustomers();
     }
   });
@@ -4707,6 +4963,7 @@
     var shipCostRawDetails = document.getElementById('def-shippingCostActual-' + id).value;
     order.shippingCostEntered = shipCostRawDetails !== '';
     order.shippingCostActual = order.shippingCostEntered ? (Number(shipCostRawDetails) || 0) : 0;
+    splitShippingCostAcrossGroup(order);
     save();
     editingDetailsOrderId = null;
     renderAll();
@@ -4723,6 +4980,10 @@
   // just the replacement orders on their own, since they're easy to lose track of buried among
   // all her regular orders once the table gets long.
   var orderFilterType = '';
+  // She asked for a way to find a buyer's earlier, still-unshipped order later (e.g. she typed
+  // in an order today, then tomorrow the same buyer orders again before the first one's even
+  // shipped) — this lets her search Orders by name/WhatsApp instead of scrolling the whole table.
+  var orderSearchText = '';
 
   // Sorts by the order they were actually ADDED into the app (state.orders is only ever
   // appended to via push, so its natural array order already IS that add-sequence) — not by the
@@ -4760,6 +5021,8 @@
     if (statusSel) statusSel.value = orderFilterStatus;
     var typeSel = document.getElementById('order-filter-type');
     if (typeSel) typeSel.value = orderFilterType;
+    var searchInp = document.getElementById('order-search');
+    if (searchInp) searchInp.value = orderSearchText;
     var sortBtn = document.getElementById('btn-order-sort-toggle');
     if (sortBtn) sortBtn.textContent = orderSortAscending ? '↑ Oldest added first' : '↓ Newest added first';
   }
@@ -4784,12 +5047,17 @@
       if (orderFilterTo && o.date > orderFilterTo) return false;
       if (orderFilterStatus && o.status !== orderFilterStatus) return false;
       if (orderFilterType === 'replacement' && !o.isReplacement) return false;
+      if (orderSearchText) {
+        var needle = orderSearchText.toLowerCase();
+        var hay = ((o.buyerName || '') + ' ' + (o.buyerWhatsapp || '') + ' ' + (o.buyerHandle || '')).toLowerCase();
+        if (hay.indexOf(needle) === -1) return false;
+      }
       return true;
     });
     if (filteredOrders.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
-      empty.textContent = (orderFilterStatus || orderFilterType) ? 'No orders match this status/type/date range.' : 'No orders match this date range.';
+      empty.textContent = (orderFilterStatus || orderFilterType || orderSearchText) ? 'No orders match this status/type/date range/search.' : 'No orders match this date range.';
       if (countEl) countEl.textContent = '';
       return;
     }
@@ -4828,6 +5096,9 @@
         '<td><select class="order-status-select" data-order-id="' + o.id + '" style="padding:5px 8px; font-size:13px;">' + statusOptions + '</select></td>' +
         '<td style="text-align:right; white-space:nowrap;">' +
         '<button class="btn-text" data-edit-order="' + o.id + '">Edit</button> ' +
+        (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
+          ? '<button class="btn-text" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">+ Add another order</button> '
+          : '') +
         '<button class="btn-text danger" data-delete-order="' + o.id + '">Delete</button>' +
         '</td>' +
         '</tr>';
@@ -4963,6 +5234,7 @@
     var toggleId = e.target.getAttribute('data-toggle-order');
     var delId = e.target.getAttribute('data-delete-order');
     var editOrderId = e.target.getAttribute('data-edit-order');
+    var addLinkedOrderId = e.target.getAttribute('data-add-linked-order');
     var editDetailsId = e.target.getAttribute('data-edit-details');
     var cancelDetailsId = e.target.getAttribute('data-cancel-details');
     var saveDetailsId = e.target.getAttribute('data-save-details');
@@ -4980,6 +5252,7 @@
     }
     if (delId) deleteOrder(delId);
     if (editOrderId) editOrder(editOrderId);
+    if (addLinkedOrderId) startLinkedOrderFrom(addLinkedOrderId);
     if (editDetailsId) {
       editingDetailsOrderId = editDetailsId;
       renderOrders();
@@ -6349,6 +6622,41 @@
       '<button type="button" class="btn-text" data-edit-shipaddr="' + o.id + '" style="font-size:12px;">✏️ Edit address</button>';
   }
 
+  // Orders she linked together (see startLinkedOrderFrom / "Save + add another order") so they
+  // ship as one parcel — same buyer, same box. Used to show a "linked" badge on the Shipping tab
+  // and to broadcast address/shipping-cost entries across the group instead of making her type
+  // the same thing two or three times.
+  function shipGroupSiblings(order) {
+    if (!order.shipGroupId) return [];
+    return state.orders.filter(function (o) { return o.id !== order.id && o.shipGroupId === order.shipGroupId; });
+  }
+
+  // She enters the ONE total she actually paid/charged for a combined parcel (on whichever linked
+  // order she happens to be editing) — this splits that total evenly across every order sharing
+  // the shipGroupId, including the one she just edited, so each order's own profit/expense figures
+  // stay per-sale-accurate instead of all the shipping cost landing on just one of them.
+  function splitShippingCostAcrossGroup(order) {
+    var siblings = shipGroupSiblings(order);
+    if (!siblings.length) return;
+    var n = siblings.length + 1;
+    if (order.shippingFeeEntered) {
+      var perFee = Math.round((Number(order.shippingFee) || 0) / n * 100) / 100;
+      order.shippingFee = perFee;
+      siblings.forEach(function (sib) { sib.shippingFee = perFee; sib.shippingFeeEntered = true; });
+    }
+    if (order.shippingCostEntered) {
+      var perCost = Math.round((Number(order.shippingCostActual) || 0) / n * 100) / 100;
+      order.shippingCostActual = perCost;
+      siblings.forEach(function (sib) { sib.shippingCostActual = perCost; sib.shippingCostEntered = true; });
+    }
+  }
+
+  function shipGroupBadgeHtml(o) {
+    var siblings = shipGroupSiblings(o);
+    if (!siblings.length) return '';
+    return '<div style="margin:4px 0;"><span class="pill pill-blue" style="font-size:11px;">🔗 Linked with ' + siblings.length + ' other order' + (siblings.length !== 1 ? 's' : '') + ' — ships together</span></div>';
+  }
+
   function saveShippingAddress(id) {
     var order = state.orders.find(function (o) { return o.id === id; });
     if (!order) return;
@@ -6356,6 +6664,14 @@
     order.recipientPhone = document.getElementById('sa-recipientPhone-' + id).value.trim();
     order.shipTo = document.getElementById('sa-shipTo-' + id).value.trim();
     order.postcode = document.getElementById('sa-postcode-' + id).value.trim();
+    // Broadcast the address to any linked orders too — she only fills this in once per parcel,
+    // not once per order sharing that parcel.
+    shipGroupSiblings(order).forEach(function (sib) {
+      sib.recipientName = order.recipientName;
+      sib.recipientPhone = order.recipientPhone;
+      sib.shipTo = order.shipTo;
+      sib.postcode = order.postcode;
+    });
     save();
     editingShippingAddressOrderId = null;
     renderShipping();
@@ -7070,6 +7386,7 @@
             '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
             (o.recipientName && o.recipientName !== o.buyerName ? '<div class="muted" style="font-size:12px;">Buyer: ' + escapeHtml(o.buyerName) + '</div>' : '') +
             (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
+            shipGroupBadgeHtml(o) +
             shippingAddressBlockHtml(o) +
             '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
             shippingCostInlineHtml(o) +
@@ -7221,6 +7538,7 @@
         var inlineCostRaw = document.getElementById('inline-shipcost-' + saveShipcostInlineId).value;
         inlineOrder.shippingCostEntered = inlineCostRaw !== '';
         inlineOrder.shippingCostActual = inlineOrder.shippingCostEntered ? (Number(inlineCostRaw) || 0) : 0;
+        splitShippingCostAcrossGroup(inlineOrder);
         delete expandedShippingCostOrderIds[saveShipcostInlineId];
         save();
         renderShipping();
@@ -9567,6 +9885,7 @@
     renderInventory();
     renderCosts();
     renderTesting();
+    renderWastage();
     renderOrders();
     renderShipping();
     renderCustomers();
