@@ -7019,8 +7019,13 @@
     return !!o.trackingMessageSent;
   }
   function matchesShippingFilter(o) {
+    // "All in queue" keeps meaning what it always has (ready/order-shipment/shipped) — a UV-curing
+    // order only shows up here when she deliberately picks that filter, so the everyday view
+    // doesn't get cluttered with orders that aren't actually ready to pack yet.
+    if (shippingStatusFilter === 'all') return o.status !== 'uv curing';
     if (shippingStatusFilter === 'notshipped') return o.status !== 'shipped';
     if (shippingStatusFilter === 'shipped') return o.status === 'shipped';
+    if (shippingStatusFilter === 'uvcuring') return o.status === 'uv curing';
     if (shippingStatusFilter === 'tracking') return orderHasTracking(o);
     if (shippingStatusFilter === 'sent') return orderMessageSent(o);
     if (shippingStatusFilter === 'replacements') return !!o.isReplacement;
@@ -7029,6 +7034,7 @@
   function shippingFilterOptionsHtml() {
     var opts = [
       ['all', 'All in queue'],
+      ['uvcuring', '🔆 UV curing'],
       ['notshipped', 'Not yet shipped'],
       ['shipped', 'Shipped'],
       ['tracking', 'Has tracking number'],
@@ -7295,7 +7301,7 @@
     '</div>';
   }
   function renderShipping() {
-    var fullQueue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
+    var fullQueue = state.orders.filter(function (o) { return o.status === 'uv curing' || o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
       .slice().sort(function (a, b) {
         return shippingSortNewestFirst
           ? shippingSortKey(b).localeCompare(shippingSortKey(a))
@@ -7364,7 +7370,8 @@
       var contactPhone = o.recipientPhone || o.buyerWhatsapp || '';
       var isOrderShipment = o.status === 'order shipment';
       var isShipped = o.status === 'shipped';
-      var statusPill = isOrderShipment ? '<span class="pill pill-purple">Order shipment</span>' : (isShipped ? '<span class="pill pill-blue">Shipped</span>' : '');
+      var isUvCuring = o.status === 'uv curing';
+      var statusPill = isOrderShipment ? '<span class="pill pill-purple">Order shipment</span>' : (isShipped ? '<span class="pill pill-blue">Shipped</span>' : (isUvCuring ? '<span class="pill pill-amber">🔆 UV curing</span>' : ''));
       var actionBtn;
       if (isShipped) {
         // Stays here — with its tracking still visible — until she confirms the customer actually
