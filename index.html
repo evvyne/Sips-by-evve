@@ -817,7 +817,7 @@
         </div>
         <div>
           <label class="field-label">Shipping fee charged to customer</label>
-          <input id="of-shipping" type="number" step="0.01" min="0" value="0">
+          <input id="of-shipping" type="number" step="0.01" min="0" placeholder="0.00">
         </div>
         <div>
           <label class="field-label">Shipping cost you paid (courier)</label>
@@ -3591,7 +3591,7 @@
     document.getElementById('of-immediate').checked = false;
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
     document.getElementById('of-shipping-weight').value = '';
-    document.getElementById('of-shipping').value = 0;
+    document.getElementById('of-shipping').value = '';
     document.getElementById('of-shipping-cost').value = '';
     document.getElementById('of-discount').value = 0;
     document.getElementById('of-notes').value = '';
@@ -3917,7 +3917,9 @@
     }
     var shippingZone = document.getElementById('of-shipping-zone').value;
     var shippingWeight = Number(document.getElementById('of-shipping-weight').value) || 0;
-    var shippingFee = Number(document.getElementById('of-shipping').value) || 0;
+    var shippingFeeRaw = document.getElementById('of-shipping').value;
+    var shippingFeeEntered = shippingFeeRaw !== '';
+    var shippingFee = shippingFeeEntered ? (Number(shippingFeeRaw) || 0) : 0;
     var shippingCostRaw = document.getElementById('of-shipping-cost').value;
     var shippingCostEntered = shippingCostRaw !== '';
     var shippingCostActual = shippingCostEntered ? (Number(shippingCostRaw) || 0) : 0;
@@ -3972,6 +3974,7 @@
         order.shippingZone = shippingZone;
         order.shippingWeight = shippingWeight;
         order.shippingFee = shippingFee;
+        order.shippingFeeEntered = shippingFeeEntered;
         order.shippingCostActual = shippingCostActual;
         order.shippingCostEntered = shippingCostEntered;
         // Tracking number/courier are entered later, from the Shipping tab once she's actually
@@ -4011,6 +4014,7 @@
         shippingZone: shippingZone,
         shippingWeight: shippingWeight,
         shippingFee: shippingFee,
+        shippingFeeEntered: shippingFeeEntered,
         shippingCostActual: shippingCostActual,
         shippingCostEntered: shippingCostEntered,
         trackingNumber: '',
@@ -4594,7 +4598,7 @@
           '<div class="field-block"><label class="field-label">Recipient phone <span class="muted">(blank = use WhatsApp number)</span></label><input id="def-recipientPhone-' + o.id + '" value="' + escapeHtml(o.recipientPhone || '') + '"></div>' +
           '<div class="field-block" style="grid-column: 1 / -1;"><label class="field-label">Ship to (address)</label><textarea id="def-shipTo-' + o.id + '" rows="2" style="resize:vertical;">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
           '<div class="field-block"><label class="field-label">Postcode</label><input id="def-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '"></div>' +
-          '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" placeholder="0.00" id="def-shippingCostActual-' + o.id + '" value="' + (o.shippingCostEntered ? (o.shippingCostActual || 0) : '') + '"></div>' +
+          '<div class="field-block"><label class="field-label">Shipping cost you paid</label><input type="number" step="0.01" min="0" placeholder="0.00" id="def-shippingCostActual-' + o.id + '" value="' + (isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual) ? (o.shippingCostActual || 0) : '') + '"></div>' +
         '</div>' +
         '<div class="form-actions" style="margin-top:10px;">' +
           '<button class="btn btn-primary btn-small" data-save-details="' + o.id + '">Save</button> ' +
@@ -4609,7 +4613,7 @@
         detailRow('Recipient name', o.recipientName || '—') +
         detailRow('Recipient phone', o.recipientPhone || o.buyerWhatsapp || '—') +
         detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
-        detailRow('Shipping cost paid', o.shippingCostEntered ? money(o.shippingCostActual || 0) : '⚠️ Not entered yet') +
+        detailRow('Shipping cost paid', isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual) ? money(o.shippingCostActual || 0) : '⚠️ Not entered yet') +
       '</div>' +
       '<div style="margin-top:10px;"><button class="btn btn-secondary btn-small" data-edit-details="' + o.id + '">Edit details</button></div>';
   }
@@ -4851,8 +4855,8 @@
     document.getElementById('of-estimated-date-clear').disabled = !!order.immediate;
     document.getElementById('of-shipping-zone').value = order.shippingZone || 'west_malaysia';
     document.getElementById('of-shipping-weight').value = order.shippingWeight || '';
-    document.getElementById('of-shipping').value = order.shippingFee || 0;
-    document.getElementById('of-shipping-cost').value = order.shippingCostEntered ? (order.shippingCostActual || 0) : '';
+    document.getElementById('of-shipping').value = isShippingFieldEntered(order.shippingFeeEntered, order.shippingFee) ? (order.shippingFee || 0) : '';
+    document.getElementById('of-shipping-cost').value = isShippingFieldEntered(order.shippingCostEntered, order.shippingCostActual) ? (order.shippingCostActual || 0) : '';
     document.getElementById('of-discount').value = order.discount || 0;
     document.getElementById('of-notes').value = order.notes || '';
     draftItems = order.items.map(function (item) {
@@ -6825,6 +6829,7 @@
               '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
               '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' +
               (o.trackingNumber ? '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(courierLabel) + escapeHtml(o.trackingNumber) + '</div>' : '') +
+              (isShippingCostMissing(o) ? '<div style="margin-top:6px; display:inline-block; background:var(--bg-warning, #FAEEDA); color:var(--text-warning, #854F0B); font-size:11px; padding:2px 8px; border-radius:6px;">⚠️ Shipping cost not entered</div>' : '') +
             '</div>' +
             '<span class="pill pill-green">Delivered</span>' +
           '</div>' +
@@ -6853,9 +6858,24 @@
   // flagged), while a zero/blank one is treated as unconfirmed (flagged), so she isn't suddenly
   // asked to re-confirm hundreds of already-correct historical orders.
   var showMissingShippingCost = false;
+  // Shared by both shipping-money fields: was this one ever actually confirmed? A saved entered
+  // flag (true or false) is the real signal — set the moment she saves that field, from either
+  // the order form or Shipping tab's Edit details panel. Orders saved before this feature existed
+  // have no such flag at all (undefined) — for those, a positive existing amount is treated as
+  // "she clearly already filled something in" (entered), while a zero/blank one is treated as
+  // unconfirmed, so she isn't suddenly asked to re-confirm hundreds of already-correct orders.
+  function isShippingFieldEntered(enteredFlag, amount) {
+    if (enteredFlag !== undefined) return enteredFlag;
+    return Number(amount) > 0;
+  }
+  // She sometimes bears the shipping cost herself (customer pays RM0) and replacement orders are
+  // usually free to the customer too — so a real RM0 on either field can be a deliberate, correct
+  // answer, not a forgotten one. As long as EITHER "shipping paid by customer" or "shipping paid
+  // by me" has been explicitly confirmed (even as 0), this order isn't flagged as missing.
   function isShippingCostMissing(o) {
-    if (o.shippingCostEntered) return false;
-    return !(Number(o.shippingCostActual) > 0);
+    var costEntered = isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual);
+    var feeEntered = isShippingFieldEntered(o.shippingFeeEntered, o.shippingFee);
+    return !(costEntered || feeEntered);
   }
   function renderShipping() {
     var fullQueue = state.orders.filter(function (o) { return o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
@@ -6868,7 +6888,10 @@
     var delivered = state.orders.filter(function (o) { return o.status === 'delivered'; })
       .slice().sort(function (a, b) { return shippingSortKey(b).localeCompare(shippingSortKey(a)); });
     var content = document.getElementById('shipping-content');
-    var missingShippingCostList = fullQueue.filter(isShippingCostMissing);
+    // Checked across the whole shipping lifecycle, not just the active queue — she wants to catch
+    // a missed shipping cost even on an order that's already been delivered, since that's still
+    // real money that needs to be recorded.
+    var missingShippingCostList = fullQueue.concat(delivered).filter(isShippingCostMissing);
     var summary = '<div class="card" style="margin-bottom:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
         '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</span>' +
