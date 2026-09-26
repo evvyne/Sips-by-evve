@@ -329,6 +329,7 @@
       <button data-tab="costs">Costs</button>
       <button data-tab="testing">Testing</button>
       <button data-tab="wastage">Wastage</button>
+      <button data-tab="producttotals">Product Totals</button>
       <button data-tab="orders">Orders</button>
       <button data-tab="shipping">Shipping</button>
       <button data-tab="customers">Customers</button>
@@ -766,15 +767,10 @@
       </div>
     </div>
     <div class="card" id="wastage-form-wrap" style="display:none; margin-bottom:16px;">
+      <label class="field-label">Which item(s)?</label>
+      <div id="wastage-items"></div>
+      <button type="button" class="btn-text" id="btn-add-wastage-item" style="margin:2px 0 14px;">+ Add another item</button>
       <div class="form-grid">
-        <div style="grid-column: 1 / -1;">
-          <label class="field-label">Which product?</label>
-          <select id="wf-product"></select>
-        </div>
-        <div>
-          <label class="field-label">How many?</label>
-          <input id="wf-qty" type="number" min="1" step="1" value="1">
-        </div>
         <div>
           <label class="field-label">Why?</label>
           <select id="wf-reason"></select>
@@ -795,6 +791,16 @@
         <tbody></tbody>
       </table>
       <div class="empty" id="wastage-empty" style="display:none;">No wastage entries yet.</div>
+    </div>
+  </section>
+
+  <section class="page" id="page-producttotals">
+    <div class="page-header">
+      <h1>Product Totals</h1>
+    </div>
+    <div class="muted" style="font-size:12px; margin:-8px 0 14px;">How many of each you've sold, replaced, given as gifts, sold as defects, or wasted — Tumblers and Glass Straws only. Tap a row for the breakdown.</div>
+    <div class="card" style="overflow-x:auto;">
+      <div id="producttotals-content"></div>
     </div>
   </section>
 
@@ -839,7 +845,7 @@
           </select>
         </div>
         <div>
-          <label class="field-label">Rough target date <span class="muted">(optional, internal only — see Scheduling)</span></label>
+          <label class="field-label">Production date <span class="muted">(optional — auto-suggested if left blank, shown on Calendar)</span></label>
           <div style="display:flex; gap:6px; align-items:center;">
             <input id="of-estimated-date" type="date" style="flex:1;">
             <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
@@ -1081,6 +1087,13 @@
       // The "pending" order status was renamed to "queueing" (clearer — means "still needs to
       // be made"), alongside a new "ready to ship" stage added before "shipped".
       if (o.status === 'pending') { o.status = 'queueing'; didMigrate = true; }
+      // Scheduling used to be a two-step "rough target date -> confirmed date" flow — only the
+      // confirmed date (scheduledDate) ever showed on the Calendar, so a queueing order with only
+      // a rough target sat invisible until she manually confirmed it. That's now a single date
+      // field, saved straight into scheduledDate, so it shows on the Calendar right away. Carry
+      // over any old rough target that never got confirmed, so it doesn't just vanish.
+      if (o.estimatedDate && !o.scheduledDate) { o.scheduledDate = o.estimatedDate; didMigrate = true; }
+      if (o.estimatedDate !== undefined) { delete o.estimatedDate; didMigrate = true; }
     });
   }
 
@@ -1144,6 +1157,27 @@
   function money(n) {
     var v = Number(n) || 0;
     return v.toLocaleString('en-MY', { style: 'currency', currency: 'MYR' });
+  }
+
+  // Guards against a mistyped restock quantity silently blowing up (or crushing) a product's
+  // average cost — e.g. typing "1" instead of "4000" for a material tracked in ml turns a
+  // RM0.011/ml item into a RM44.98/ml item, and since Inventory value = cost × stock, that one
+  // typo can look like tens of thousands of ringgit appearing out of nowhere. If the newly
+  // computed per-unit cost is more than 10x higher or lower than what's already on file, this
+  // asks for a confirmation before it's applied anywhere — she can say "use it anyway" (a real
+  // price swing) or cancel and fix the quantity/amount first. Skipped when there's no existing
+  // cost yet (a brand new product has nothing to compare against).
+  function confirmCostSanity(product, newUnitCost) {
+    if (!product) return true;
+    var oldCost = Number(product.cost) || 0;
+    if (oldCost <= 0 || !isFinite(newUnitCost) || newUnitCost <= 0) return true;
+    var ratio = newUnitCost / oldCost;
+    if (ratio >= 10 || ratio <= 0.1) {
+      return confirm('The unit price for "' + product.name + (product.variant ? ' — ' + product.variant : '') +
+        '" would change from ' + money(oldCost) + ' to ' + money(newUnitCost) + ' per unit — that\'s a big jump.\n\n' +
+        'Press OK to use it anyway, or Cancel to go back and check the quantity/amount.');
+    }
+    return true;
   }
 
   // Keeps a "new_inventory" Cost entry's "(qty × unit cost)" tail in sync whenever its numbers
@@ -1418,6 +1452,7 @@
   var pfPhotoData = '';
   var expandedThemes = {};
   var adjustingStockProductId = null;
+  var restockingProductId = null;
   var viewingStockLogProductId = null;
   var pendingDeleteProductId = null;
   var STOCK_ADJUST_REASONS = {
@@ -1883,12 +1918,17 @@
           '<button class="btn-text danger" data-confirm-delete-product="' + p.id + '">Yes, delete</button>' +
           '<span class="row-actions-sep">·</span>' +
           '<button class="btn-text" data-cancel-delete-product="' + p.id + '">Cancel</button>'
-        : '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
+        : '<button class="btn-text" data-restock="' + p.id + '">Restock</button>' +
+          '<span class="row-actions-sep">·</span>' +
+          '<button class="btn-text" data-adjust-stock="' + p.id + '">Adjust</button>' +
           '<span class="row-actions-sep">·</span>' +
           '<button class="btn-text" data-edit-product="' + p.id + '">Edit</button>' +
           '<span class="row-actions-sep">·</span>' +
           '<button class="btn-text danger" data-delete-product="' + p.id + '">Delete</button>') +
       '</td></tr>';
+    if (restockingProductId === p.id) {
+      row += '<tr><td colspan="4" style="background:#fafbfd;">' + renderRestockPanel(p) + '</td></tr>';
+    }
     if (adjustingStockProductId === p.id) {
       row += '<tr><td colspan="4" style="background:#fafbfd;">' + renderStockAdjustPanel(p) + '</td></tr>';
     }
@@ -1924,6 +1964,88 @@
       : '<tr style="background:#fafbfd;"><td colspan="4" class="empty">No recorded stock movements yet for this product (movements from before this feature won\'t show here).</td></tr>';
     var closeRow = '<tr style="background:#fafbfd;"><td colspan="4" style="padding-top:10px;"><button class="btn btn-secondary btn-small" data-close-stock-log="' + p.id + '">Close</button></td></tr>';
     return titleRow + rowsHtml + closeRow;
+  }
+
+  // She often names a material after its package size — "4000ml x1", "5000ml x2" (a pack of two
+  // 5000ml bottles), "1L" — so restocking can ask "how many packs/bottles did you buy?" instead of
+  // her having to work out and type the total ml/g herself. This is exactly the step that was
+  // skipped once: a restock of "glycerin 4000ml x1" got its quantity typed as 1 (meaning 1 ml, by
+  // the old flow) instead of 4000, and since Inventory value = cost x stock, that single typo
+  // inflated Inventory value by ~RM180,000. Returns the total ml/g represented by ONE pack as
+  // named in the variant, or null if the variant doesn't encode a size (e.g. plain piece-count
+  // items), in which case the form falls back to asking for units directly.
+  function parsePackSizeFromVariant(variant) {
+    if (!variant) return null;
+    var m = variant.match(/(\d+(?:\.\d+)?)\s*(ml|l|kg|g)\b(?:\s*x\s*(\d+))?/i);
+    if (!m) return null;
+    var num = parseFloat(m[1]);
+    var unit = m[2].toLowerCase();
+    var multiplier = m[3] ? parseInt(m[3], 10) : 1;
+    if (unit === 'l') num *= 1000;
+    if (unit === 'kg') num *= 1000;
+    var totalPerPack = num * multiplier;
+    return (totalPerPack && isFinite(totalPerPack)) ? totalPerPack : null;
+  }
+
+  function restockHintText(p, packs) {
+    var packSize = parsePackSizeFromVariant(p.variant);
+    if (!packSize) return '';
+    var total = packSize * (Number(packs) || 0);
+    return '= ' + total + (p.unit || '') + ' total';
+  }
+
+  function renderRestockPanel(p) {
+    var packSize = parsePackSizeFromVariant(p.variant);
+    var qtyLabel = packSize ? 'How many packs/bottles did you buy?' : 'How many did you buy?';
+    return '<div class="order-edit-grid" style="border-top:none; padding-top:2px; margin-top:0;">' +
+        '<div class="field-block"><div class="field-label" style="margin-bottom:2px;">Current stock</div><div style="font-size:13px;">' + p.stock + (p.unit || '') + '</div></div>' +
+        '<div class="field-block"><label class="field-label">' + qtyLabel + '</label><input type="number" min="1" step="1" id="rf-packs-' + p.id + '" data-product-id="' + p.id + '" class="rf-packs-input" value="1"></div>' +
+        '<div class="field-block"><label class="field-label">Total amount paid (RM)</label><input type="number" min="0" step="0.01" id="rf-amount-' + p.id + '"></div>' +
+      '</div>' +
+      (packSize ? '<div id="rf-hint-' + p.id + '" class="muted" style="font-size:12px; margin:-4px 0 4px;">' + restockHintText(p, 1) + '</div>' : '') +
+      '<div class="form-actions" style="margin-top:10px;">' +
+        '<button class="btn btn-primary btn-small" data-save-restock="' + p.id + '">Save</button> ' +
+        '<button class="btn btn-secondary btn-small" data-cancel-restock="' + p.id + '">Cancel</button>' +
+      '</div>';
+  }
+
+  function updateRestockHint(id) {
+    var p = state.products.find(function (x) { return x.id === id; });
+    var input = document.getElementById('rf-packs-' + id);
+    var hint = document.getElementById('rf-hint-' + id);
+    if (!p || !input || !hint) return;
+    hint.textContent = restockHintText(p, input.value);
+  }
+
+  function saveRestock(id) {
+    var p = state.products.find(function (x) { return x.id === id; });
+    if (!p) return;
+    var packs = Number(document.getElementById('rf-packs-' + id).value);
+    var amount = Number(document.getElementById('rf-amount-' + id).value);
+    if (!packs || packs <= 0) { alert('Enter how many you bought.'); return; }
+    if (!amount || amount <= 0) { alert('Enter the total amount paid.'); return; }
+    var packSize = parsePackSizeFromVariant(p.variant);
+    var qty = packSize ? packs * packSize : packs;
+    var newUnitCost = amount / qty;
+    if (!confirmCostSanity(p, newUnitCost)) return;
+    p.stock += qty;
+    p.cost = newUnitCost;
+    var restockCostId = uid();
+    var date = todayISO();
+    state.costs.push({
+      id: restockCostId,
+      category: 'restock',
+      date: date,
+      amount: amount,
+      productId: p.id,
+      qty: qty,
+      description: 'Restock — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + qty + (p.unit || ' units') + ')'
+    });
+    logStock(p.id, qty, 'restock', 'Cost entry (restock, via Inventory)', date, restockCostId);
+    logAddToQuickAdd('Restocked "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" — +' + qty + (p.unit || ' units') + ' for ' + money(amount) + '.');
+    restockingProductId = null;
+    save();
+    renderAll();
   }
 
   function renderStockAdjustPanel(p) {
@@ -1964,6 +2086,9 @@
   document.getElementById('inventory-content').addEventListener('input', function (e) {
     if (e.target.classList.contains('sa-newstock-input')) {
       updateStockAdjustBlocks(e.target.getAttribute('data-product-id'));
+    }
+    if (e.target.classList.contains('rf-packs-input')) {
+      updateRestockHint(e.target.getAttribute('data-product-id'));
     }
   });
 
@@ -2195,6 +2320,9 @@
     var adjustId = e.target.getAttribute('data-adjust-stock');
     var saveAdjustId = e.target.getAttribute('data-save-stock-adjust');
     var cancelAdjustId = e.target.getAttribute('data-cancel-stock-adjust');
+    var restockId = e.target.getAttribute('data-restock');
+    var saveRestockId = e.target.getAttribute('data-save-restock');
+    var cancelRestockId = e.target.getAttribute('data-cancel-restock');
     var viewLogId = e.target.getAttribute('data-view-stock-log');
     var closeLogId = e.target.getAttribute('data-close-stock-log');
     var removeLogId = e.target.getAttribute('data-remove-stock-log');
@@ -2216,6 +2344,15 @@
     if (saveAdjustId) saveStockAdjustment(saveAdjustId);
     if (cancelAdjustId) {
       adjustingStockProductId = null;
+      renderInventory();
+    }
+    if (restockId) {
+      restockingProductId = (restockingProductId === restockId) ? null : restockId;
+      renderInventory();
+    }
+    if (saveRestockId) saveRestock(saveRestockId);
+    if (cancelRestockId) {
+      restockingProductId = null;
       renderInventory();
     }
     if (viewLogId) {
@@ -2613,6 +2750,13 @@
     }
     if (!isMulti && linkedProductId) {
       data.qty = Number(document.getElementById('cf-qty').value) || 0;
+      // Check BEFORE anything is written — the entry hasn't been pushed/assigned yet at this
+      // point, so declining here leaves state completely untouched and the form stays open for
+      // her to fix the quantity/amount, instead of having to undo a half-applied save.
+      if (document.getElementById('cf-updatecost').checked && data.qty > 0 && amount > 0) {
+        var productForSanity = state.products.find(function (x) { return x.id === linkedProductId; });
+        if (!confirmCostSanity(productForSanity, amount / data.qty)) return;
+      }
     }
     if (editingCostId) {
       var c = state.costs.find(function (x) { return x.id === editingCostId; });
@@ -3568,36 +3712,128 @@
     }).join('');
   }
 
+  // Only finished/sellable-type stock (Tumbler, Stickers, Add ons) ever goes through this page —
+  // raw materials ("Others") aren't something she or her mum would be writing off here, and having
+  // all 290+ ingredient rows in the same flat list made it too easy to pick the wrong thing. Same
+  // Type -> (Sticker theme ->) Item cascade as the Orders item picker, so it's a style she already
+  // knows, and it lets more than one item be logged in a single visit (e.g. "1 tumbler + 2
+  // stickers" from the same mishap) instead of repeating the whole Add flow per item.
+  var WASTAGE_PRODUCT_TYPES = PRODUCT_TYPES.filter(function (t) { return t !== 'Others'; });
+  var draftWastageItems = [];
+
+  function renderWastageItems() {
+    var container = document.getElementById('wastage-items');
+    container.innerHTML = draftWastageItems.map(function (line, idx) {
+      var typeOptions = WASTAGE_PRODUCT_TYPES.map(function (t) {
+        return '<option value="' + t + '"' + (t === line.type ? ' selected' : '') + '>' + t + '</option>';
+      }).join('');
+      var typeSelect = '<select class="wi-type" data-idx="' + idx + '"><option value="">Type…</option>' + typeOptions + '</select>';
+
+      var themeSelect = '';
+      if (line.type === 'Stickers') {
+        var themes = productThemes('Stickers');
+        var themeOptions = themes.map(function (th) {
+          return '<option value="' + escapeHtml(th) + '"' + (th === line.theme ? ' selected' : '') + '>' + escapeHtml(th) + '</option>';
+        }).join('');
+        themeSelect = '<select class="wi-theme" data-idx="' + idx + '"><option value="">Sticker theme…</option>' + themeOptions + '</select>';
+      }
+
+      var readyForProduct = line.type && (line.type !== 'Stickers' || line.theme);
+      var productSelectHtml;
+      if (readyForProduct) {
+        var opts = state.products.filter(function (p) {
+          if (p.type !== line.type) return false;
+          if (line.type === 'Stickers' && p.theme !== line.theme) return false;
+          return true;
+        }).map(function (p) {
+          return '<option value="' + p.id + '"' + (p.id === line.productId ? ' selected' : '') + '>' + escapeHtml(productLabel(p)) + '</option>';
+        }).join('');
+        productSelectHtml = '<select class="wi-product" data-idx="' + idx + '"><option value="">Select item…</option>' + opts + '</select>';
+      } else {
+        productSelectHtml = '<select class="wi-product" data-idx="' + idx + '" disabled><option value="">' + (line.type ? 'Select theme first' : 'Select type first') + '</option></select>';
+      }
+
+      return '<div class="item-line" data-idx="' + idx + '">' +
+        typeSelect + themeSelect + productSelectHtml +
+        '<input class="wi-qty" type="number" min="1" value="' + line.qty + '" data-idx="' + idx + '" placeholder="Qty">' +
+        (draftWastageItems.length > 1 ? '<button type="button" class="btn-text danger" data-remove-wastage-line="' + idx + '">Remove</button>' : '') +
+        '</div>';
+    }).join('');
+  }
+
   function clearWastageForm() {
-    var prodSel = document.getElementById('wf-product');
-    prodSel.innerHTML = productOptionsHtml(null, false);
-    document.getElementById('wf-qty').value = 1;
+    draftWastageItems = [{ type: '', theme: '', productId: '', qty: 1 }];
+    renderWastageItems();
     document.getElementById('wf-reason').innerHTML = wastageReasonOptionsHtml('wastage');
     document.getElementById('wf-date').value = todayISO();
   }
 
+  document.getElementById('btn-add-wastage-item').addEventListener('click', function () {
+    draftWastageItems.push({ type: '', theme: '', productId: '', qty: 1 });
+    renderWastageItems();
+  });
+
+  document.getElementById('wastage-items').addEventListener('click', function (e) {
+    var idx = e.target.getAttribute('data-remove-wastage-line');
+    if (idx !== null) {
+      draftWastageItems.splice(Number(idx), 1);
+      renderWastageItems();
+    }
+  });
+
+  document.getElementById('wastage-items').addEventListener('change', function (e) {
+    var idx = e.target.getAttribute('data-idx');
+    if (idx === null) return;
+    idx = Number(idx);
+    if (e.target.classList.contains('wi-type')) {
+      draftWastageItems[idx].type = e.target.value;
+      draftWastageItems[idx].theme = '';
+      draftWastageItems[idx].productId = '';
+      renderWastageItems();
+    } else if (e.target.classList.contains('wi-theme')) {
+      draftWastageItems[idx].theme = e.target.value;
+      draftWastageItems[idx].productId = '';
+      renderWastageItems();
+    } else if (e.target.classList.contains('wi-product')) {
+      draftWastageItems[idx].productId = e.target.value;
+    } else if (e.target.classList.contains('wi-qty')) {
+      draftWastageItems[idx].qty = e.target.value;
+    }
+  });
+
+  document.getElementById('wastage-items').addEventListener('input', function (e) {
+    var idx = e.target.getAttribute('data-idx');
+    if (idx === null) return;
+    if (e.target.classList.contains('wi-qty')) draftWastageItems[Number(idx)].qty = e.target.value;
+  });
+
   function saveWastageEntry() {
-    var productId = document.getElementById('wf-product').value;
-    var p = state.products.find(function (x) { return x.id === productId; });
-    if (!p) { alert('Pick a product.'); return; }
-    var qty = Number(document.getElementById('wf-qty').value);
-    if (!qty || qty <= 0) { alert('Enter how many.'); return; }
+    var lines = draftWastageItems.filter(function (l) { return l.productId; });
+    if (!lines.length) { alert('Pick at least one item.'); return; }
+    for (var i = 0; i < lines.length; i++) {
+      if (!Number(lines[i].qty) || Number(lines[i].qty) <= 0) { alert('Enter how many for each item.'); return; }
+    }
     var reason = document.getElementById('wf-reason').value;
     var date = document.getElementById('wf-date').value || todayISO();
-    p.stock = Math.max(0, p.stock - qty);
-    var wastageCostId = uid();
-    state.costs.push({
-      id: wastageCostId,
-      category: 'wastage',
-      reason: reason,
-      date: date,
-      amount: qty * p.cost,
-      productId: p.id,
-      qty: -qty,
-      description: (STOCK_ADJUST_REASONS[reason] || reason) + ' — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + qty + ' units)'
+    lines.forEach(function (line) {
+      var p = state.products.find(function (x) { return x.id === line.productId; });
+      if (!p) return;
+      var qty = Number(line.qty);
+      p.stock = Math.max(0, p.stock - qty);
+      var wastageCostId = uid();
+      state.costs.push({
+        id: wastageCostId,
+        category: 'wastage',
+        reason: reason,
+        date: date,
+        amount: qty * p.cost,
+        productId: p.id,
+        qty: -qty,
+        description: (STOCK_ADJUST_REASONS[reason] || reason) + ' — ' + p.name + (p.variant ? ' — ' + p.variant : '') + ' (' + qty + ' units)'
+      });
+      logStock(p.id, -qty, 'wastage', STOCK_ADJUST_REASONS[reason] || reason, date, wastageCostId);
+      logAddToQuickAdd('Logged ' + qty + ' unit(s) of "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" as ' + (STOCK_ADJUST_REASONS[reason] || reason).toLowerCase() + ' — ' + money(qty * p.cost) + '.');
     });
-    logStock(p.id, -qty, 'wastage', STOCK_ADJUST_REASONS[reason] || reason, date, wastageCostId);
-    logAddToQuickAdd('Logged ' + qty + ' unit(s) of "' + p.name + (p.variant ? ' — ' + p.variant : '') + '" as ' + (STOCK_ADJUST_REASONS[reason] || reason).toLowerCase() + ' — ' + money(qty * p.cost) + '.');
     document.getElementById('wastage-form-wrap').style.display = 'none';
     save();
     renderAll();
@@ -3645,6 +3881,93 @@
   document.querySelector('#wastage-table tbody').addEventListener('click', function (e) {
     var delId = e.target.getAttribute('data-delete-wastage');
     if (delId) deleteCost(delId);
+  });
+
+  // ================= PRODUCT TOTALS =================
+  // She only wants this for Tumblers and the Glass Straw add-on — not Stickers or raw materials —
+  // so the list stays short and focused on the two lines she actually tracks unit-by-unit.
+  function isProductTotalsEligible(p) {
+    if (p.type === 'Tumbler') return true;
+    if (p.type === 'Add ons' && /glass straw/i.test(p.name || '')) return true;
+    return false;
+  }
+  var expandedTotalsProducts = {};
+  function computeProductTotals(p) {
+    var sold = [], gift = [], defect = [], replaced = [];
+    state.orders.forEach(function (o) {
+      if (o.status === 'cancelled') return;
+      (o.items || []).forEach(function (item) {
+        if (item.productId !== p.id) return;
+        var qty = Number(item.qty) || 0;
+        if (!qty) return;
+        var line = { date: o.date, qty: qty, buyerName: o.buyerName || o.recipientName || 'Unknown buyer', orderId: o.id };
+        if (o.isReplacement) { replaced.push(line); return; }
+        if (item.isGift) gift.push(line);
+        else if (item.isDefect) defect.push(line);
+        else sold.push(line);
+      });
+    });
+    // Replacement items already log their own "Replacement sent" wastage Cost entry automatically
+    // (no `reason` field on those) — only count entries she actually made through the Wastage page
+    // here, so the same lost units aren't shown under both Replaced and Wastage.
+    var wastage = state.costs.filter(function (c) { return c.category === 'wastage' && c.productId === p.id && c.reason; })
+      .map(function (c) { return { date: c.date, qty: typeof c.qty === 'number' ? Math.abs(c.qty) : 0, reason: STOCK_ADJUST_REASONS[c.reason] || c.reason }; });
+    function sum(arr) { return arr.reduce(function (s, l) { return s + l.qty; }, 0); }
+    return {
+      sold: sum(sold), gift: sum(gift), defect: sum(defect), replaced: sum(replaced), wastage: sum(wastage),
+      soldLines: sold, giftLines: gift, defectLines: defect, replacedLines: replaced, wastageLines: wastage
+    };
+  }
+  function productTotalsDetailHtml(totals) {
+    function section(label, lines, showBuyer) {
+      if (!lines.length) return '';
+      var rows = lines.slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); }).map(function (l) {
+        return '<div style="display:flex; justify-content:space-between; gap:10px; padding:3px 0; font-size:12px;">' +
+          '<span class="muted">' + formatDate(l.date) + (showBuyer ? ' — ' + escapeHtml(l.buyerName) : (l.reason ? ' — ' + escapeHtml(l.reason) : '')) + '</span>' +
+          '<span>×' + l.qty + '</span></div>';
+      }).join('');
+      return '<div style="margin-bottom:10px;"><div style="font-weight:600; font-size:12px; margin-bottom:2px;">' + label + '</div>' + rows + '</div>';
+    }
+    var html = section('Sold', totals.soldLines, true) + section('Replaced', totals.replacedLines, true) +
+      section('Gift', totals.giftLines, true) + section('Defect', totals.defectLines, true) + section('Wastage', totals.wastageLines, false);
+    return html || '<div class="muted" style="font-size:12px;">No activity yet.</div>';
+  }
+  function renderProductTotals() {
+    var container = document.getElementById('producttotals-content');
+    var products = state.products.filter(isProductTotalsEligible).slice().sort(function (a, b) {
+      return (a.type || '').localeCompare(b.type || '') || (a.name || '').localeCompare(b.name || '');
+    });
+    if (!products.length) {
+      container.innerHTML = '<div class="empty">No Tumbler or Glass Straw products in Inventory yet.</div>';
+      return;
+    }
+    var html = '<table><thead><tr><th>Product</th><th>Sold</th><th>Replaced</th><th>Gift</th><th>Defect</th><th>Wastage</th><th></th></tr></thead><tbody>';
+    products.forEach(function (p) {
+      var totals = computeProductTotals(p);
+      var isOpen = !!expandedTotalsProducts[p.id];
+      var label = escapeHtml(p.name + (p.variant ? ' — ' + p.variant : (p.theme ? ' — ' + p.theme : '')));
+      html += '<tr>' +
+        '<td>' + label + '</td>' +
+        '<td>' + totals.sold + '</td>' +
+        '<td>' + totals.replaced + '</td>' +
+        '<td>' + totals.gift + '</td>' +
+        '<td>' + totals.defect + '</td>' +
+        '<td>' + totals.wastage + '</td>' +
+        '<td style="text-align:right;"><button type="button" class="btn-text" data-toggle-totals="' + p.id + '">' + (isOpen ? 'Hide' : 'Details') + '</button></td>' +
+        '</tr>';
+      if (isOpen) {
+        html += '<tr><td colspan="7" style="background:var(--bg); padding:10px 14px;">' + productTotalsDetailHtml(totals) + '</td></tr>';
+      }
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  }
+  document.getElementById('producttotals-content').addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('[data-toggle-totals]') : null;
+    if (!btn) return;
+    var id = btn.getAttribute('data-toggle-totals');
+    expandedTotalsProducts[id] = !expandedTotalsProducts[id];
+    renderProductTotals();
   });
 
   // ================= ORDERS =================
@@ -4078,8 +4401,11 @@
     var buyerWhatsapp = document.getElementById('of-buyer-whatsapp').value.trim();
     var date = document.getElementById('of-date').value || todayISO();
     var immediate = document.getElementById('of-immediate').checked;
-    var estimatedDate = immediate ? '' : document.getElementById('of-estimated-date').value;
-    // She shouldn't have to work out a rough production date herself — if this order has any
+    // One single production date now — no separate "rough" vs "confirmed" step. Whatever she
+    // sets (or leaves for the auto-suggestion below to fill in) is saved straight to
+    // scheduledDate and shows on the Calendar immediately.
+    var productionDate = immediate ? '' : document.getElementById('of-estimated-date').value;
+    // She shouldn't have to work out a production date herself — if this order has any
     // Tumbler in it and she left the date blank, pick the next day that isn't one of her weekly
     // days off, isn't a one-off blocked day, and still has room under her daily Tumbler cap. She
     // can always drag it to a different day afterwards; this just removes the guesswork.
@@ -4089,17 +4415,17 @@
     // than it really is, since this order should have been counted against its actual date.
     // Backdating Date to the real day it happened lets the search look there first, same as if
     // she'd logged it on time.
-    if (!estimatedDate && !immediate) {
+    if (!productionDate && !immediate) {
       var autoTumblerQty = validLines.reduce(function (sum, l) {
         var lp = state.products.find(function (pp) { return pp.id === l.productId; });
         return (lp && lp.type === 'Tumbler') ? sum + Number(l.qty) : sum;
       }, 0);
       if (autoTumblerQty > 0) {
-        estimatedDate = nextAvailableProductionDate(autoTumblerQty, date);
+        productionDate = nextAvailableProductionDate(autoTumblerQty, date);
       }
     }
-    if (!editingOrderId && !estimatedDate && !immediate) {
-      if (!confirm("You haven't set a rough target date for this order — it helps you keep track of scheduling later. Save without one anyway?")) {
+    if (!editingOrderId && !productionDate && !immediate) {
+      if (!confirm("You haven't set a production date for this order — it helps you keep track of scheduling later. Save without one anyway?")) {
         return null;
       }
     }
@@ -4173,8 +4499,8 @@
         order.discount = discount;
         order.notes = notes;
         order.items = newItems;
-        if (order.estimatedDate !== estimatedDate) order.customerNotified = false;
-        order.estimatedDate = estimatedDate;
+        if (order.scheduledDate !== productionDate) order.customerNotified = false; // date moved — you'll need to notify again
+        order.scheduledDate = productionDate;
         order.immediate = immediate;
         if (status !== 'cancelled') deductStock(order);
       }
@@ -4210,10 +4536,9 @@
         trackingNumber: '',
         courier: '',
         trackingMessageSent: false,
-        estimatedDate: estimatedDate,
         immediate: immediate,
         customerNotified: false,
-        scheduledDate: '',
+        scheduledDate: productionDate,
         productionDone: false,
         discount: discount,
         notes: notes,
@@ -4495,7 +4820,7 @@
   }
   function tumblerQtyScheduledOn(dateStr) {
     return state.orders
-      .filter(function (o) { return o.status !== 'cancelled' && o.estimatedDate === dateStr; })
+      .filter(function (o) { return o.status !== 'cancelled' && o.scheduledDate === dateStr; })
       .reduce(function (sum, o) { return sum + orderTumblerQty(o); }, 0);
   }
   function isProductionDay(dateStr) {
@@ -4864,46 +5189,38 @@
     renderAll();
   }
 
-  // ---------- Scheduling: rough target date -> notify customer -> confirmed date. Kept as its
-  // own quick-save section (like Add-ons) rather than buried in the big Edit/Save details grid,
-  // so the "give a range, confirm later" workflow is a clear 3-step flow instead of just two
-  // date fields mixed in with payment/shipping stuff.
+  // ---------- Scheduling: one direct production date, shown on Calendar the moment it's set —
+  // no separate "rough" vs "confirmed" step anymore. The "notified customer" checkbox stays as
+  // its own independent flag (has she actually told the customer this date), not tied to any
+  // confirm-the-date workflow.
   function renderSchedulingSection(o) {
     var isCancelled = o.status === 'cancelled';
     var todayD = new Date(todayISO() + 'T00:00:00');
     var dueSoon = false;
-    if (o.estimatedDate && !o.scheduledDate) {
-      var est = new Date(o.estimatedDate + 'T00:00:00');
+    if (o.scheduledDate) {
+      var est = new Date(o.scheduledDate + 'T00:00:00');
       var diffDays = Math.round((est - todayD) / 86400000);
       dueSoon = diffDays <= 5;
     }
     var showWarning = !isCancelled && dueSoon && !o.customerNotified;
     var warningHtml = showWarning
-      ? '<div style="color:var(--red); font-size:13px; margin:8px 0;">⚠ Let ' + (escapeHtml(o.buyerName) || 'the customer') + ' know it\'s time to confirm the exact date.</div>'
-      : '';
-    var notifiedHint = (!isCancelled && o.customerNotified && !o.scheduledDate)
-      ? '<div class="muted" style="font-size:12px; margin:8px 0;">✓ Customer notified — waiting on their confirmed date.</div>'
+      ? '<div style="color:var(--red); font-size:13px; margin:8px 0;">⚠ Let ' + (escapeHtml(o.buyerName) || 'the customer') + ' know the production date.</div>'
       : '';
 
     return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' +
       '<div style="font-weight:600; font-size:13px; margin-bottom:6px;">Scheduling</div>' +
       '<div class="order-edit-grid" style="border-top:none; padding-top:0; margin-top:0;">' +
-        '<div class="field-block"><label class="field-label">1. Rough target date <span class="muted">(internal only)</span></label>' +
-          '<div style="display:flex; gap:6px; align-items:center;">' +
-          '<input type="date" class="sched-estimated-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.estimatedDate || '') + '" style="flex:1;"' + (isCancelled ? ' disabled' : '') + '>' +
-          (!isCancelled && o.estimatedDate ? '<button type="button" class="btn btn-secondary btn-small" data-clear-estimated="' + o.id + '">Clear</button>' : '') +
-          '</div></div>' +
-        '<div class="field-block"><label class="field-label">3. Confirmed date <span class="muted">(shown on Calendar)</span></label>' +
+        '<div class="field-block"><label class="field-label">Production date <span class="muted">(shown on Calendar)</span></label>' +
           '<div style="display:flex; gap:6px; align-items:center;">' +
           '<input type="date" class="sched-confirmed-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '" style="flex:1;"' + (isCancelled ? ' disabled' : '') + '>' +
           (!isCancelled && o.scheduledDate ? '<button type="button" class="btn btn-secondary btn-small" data-clear-scheduled="' + o.id + '">Clear</button>' : '') +
           '</div></div>' +
       '</div>' +
-      warningHtml + notifiedHint +
+      warningHtml +
       (isCancelled ? '' :
         '<div class="checkbox-row" style="padding-top:8px;">' +
           '<input type="checkbox" class="sched-notified-checkbox" data-order-id="' + o.id + '"' + (o.customerNotified ? ' checked' : '') + '>' +
-          '<label>2. Notified customer to confirm the exact date</label>' +
+          '<label>Notified customer of this date</label>' +
         '</div>') +
       '</div>';
   }
@@ -5201,7 +5518,7 @@
     document.getElementById('of-buyer-whatsapp').value = order.buyerWhatsapp || '';
     document.getElementById('of-date').value = order.date || todayISO();
     document.getElementById('of-status').value = order.status;
-    document.getElementById('of-estimated-date').value = order.estimatedDate || '';
+    document.getElementById('of-estimated-date').value = order.scheduledDate || '';
     document.getElementById('of-immediate').checked = !!order.immediate;
     document.getElementById('of-estimated-date').disabled = !!order.immediate;
     document.getElementById('of-estimated-date-clear').disabled = !!order.immediate;
@@ -5242,7 +5559,6 @@
     var cancelAddOnFlag = e.target.getAttribute('data-cancel-addon');
     var saveAddOnId = e.target.getAttribute('data-save-addon');
     var removeAddOnId = e.target.getAttribute('data-remove-addon');
-    var clearEstimatedId = e.target.getAttribute('data-clear-estimated');
     var clearScheduledId = e.target.getAttribute('data-clear-scheduled');
     if (toggleId) {
       expandedOrderId = (expandedOrderId === toggleId) ? null : toggleId;
@@ -5271,21 +5587,11 @@
     }
     if (saveAddOnId) saveAddOn(saveAddOnId);
     if (removeAddOnId) removeAddOn(e.target.getAttribute('data-order-id'), removeAddOnId);
-    if (clearEstimatedId) {
-      var ordCE = state.orders.find(function (o) { return o.id === clearEstimatedId; });
-      if (ordCE) {
-        ordCE.estimatedDate = '';
-        ordCE.customerNotified = false;
-        save();
-        renderOrders();
-        renderDashboard();
-        renderSchedule();
-      }
-    }
     if (clearScheduledId) {
       var ordCS = state.orders.find(function (o) { return o.id === clearScheduledId; });
       if (ordCS) {
         ordCS.scheduledDate = '';
+        ordCS.customerNotified = false;
         save();
         renderOrders();
         renderDashboard();
@@ -5463,23 +5769,12 @@
         renderSchedule();
       }
     }
-    if (e.target.classList.contains('sched-estimated-input')) {
-      var oid2 = e.target.getAttribute('data-order-id');
-      var order2 = state.orders.find(function (o) { return o.id === oid2; });
-      if (order2) {
-        order2.estimatedDate = e.target.value;
-        order2.customerNotified = false; // target moved — you'll need to notify again
-        save();
-        renderOrders();
-        renderDashboard();
-        renderSchedule();
-      }
-    }
     if (e.target.classList.contains('sched-confirmed-input')) {
       var oid3 = e.target.getAttribute('data-order-id');
       var order3 = state.orders.find(function (o) { return o.id === oid3; });
       if (order3) {
         order3.scheduledDate = e.target.value;
+        order3.customerNotified = false; // date moved — you'll need to notify again
         save();
         renderOrders();
         renderDashboard();
@@ -5528,19 +5823,6 @@
   });
 
   // ================= DASHBOARD =================
-  // Orders with a rough internal target date that's due soon (within 5 days, or already past)
-  // but still no confirmed Scheduled date — these are the ones to message the customer about
-  // to lock in an exact day, matching a "give a range, confirm closer to the time" workflow.
-  function ordersNeedingDateConfirmation() {
-    var todayD = new Date(todayISO() + 'T00:00:00');
-    return state.orders.filter(function (o) {
-      if (o.status === 'cancelled' || o.scheduledDate || !o.estimatedDate) return false;
-      var est = new Date(o.estimatedDate + 'T00:00:00');
-      var diffDays = Math.round((est - todayD) / 86400000);
-      return diffDays <= 5;
-    }).sort(function (a, b) { return a.estimatedDate.localeCompare(b.estimatedDate); });
-  }
-
   // ---- Cash-basis financial model (all-time, retroactive to state.startingCash) ----
   // She doesn't want accrual/COGS matching — she wants a simple running ledger of actual
   // cash movements: a starting balance, minus everything ever logged as a Cost (whether it's
@@ -6329,11 +6611,10 @@
       var itemsSummary = o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ');
       var paidPill = '<span class="pill ' + (o.paid ? 'pill-green' : 'pill-red') + '">' + (o.paid ? 'Paid' : 'Unpaid') + '</span>';
       var queuePill = queuePos ? '<span class="pill pill-gray">#' + queuePos + ' in queue</span>' : (isImmediateSection ? '<span class="pill pill-green">Ready now</span>' : '');
-      var estimateNote = (queuePos && o.estimatedDate) ? '<div class="muted" style="font-size:11px; margin-top:2px;">Rough target: ' + escapeHtml(formatDate(o.estimatedDate)) + ' (internal only)</div>' : '';
       return '<div class="card" style="margin-bottom:8px; padding:12px 14px;' + (isDone ? ' opacity:0.6;' : '') + '">' +
         '<div class="schedule-row">' +
           '<div><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.buyerHandle ? ' <span class="muted">' + escapeHtml(o.buyerHandle) + '</span>' : '') + (o.buyerWhatsapp ? ' <span class="muted">WA: ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') + '</div>' +
-          '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' + estimateNote + '</div>' +
+          '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div></div>' +
           '<div class="schedule-controls">' + queuePill + paidPill +
             (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '">') +
             '<label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); white-space:nowrap;">' +
@@ -6974,7 +7255,7 @@
       shipTo: original.shipTo, postcode: original.postcode,
       shippingZone: original.shippingZone, shippingWeight: 0, shippingFee: 0, shippingCostActual: 0,
       trackingNumber: '', courier: '', trackingMessageSent: false,
-      scheduledDate: '', estimatedDate: maxTumblerQtyNeeded > 0 ? nextAvailableProductionDate(maxTumblerQtyNeeded, todayISO()) : '',
+      scheduledDate: maxTumblerQtyNeeded > 0 ? nextAvailableProductionDate(maxTumblerQtyNeeded, todayISO()) : '',
       customerNotified: false, discount: discount,
       notes: 'Replacement for order — ' + buyerLabel + (note ? ' — ' + note : '') + (refundAmount > 0 ? ' — refunded ' + money(refundAmount) : ''),
       addOns: [], parcels: [],
@@ -8016,16 +8297,14 @@
     if (blocked) {
       state.blockedDates[dateBeingBlocked] = note;
       // Marking a day off (e.g. she's unwell today) doesn't move any order sitting on it —
-      // she'd otherwise have to go reschedule each one by hand. If any order's rough target
-      // (estimatedDate) or already-confirmed date (scheduledDate) falls on this day, offer to
-      // bump it forward by exactly one production day (see nextProductionDayAfter above — not
-      // a capacity search, just the next day she's actually working), which is fair to
-      // customers since nothing jumps further than one day. Cancelled orders are skipped —
-      // they're not real work anymore. A moved scheduledDate also clears customerNotified,
-      // same as every other place in the app that changes a confirmed date, since she'll need
-      // to tell that customer the new date.
+      // she'd otherwise have to go reschedule each one by hand. If any order's production date
+      // falls on this day, offer to bump it forward by exactly one production day (see
+      // nextProductionDayAfter above — not a capacity search, just the next day she's actually
+      // working), which is fair to customers since nothing jumps further than one day.
+      // Cancelled orders are skipped — they're not real work anymore. Moving the date also
+      // clears customerNotified, since she'll need to tell that customer the new date.
       var affected = state.orders.filter(function (o) {
-        return o.status !== 'cancelled' && (o.estimatedDate === dateBeingBlocked || o.scheduledDate === dateBeingBlocked);
+        return o.status !== 'cancelled' && o.scheduledDate === dateBeingBlocked;
       });
       if (affected.length > 0) {
         var newDate = nextProductionDayAfter(dateBeingBlocked);
@@ -8034,11 +8313,8 @@
           : 'There are ' + affected.length + ' orders on this day. Push them forward to ' + formatDateLong(newDate) + ' (the next day you\'re working)?';
         if (confirm(promptMsg)) {
           affected.forEach(function (o) {
-            if (o.estimatedDate === dateBeingBlocked) o.estimatedDate = newDate;
-            if (o.scheduledDate === dateBeingBlocked) {
-              o.scheduledDate = newDate;
-              o.customerNotified = false;
-            }
+            o.scheduledDate = newDate;
+            o.customerNotified = false;
           });
         }
       }
@@ -8843,6 +9119,29 @@
   }
 
   function finalizeQuickAddCost(item, category, productId, platform, seller, shippingFeeAmount, productType) {
+    // She names a lot of her materials after their package size ("4000ml x1", "5000ml x2" — a
+    // pack of two 5000ml bottles) — so when RESTOCKING an existing one of those products, ask
+    // "how many packs/bottles?" directly instead of trusting whatever quantity got parsed out of
+    // the free text. This is exactly the step that was skipped once: a restock of "glycerin
+    // 4000ml x1" got its quantity read as 1 (meaning 1 ml) instead of 4000, and since Inventory
+    // value = cost x stock, that single typo inflated Inventory value by ~RM180,000 (see
+    // confirmCostSanity, added as a safety net for the same incident). Only 'restock' (not
+    // 'new_inventory') — a brand-new product's variant/size was just typed this same line, so its
+    // parsed quantity already IS the total; asking again here would be redundant and wrong (it'd
+    // treat that first batch as "1 pack of itself"). `item.packsAsked` guards against asking twice.
+    if (productId && category === 'restock' && !item.packsAsked) {
+      var productForPacks = state.products.find(function (p) { return p.id === productId; });
+      var packSizeForPacks = productForPacks ? parsePackSizeFromVariant(productForPacks.variant) : null;
+      if (packSizeForPacks) {
+        quickAddStage = {
+          type: 'packsask', item: item, category: category, productId: productId,
+          platform: platform, seller: seller, shippingFeeAmount: shippingFeeAmount,
+          productType: productType, packSize: packSizeForPacks
+        };
+        renderQuickAdd();
+        return;
+      }
+    }
     // The entry's own amount is just the item's price — a shared shipping fee always lives in
     // its own standalone "shipping" Cost entry (see saveQuickAddShipping/saveQuickAddBatchShipping)
     // instead of being folded in here, so the number in the Costs list always reads as "what
@@ -8891,6 +9190,17 @@
       if (productId) {
         var linkedP = state.products.find(function (p) { return p.id === productId; });
         if (linkedP) {
+          // Checked BEFORE anything is written (stock, cost, the entry itself) — a mistyped
+          // quantity here is exactly what produced a 96%-of-Inventory-value glitch once (see
+          // confirmCostSanity). If she cancels, nothing gets saved at all — this whole line is
+          // dropped so she can retype it with the right quantity instead of leaving bad data behind.
+          if (!confirmCostSanity(linkedP, perUnitExact)) {
+            pushChatMsg('bot', '✋ Skipped: "' + item.description + '" — the price per unit looked off for that quantity. Please retype this line with the correct amount/quantity.');
+            quickAddPending.shift();
+            processNextQuickAdd();
+            renderAll();
+            return;
+          }
           linkedP.stock += item.parsedQty;
           linkedP.cost = perUnitExact;
           logStock(productId, item.parsedQty, 'restock', 'Cost entry (' + category + ', via Quick Add)', entry.date, entry.id);
@@ -9085,6 +9395,19 @@
       quickAddStage = { type: 'sellerplatform', item: item, category: 'restock' };
     }
     renderQuickAdd();
+  }
+
+  // Answers the "how many packs/bottles?" question (see parsePackSizeFromVariant /
+  // finalizeQuickAddCost) — multiplies out the total ml/g herself instead of leaving it to a
+  // free-text quantity that's easy to get wrong for a packaged material.
+  function saveQuickAddPacksAnswer() {
+    var stage = quickAddStage;
+    var packs = Number(document.getElementById('qa-packs-amount').value) || 0;
+    if (packs <= 0) { alert('Enter how many packs/bottles you bought.'); return; }
+    var item = stage.item;
+    item.parsedQty = packs * stage.packSize;
+    item.packsAsked = true;
+    finalizeQuickAddCost(item, stage.category, stage.productId, stage.platform, stage.seller, stage.shippingFeeAmount, stage.productType);
   }
 
   function confirmQuickAddSellerSame() {
@@ -9491,6 +9814,20 @@
         '</div>' +
         '<button class="btn btn-primary btn-small" id="btn-qa-restock-amount-save">Continue</button> ' + QUICKADD_CANCEL_BTN +
       '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'packsask') {
+      var stPA = quickAddStage;
+      var prodPA = state.products.find(function (p) { return p.id === stPA.productId; });
+      // She names a material after its package size ("4000ml x1"), so instead of asking her to
+      // work out and type the total ml/g herself (the exact step that got skipped once — a "1"
+      // typed for what should've been "4000" inflated a per-unit cost by ~4000x, see
+      // confirmCostSanity), this asks the simpler, harder-to-get-wrong question directly.
+      stageHtml = '<div class="card qa-stage">' +
+        '<div style="font-size:13px; margin-bottom:8px;">"' + escapeHtml(prodPA ? (prodPA.name + (prodPA.variant ? ' — ' + prodPA.variant : '')) : stPA.item.description) +
+          '" — each pack/bottle is ' + stPA.packSize + (prodPA && prodPA.unit ? prodPA.unit : '') + '. How many packs/bottles did you buy this time?</div>' +
+        '<input id="qa-packs-amount" type="number" step="1" min="1" value="1" style="width:120px;">' +
+        '<div id="qa-packs-hint" class="muted" style="font-size:12px; margin-top:6px;">= ' + stPA.packSize + (prodPA && prodPA.unit ? prodPA.unit : '') + ' total</div>' +
+        '<div style="margin-top:10px;"><button class="btn btn-primary btn-small" id="btn-qa-packs-save">Continue</button> ' + QUICKADD_CANCEL_BTN + '</div>' +
+      '</div>';
     } else if (quickAddStage && quickAddStage.type === 'materialqty') {
       var stMQ = quickAddStage;
       var mqDefaultUnit = stMQ.item.defaultUnit || 'ml';
@@ -9830,6 +10167,7 @@
     }
     if (e.target.id === 'btn-qa-product-confirm') { confirmQuickAddProductPicker(); return; }
     if (e.target.id === 'btn-qa-restock-amount-save') { saveQuickAddRestockAmount(); return; }
+    if (e.target.id === 'btn-qa-packs-save') { saveQuickAddPacksAnswer(); return; }
     if (e.target.id === 'btn-qa-material-qty-save') { saveQuickAddMaterialQty(); return; }
     if (e.target.id === 'btn-qa-sellingprice-save') { saveQuickAddSellingPrice(); return; }
     if (e.target.id === 'btn-qa-sellingprice-skip') { skipQuickAddSellingPrice(); return; }
@@ -9874,6 +10212,14 @@
       e.target.style.height = 'auto';
       e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
     }
+    if (e.target.id === 'qa-packs-amount') {
+      var packsHint = document.getElementById('qa-packs-hint');
+      if (packsHint && quickAddStage && quickAddStage.type === 'packsask') {
+        var prodForHint = state.products.find(function (p) { return p.id === quickAddStage.productId; });
+        var packsVal = Number(e.target.value) || 0;
+        packsHint.textContent = '= ' + (quickAddStage.packSize * packsVal) + (prodForHint && prodForHint.unit ? prodForHint.unit : '') + ' total';
+      }
+    }
   });
 
   document.getElementById('quickadd-content').addEventListener('keydown', function (e) {
@@ -9893,6 +10239,7 @@
     renderCosts();
     renderTesting();
     renderWastage();
+    renderProductTotals();
     renderOrders();
     renderShipping();
     renderCustomers();
