@@ -54,6 +54,32 @@
   }
   .brand { font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; }
+  body.simple-mode .nav-groups, body.simple-mode nav,
+  body.simple-mode #btn-export, body.simple-mode #btn-import, body.simple-mode #btn-logout, body.simple-mode #btn-simple-mode { display: none !important; }
+  .simple-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; max-width: 640px; margin: 0 auto; }
+  .simple-big {
+    display: flex; align-items: center; gap: 14px; width: 100%; padding: 22px 18px; font-size: 19px; font-weight: 600;
+    border-radius: 14px; border: 1px solid var(--border); background: #fff; cursor: pointer; text-align: left; color: inherit;
+  }
+  .simple-big .simple-icon { font-size: 26px; width: 34px; text-align: center; }
+.todo-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+  .todo-row input[type=checkbox] { width: 18px; height: 18px; flex: none; margin: 0; }
+  .todo-done .todo-text { text-decoration: line-through; color: var(--muted); }
+  .todo-tag { font-size: 11px; padding: 2px 8px; border-radius: 6px; margin-left: auto; white-space: nowrap; }
+  .todo-tag-auto { background: #eef4ff; color: var(--blue); }
+  .todo-tag-old { background: #fef3c7; color: #92400e; }
+  .todo-tag-rep { background: #f1f5f9; color: var(--muted); }
+  .todo-section { font-size: 12px; color: var(--muted); margin: 16px 0 2px; font-weight: 600; }
+  .todo-delete { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .todo-tag + .todo-delete { margin-left: 6px; }
+  body.simple-mode .todo-row { font-size: 17px; padding: 12px 0; }
+  body.simple-mode .todo-row input[type=checkbox] { width: 24px; height: 24px; }
+  .nav-groups { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }
+  .nav-groups button {
+    background: #fff; border: 1px solid var(--border); padding: 8px 16px; border-radius: 999px;
+    font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer;
+  }
+  .nav-groups button.active { border-color: var(--blue); color: var(--blue); background: #eef4ff; }
   nav { display: flex; gap: 4px; flex-wrap: wrap; }
   nav button {
     background: none;
@@ -260,7 +286,8 @@
 <body>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- xlsx-js-style: same API as SheetJS, plus cell styling (colours, borders, fonts) for the Investor Report. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 
 <div id="auth-screen" class="auth-screen">
   <div class="card auth-card">
@@ -319,29 +346,38 @@
       <div class="brand">❄️ Sips by Evve</div>
       <span id="viewer-mode-badge" style="display:none; font-size:12px; background:var(--amber-bg,#fef3c7); color:var(--amber,#b45309); padding:3px 10px; border-radius:12px; font-weight:500;">👁 Viewing (read-only)</span>
       <button class="btn-text" id="btn-viewer-access">👁 Viewer access</button>
-      <button class="btn-text" id="btn-reset-data" style="color:var(--red);">Reset all data</button>
     </div>
     <div class="card" id="viewer-access-panel" style="display:none; margin-bottom:12px;"></div>
+    <!-- Menu is grouped: pick a group on the top row, its pages show on the row below. -->
+    <div class="nav-groups" id="nav-groups">
+      <button type="button" data-navgroup="orders">Orders</button>
+      <button type="button" data-navgroup="stock">Stock &amp; Costs</button>
+      <button type="button" data-navgroup="reports">Reports</button>
+      <button type="button" data-navgroup="quickadd">Quick Add</button>
+      <button type="button" data-navgroup="todo">📝 To-do</button>
+    </div>
     <nav>
-      <button data-tab="dashboard" class="active">Dashboard</button>
-      <button data-tab="alerts">Alerts</button>
-      <button data-tab="inventory">Inventory</button>
-      <button data-tab="costs">Costs</button>
-      <button data-tab="testing">Testing</button>
-      <button data-tab="wastage">Wastage</button>
-      <button data-tab="producttotals">Product Totals</button>
-      <button data-tab="orders">Orders</button>
-      <button data-tab="shipping">Shipping</button>
-      <button data-tab="customers">Customers</button>
-      <button data-tab="schedule">Schedule</button>
-      <button data-tab="calendar">Calendar</button>
-      <button data-tab="quickadd">Quick Add</button>
+      <button data-tab="dashboard" data-group="reports" class="active">Dashboard</button>
+      <button data-tab="monthly" data-group="reports">Monthly Report</button>
+      <button data-tab="alerts" data-group="reports">Alerts</button>
+      <button data-tab="producttotals" data-group="reports">Product Totals</button>
+      <button data-tab="orders" data-group="orders">Orders</button>
+      <button data-tab="shipping" data-group="orders">Shipping</button>
+      <button data-tab="customers" data-group="orders">Customers</button>
+      <button data-tab="calendar" data-group="orders">Calendar</button>
+      <button data-tab="inventory" data-group="stock">Inventory</button>
+      <button data-tab="costs" data-group="stock">Costs</button>
+      <button data-tab="testing" data-group="stock">Testing</button>
+      <button data-tab="wastage" data-group="stock">Wastage</button>
+      <button data-tab="quickadd" data-group="quickadd">Quick Add</button>
+      <button data-tab="todo" data-group="todo">To-do</button>
     </nav>
     <div class="header-actions">
       <div class="header-actions-left">
         <div class="sync-status" id="sync-status"><span class="sync-dot" id="sync-dot"></span><span id="sync-label">Synced</span></div>
         <button class="btn btn-secondary btn-small" id="btn-export">Export</button>
         <button class="btn btn-secondary btn-small" id="btn-import">Import</button>
+        <button class="btn btn-secondary btn-small" id="btn-simple-mode">Simple mode</button>
       </div>
       <button class="btn btn-secondary btn-small" id="btn-logout">Log out</button>
       <input type="file" id="import-file" accept="application/json" style="display:none;">
@@ -350,6 +386,14 @@
 </header>
 
 <main>
+
+  <!-- SIMPLE MODE (big-button home screen, e.g. for mum) -->
+  <div id="simple-home-bar" style="display:none; margin-bottom:14px;">
+    <button type="button" class="btn btn-secondary" id="btn-simple-home" style="font-size:16px; padding:10px 18px;">← Home</button>
+  </div>
+  <section class="page" id="page-simple">
+    <div id="simple-content"></div>
+  </section>
 
   <!-- DASHBOARD -->
   <section class="page active" id="page-dashboard">
@@ -804,6 +848,11 @@
     </div>
   </section>
 
+  <section class="page" id="page-monthly">
+    <div class="page-header"><h1>Monthly Report</h1></div>
+    <div id="monthly-content"></div>
+  </section>
+
   <!-- ORDERS -->
   <section class="page" id="page-orders">
     <div class="page-header">
@@ -812,7 +861,8 @@
     </div>
     <div class="card" id="order-form-wrap" style="display:none; margin-bottom:16px;">
       <h2 id="order-form-title" style="font-size:15px; font-weight:600; margin:0 0 14px;">New order</h2>
-
+      <!-- Quick order: just what she knows right after a live — who, what, how much, paid? Everything
+           else (dates, status, shipping money, notes, address) sits under "More options". -->
       <div class="form-grid">
         <div>
           <label class="field-label">Buyer name</label>
@@ -828,81 +878,104 @@
           <div id="of-whatsapp-suggest"></div>
         </div>
         <div id="of-repeat-customer-wrap" style="grid-column: 1 / -1;"></div>
-        <div>
-          <label class="field-label">Order date</label>
-          <input id="of-date" type="date">
-        </div>
-        <div>
-          <label class="field-label">Status</label>
-          <select id="of-status">
-            <option value="queueing">queueing</option>
-            <option value="uv curing">uv curing</option>
-            <option value="ready to ship">ready to ship</option>
-            <option value="order shipment">order shipment</option>
-            <option value="shipped">shipped</option>
-            <option value="delivered">delivered</option>
-            <option value="cancelled">cancelled</option>
-          </select>
-        </div>
-        <div>
-          <label class="field-label">Production date <span class="muted">(optional — auto-suggested if left blank, shown on Calendar)</span></label>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <input id="of-estimated-date" type="date" style="flex:1;">
-            <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
-          </div>
-          <label style="display:flex; align-items:center; gap:6px; font-size:13px; margin-top:8px;">
-            <input type="checkbox" id="of-immediate"> Ready right away — skip scheduling, don't show it in the queue
-          </label>
-        </div>
       </div>
-
-      <div class="form-section-title">Shipping</div>
-      <p class="muted" style="font-size:12px; margin:-8px 0 12px;">The recipient's name, phone and delivery address are added later — from the Shipping tab, once the order is ready to ship and you actually have that info from the customer.</p>
-      <div class="form-grid">
-        <div>
-          <label class="field-label">Shipping zone</label>
-          <select id="of-shipping-zone">
-            <option value="west_malaysia">West Malaysia</option>
-            <option value="east_malaysia">East Malaysia (Sabah/Sarawak)</option>
-            <option value="singapore">Singapore</option>
-            <option value="other">Other / custom</option>
-          </select>
-        </div>
-        <div>
-          <label class="field-label">Package weight (kg) <span class="muted">(for East Malaysia/Singapore)</span></label>
-          <input id="of-shipping-weight" type="number" step="0.1" min="0" placeholder="e.g. 1.5">
-        </div>
-        <div>
-          <label class="field-label">Shipping fee charged to customer</label>
-          <input id="of-shipping" type="number" step="0.01" min="0" placeholder="0.00">
-        </div>
-        <div>
-          <label class="field-label">Shipping cost you paid (courier)</label>
-          <input id="of-shipping-cost" type="number" step="0.01" min="0" placeholder="0.00">
-        </div>
-        <div>
-          <label class="field-label">Discount</label>
-          <input id="of-discount" type="number" step="0.01" min="0" value="0">
-        </div>
-      </div>
-      <div id="shipping-suggestion-wrap" style="margin: -6px 0 14px; font-size:12px;"></div>
 
       <div class="form-section-title">Items</div>
       <div id="order-items"></div>
       <button class="btn btn-secondary btn-small" id="btn-add-item" style="margin-bottom:14px;">+ Add item</button>
 
-      <div>
-        <label class="field-label">Notes</label>
-        <input id="of-notes">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--border);">
+        <label style="display:flex; align-items:center; gap:8px; font-size:15px; font-weight:500; cursor:pointer;">
+          <input type="checkbox" id="of-paid" style="width:18px; height:18px;"> Paid
+        </label>
+        <div class="total-line" id="order-draft-total" style="text-align:right; margin:0;"></div>
       </div>
-      <div class="total-line" id="order-draft-total" style="text-align:left; margin: 10px 0;"></div>
-      <p class="muted" style="margin: 0 0 10px;">Payment info (paid, reference number, bank name) is recorded after you save this order — tick "Paid" in the table, or open an order and click "Edit details".</p>
+      <div class="muted" id="of-production-hint" style="font-size:12px; margin-top:6px;"></div>
+
+      <details id="of-more-options" style="margin:12px 0;">
+        <summary style="cursor:pointer; font-size:14px; color:var(--blue); font-weight:500;">More options (dates, status, discount, shipping, address, notes)</summary>
+        <div style="padding-top:12px;">
+          <div class="form-grid">
+            <div>
+              <label class="field-label">Order date</label>
+              <input id="of-date" type="date">
+            </div>
+            <div>
+              <label class="field-label">Status</label>
+              <select id="of-status">
+                <option value="queueing">queueing</option>
+                <option value="uv curing">uv curing</option>
+                <option value="ready to ship">ready to ship</option>
+                <option value="order shipment">order shipment</option>
+                <option value="shipped">shipped</option>
+                <option value="delivered">delivered</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label">Production date <span class="muted">(auto-suggested if left blank, shown on Calendar)</span></label>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <input id="of-estimated-date" type="date" style="flex:1;">
+                <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
+              </div>
+              <label style="display:flex; align-items:center; gap:6px; font-size:13px; margin-top:8px;">
+                <input type="checkbox" id="of-immediate"> Ready right away — skip scheduling, don't show it in the queue
+              </label>
+            </div>
+            <div>
+              <label class="field-label">Discount</label>
+              <input id="of-discount" type="number" step="0.01" min="0" value="0">
+            </div>
+          </div>
+
+          <div class="form-section-title">Shipping</div>
+          <div class="form-grid">
+            <div>
+              <label class="field-label">Shipping zone</label>
+              <select id="of-shipping-zone">
+                <option value="west_malaysia">West Malaysia</option>
+                <option value="east_malaysia">East Malaysia (Sabah/Sarawak)</option>
+                <option value="singapore">Singapore</option>
+                <option value="other">Other / custom</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label">Package weight (kg) <span class="muted">(for East Malaysia/Singapore)</span></label>
+              <input id="of-shipping-weight" type="number" step="0.1" min="0" placeholder="e.g. 1.5">
+            </div>
+            <div>
+              <label class="field-label">Shipping fee charged to customer</label>
+              <input id="of-shipping" type="number" step="0.01" min="0" placeholder="0.00">
+            </div>
+            <div>
+              <label class="field-label">Shipping cost you paid (courier)</label>
+              <input id="of-shipping-cost" type="number" step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+          <div id="shipping-suggestion-wrap" style="margin: -6px 0 14px; font-size:12px;"></div>
+
+          <div class="form-section-title">Shipping details <span class="muted" style="font-weight:400;">(only if the customer already gave them)</span></div>
+          <textarea id="of-ship-paste" rows="3" placeholder="Paste what the customer sent — name, phone and address in any order" style="width:100%;"></textarea>
+          <div class="form-grid" style="margin-top:8px;">
+            <div><label class="field-label">Recipient name</label><input id="of-recipient-name"></div>
+            <div><label class="field-label">Recipient phone</label><input id="of-recipient-phone"></div>
+            <div style="grid-column: 1 / -1;"><label class="field-label">Address</label><textarea id="of-shipto" rows="2" style="width:100%;"></textarea></div>
+            <div><label class="field-label">Postcode</label><input id="of-postcode"></div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <label class="field-label">Notes</label>
+            <input id="of-notes">
+          </div>
+        </div>
+      </details>
       <div class="form-actions">
         <button class="btn btn-primary" id="btn-save-order">Save order</button>
         <button class="btn btn-secondary" id="btn-save-order-addanother">Save + add another order</button>
         <button class="btn btn-secondary" id="btn-cancel-order">Cancel</button>
       </div>
     </div>
+    <div id="order-stage-bar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
     <div class="card" id="order-filter-bar">
       <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:space-between; align-items:center;">
         <span style="display:inline-flex; gap:4px;">
@@ -948,6 +1021,7 @@
   <section class="page" id="page-shipping">
     <div class="page-header"><h1>Shipping</h1></div>
     <p class="muted" style="margin-top:-8px;">Orders marked "ready to ship" — everything you need to book a courier, in one place.</p>
+    <div id="packday-content"></div>
     <div id="shipping-content"></div>
   </section>
 
@@ -958,18 +1032,19 @@
     <div id="customers-content"></div>
   </section>
 
-  <!-- SCHEDULE -->
-  <section class="page" id="page-schedule">
-    <div class="page-header"><h1>Schedule</h1></div>
-    <p class="muted" style="margin-top:-8px;">Assign a make/ship date to each order (usually once payment comes in) so you know what to prepare for each livestream day.</p>
+  <!-- CALENDAR (the old Schedule page now lives underneath the calendar grid) -->
+  <section class="page" id="page-calendar">
+    <div class="page-header"><h1>Calendar</h1></div>
+    <p class="muted" style="margin-top:-8px;">Every order with a production date shows on its day. Tap a day to see just that day's orders below, or to mark it as a personal day.</p>
+    <div id="calendar-content"></div>
+    <h2 id="schedule-list-title" style="font-size:18px; margin:24px 0 10px;">Orders to make</h2>
     <div id="schedule-content"></div>
   </section>
 
-  <!-- CALENDAR -->
-  <section class="page" id="page-calendar">
-    <div class="page-header"><h1>Calendar</h1></div>
-    <p class="muted" style="margin-top:-8px;">See scheduled orders and your own personal days at a glance. Click any day to mark it as personal time (unavailable for customer slots).</p>
-    <div id="calendar-content"></div>
+  <!-- TO-DO -->
+  <section class="page" id="page-todo">
+    <div class="page-header"><h1>📝 To-do</h1></div>
+    <div id="todo-content"></div>
   </section>
 
   <!-- QUICK ADD -->
@@ -984,6 +1059,7 @@
   <div>Data is stored locally in this browser (localStorage) and synced to your account. Use Export any time for an extra backup.</div>
   <div class="footer-actions">
     <button class="btn-text" id="btn-sample">Load sample data</button>
+    <button class="btn-text" id="btn-reset-data" style="color:var(--red);">Reset all data</button>
   </div>
 </footer>
 
@@ -1109,7 +1185,20 @@
     // out the photo that was already saved locally, seconds after she made it.
     state.updatedAt = Date.now();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (firstErr) {
+        // Out of room: the spare "last synced copy" used for two-device merging is the first
+        // thing to give up — drop it (keeping only its small version stamp) and try once more
+        // before telling her the save failed. Her real data always wins over that helper copy.
+        var metaRaw = localStorage.getItem('snowglobeTrackerSyncMeta');
+        if (!metaRaw) throw firstErr;
+        try {
+          var metaObj = JSON.parse(metaRaw);
+          localStorage.setItem('snowglobeTrackerSyncMeta', JSON.stringify({ userId: metaObj.userId, remoteUpdatedAt: metaObj.remoteUpdatedAt, base: null }));
+        } catch (e3) { localStorage.removeItem('snowglobeTrackerSyncMeta'); }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      }
     } catch (err) {
       var isQuota = !!(err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014));
       alert(isQuota
@@ -1167,6 +1256,40 @@
   // asks for a confirmation before it's applied anywhere — she can say "use it anyway" (a real
   // price swing) or cancel and fix the quantity/amount first. Skipped when there's no existing
   // cost yet (a brand new product has nothing to compare against).
+  // Weighted-average unit cost. A restock used to OVERWRITE the product's unit cost with the new
+  // batch's price, as if all the stock already on the shelf had suddenly been bought at that
+  // price too — that's how one mistyped batch once inflated Inventory value by ~RM180k. Now the
+  // new batch is blended with what's already in stock:
+  //   (old stock × old cost + new qty × new price) ÷ (old stock + new qty)
+  // Must be called BEFORE the new qty is added to product.stock.
+  function blendedUnitCost(p, addQty, addUnitCost) {
+    var oldStock = Math.max(0, Number(p.stock) || 0);
+    var oldCost = Number(p.cost) || 0;
+    if (!(addQty > 0) || !isFinite(addUnitCost) || addUnitCost < 0) return oldCost;
+    if (oldStock <= 0 || oldCost <= 0) return addUnitCost;
+    return (oldStock * oldCost + addQty * addUnitCost) / (oldStock + addQty);
+  }
+  // The reverse of blendedUnitCost — takes a batch back OUT of the average (deleting or undoing
+  // a restock). Call BEFORE subtracting removeQty from product.stock. Falls back to leaving the
+  // cost alone if the maths would go nonsensical (nothing left, or a negative result).
+  function unblendedUnitCost(p, removeQty, removeUnitCost) {
+    var stock = Math.max(0, Number(p.stock) || 0);
+    var cost = Number(p.cost) || 0;
+    var remaining = stock - removeQty;
+    if (!(removeQty > 0) || remaining <= 0 || !isFinite(removeUnitCost)) return cost;
+    var prev = (stock * cost - removeQty * removeUnitCost) / remaining;
+    return (isFinite(prev) && prev > 0) ? prev : cost;
+  }
+  // A batch already in the average changed price (edited amount, or its share of a shared
+  // shipping fee changed) — shift the average by just that difference.
+  function reblendedUnitCost(p, qty, oldUnitCost, newUnitCost) {
+    var stock = Math.max(0, Number(p.stock) || 0);
+    var cost = Number(p.cost) || 0;
+    if (!(qty > 0) || stock <= 0) return (stock <= 0 && isFinite(newUnitCost)) ? newUnitCost : cost;
+    var next = cost + qty * (newUnitCost - oldUnitCost) / stock;
+    return (isFinite(next) && next > 0) ? next : cost;
+  }
+
   function confirmCostSanity(product, newUnitCost) {
     if (!product) return true;
     var oldCost = Number(product.cost) || 0;
@@ -1324,6 +1447,30 @@
       document.getElementById('page-' + btn.dataset.tab).classList.add('active');
       renderAll();
     });
+  });
+  // Grouped menu: the top row picks a group, the row below only shows that group's pages. The
+  // group always follows whichever page is active, however she got there (menu, a "go to order"
+  // link, Simple mode...), because this runs at the end of every renderAll().
+  function updateNavGroups() {
+    var activeBtn = document.querySelector('nav button.active');
+    var group = activeBtn ? activeBtn.getAttribute('data-group') : 'reports';
+    var inGroup = 0;
+    document.querySelectorAll('nav button').forEach(function (b) {
+      var show = b.getAttribute('data-group') === group;
+      b.style.display = show ? '' : 'none';
+      if (show) inGroup++;
+    });
+    var navEl = document.querySelector('nav');
+    if (navEl) navEl.style.display = inGroup > 1 ? '' : 'none';
+    document.querySelectorAll('#nav-groups [data-navgroup]').forEach(function (g) {
+      g.classList.toggle('active', g.getAttribute('data-navgroup') === group);
+    });
+  }
+  document.getElementById('nav-groups').addEventListener('click', function (e) {
+    var g = e.target.closest ? e.target.closest('[data-navgroup]') : null;
+    if (!g) return;
+    var first = document.querySelector('nav button[data-group="' + g.getAttribute('data-navgroup') + '"]');
+    if (first) first.click();
   });
 
   // ---------- Product / theme helpers ----------
@@ -2028,8 +2175,8 @@
     var qty = packSize ? packs * packSize : packs;
     var newUnitCost = amount / qty;
     if (!confirmCostSanity(p, newUnitCost)) return;
+    p.cost = blendedUnitCost(p, qty, newUnitCost);
     p.stock += qty;
-    p.cost = newUnitCost;
     var restockCostId = uid();
     var date = todayISO();
     state.costs.push({
@@ -2671,16 +2818,16 @@
         resolvedItems.forEach(function (it) {
           var p = state.products.find(function (x) { return x.id === it.productId; });
           if (!p) return;
-          p.stock += it.qty;
-          logStock(p.id, it.qty, 'restock', 'Cost entry (batch)', date, costId);
           if (updateCosts) {
             var lineSubtotal = it.qty * it.unitCost;
             var share = itemsSubtotal > 0 ? (lineSubtotal / itemsSubtotal) * (shippingAmount + serviceFeeAmount) : 0;
             // Full precision (see finalizeQuickAddCost/applyShippingSplit) — rounding to 2dp
-            // before storing drifts once qty is largeish, since Inventory's Total number
-            // (cost * stock) redisplays whatever was stored here.
-            p.cost = (lineSubtotal + share) / it.qty;
+            // before storing drifts once qty is largeish. Blended with existing stock (weighted
+            // average) — must run before the stock is added below.
+            p.cost = blendedUnitCost(p, it.qty, (lineSubtotal + share) / it.qty);
           }
+          p.stock += it.qty;
+          logStock(p.id, it.qty, 'restock', 'Cost entry (batch)', date, costId);
         });
       }
     } else {
@@ -2743,9 +2890,11 @@
     // can work out the delta to apply to Stock instead of re-adding the whole new amount.
     var oldQtyBeforeEdit = null;
     var oldCategoryBeforeEdit = null;
+    var oldAmountBeforeEdit = null;
     if (editingCostId) {
       var existingCostForEdit = state.costs.find(function (x) { return x.id === editingCostId; });
       oldQtyBeforeEdit = existingCostForEdit ? (Number(existingCostForEdit.qty) || 0) : 0;
+      oldAmountBeforeEdit = existingCostForEdit ? (Number(existingCostForEdit.amount) || 0) : 0;
       oldCategoryBeforeEdit = existingCostForEdit ? existingCostForEdit.category : null;
     }
     if (!isMulti && linkedProductId) {
@@ -2785,13 +2934,13 @@
       if (qty2 > 0) {
         var linkedProduct = state.products.find(function (x) { return x.id === linkedProductId; });
         if (linkedProduct) {
+          if (document.getElementById('cf-updatecost').checked && amount > 0) {
+            // Weighted average with what's already in stock (see blendedUnitCost) — before
+            // the stock is added.
+            linkedProduct.cost = blendedUnitCost(linkedProduct, qty2, amount / qty2);
+          }
           linkedProduct.stock += qty2;
           logStock(linkedProduct.id, qty2, 'restock', 'Cost entry (' + document.getElementById('cf-category').value + ')', date, costId);
-          if (document.getElementById('cf-updatecost').checked && amount > 0) {
-            // Full precision (see finalizeQuickAddCost/applyShippingSplit) — same reasoning as
-            // the multi-item batch path just above.
-            linkedProduct.cost = amount / qty2;
-          }
         }
       }
     } else if (!isNewEntry && !isMulti && linkedProductId) {
@@ -2802,6 +2951,20 @@
       var qtyDelta = newQty - (oldQtyBeforeEdit || 0);
       var linkedProductEdit = state.products.find(function (x) { return x.id === linkedProductId; });
       if (linkedProductEdit) {
+        // Swap the old version of this batch out of the weighted-average cost and the corrected
+        // version in: take the old qty/price out, then blend the new qty/price back in.
+        if (document.getElementById('cf-updatecost').checked && amount > 0 && newQty > 0) {
+          var stockBeforeEdit = Math.max(0, Number(linkedProductEdit.stock) || 0);
+          var oldUnitEdit = (oldQtyBeforeEdit > 0) ? oldAmountBeforeEdit / oldQtyBeforeEdit : 0;
+          var baseCost = (oldQtyBeforeEdit > 0)
+            ? unblendedUnitCost(linkedProductEdit, oldQtyBeforeEdit, oldUnitEdit)
+            : (Number(linkedProductEdit.cost) || 0);
+          var baseStock = Math.max(0, stockBeforeEdit - (oldQtyBeforeEdit || 0));
+          var newUnitEdit = amount / newQty;
+          linkedProductEdit.cost = (baseStock > 0 && baseCost > 0)
+            ? (baseStock * baseCost + newQty * newUnitEdit) / (baseStock + newQty)
+            : newUnitEdit;
+        }
         if (qtyDelta !== 0) {
           linkedProductEdit.stock = Math.max(0, linkedProductEdit.stock + qtyDelta);
         }
@@ -2811,9 +2974,6 @@
           matchingLog.date = date;
         } else if (newQty !== 0) {
           logStock(linkedProductEdit.id, newQty, 'restock', 'Cost entry (' + document.getElementById('cf-category').value + ')', date, editingCostId);
-        }
-        if (document.getElementById('cf-updatecost').checked && amount > 0 && newQty > 0) {
-          linkedProductEdit.cost = amount / newQty;
         }
       }
     }
@@ -2945,9 +3105,18 @@
     }
     warn += shipWarn;
     if (!confirm('Delete this cost entry?' + warn)) return;
+    var isStockPurchase = cost.category === 'restock' || cost.category === 'new_inventory' || cost.category === 'packaging';
     stockChanges.forEach(function (it) {
       var p = state.products.find(function (x) { return x.id === it.productId; });
-      if (p) p.stock = Math.max(0, p.stock - it.qty);
+      if (!p) return;
+      // Deleting a purchase takes that batch back out of the weighted-average cost too.
+      if (isStockPurchase && it.qty > 0) {
+        var removedUnit = (typeof it.unitCost === 'number')
+          ? it.unitCost
+          : (Number(cost.amount) + (cost.shippingSourceId ? (Number(cost.shippingAmount) || 0) : 0)) / it.qty;
+        p.cost = unblendedUnitCost(p, it.qty, removedUnit);
+      }
+      p.stock = Math.max(0, p.stock - it.qty);
     });
     state.stockLog = state.stockLog.filter(function (l) { return l.costId !== id; });
     state.costs = state.costs.filter(function (c) { return c.id !== id; });
@@ -2962,11 +3131,12 @@
       // (unshared) price per unit.
       state.costs.forEach(function (c) {
         if (c.shippingSourceId !== cost.id) return;
+        var oldShareGone = Number(c.shippingAmount) || 0;
         c.shippingAmount = undefined;
         c.shippingSourceId = undefined;
         if (c.productId && c.qty) {
           var p = state.products.find(function (x) { return x.id === c.productId; });
-          if (p) p.cost = Number(c.amount) / c.qty;
+          if (p) p.cost = reblendedUnitCost(p, c.qty, (Number(c.amount) + oldShareGone) / c.qty, Number(c.amount) / c.qty);
         }
       });
       if (quickAddLastShipping && quickAddLastShipping.sourceEntryId === cost.id) quickAddLastShipping = null;
@@ -3454,8 +3624,9 @@
       if (p) {
         var prevCost = p.cost;
         var perUnitExact = c.amount / qty;
+        p.cost = blendedUnitCost(p, qty, perUnitExact);
         p.stock += qty;
-        p.cost = perUnitExact;
+        moveMeta.addedUnitCost = perUnitExact;
         category = p.costCategoryOverride || 'restock';
         logMsg = 'Moved "' + origDesc + '" (' + money(origAmount) + ') from Testing to Inventory — restocked ' + p.name + ' (+' + qty + (unit || '') + ').';
         moveMeta.toProductId = p.id;
@@ -3520,8 +3691,11 @@
             p.stock = Math.max(0, p.stock - meta.addedQty);
           }
         } else {
+          // Take this batch back out of the weighted average (older moves without the stored
+          // batch price fall back to restoring the cost snapshot from before the move).
+          if (typeof meta.addedUnitCost === 'number') p.cost = unblendedUnitCost(p, meta.addedQty, meta.addedUnitCost);
+          else if (typeof meta.prevCost === 'number') p.cost = meta.prevCost;
           p.stock = Math.max(0, p.stock - meta.addedQty);
-          if (typeof meta.prevCost === 'number') p.cost = meta.prevCost;
         }
       }
       // Remove the stock-history row this move created (matched by costId) either way, so
@@ -3970,6 +4144,383 @@
     renderProductTotals();
   });
 
+  // ================= MONTHLY REPORT =================
+  // One month at a glance — money in, money out, profit, how many orders, what sold best — each
+  // compared with the month before, so she doesn't have to set date filters on the Dashboard.
+  var monthlyReportMonth = todayISO().slice(0, 7); // 'YYYY-MM'
+  function monthBounds(ym) {
+    var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7));
+    var last = new Date(y, m, 0).getDate();
+    return { from: ym + '-01', to: ym + '-' + String(last).padStart(2, '0') };
+  }
+  function shiftMonth(ym, delta) {
+    var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) - 1 + delta;
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    return y + '-' + String(m + 1).padStart(2, '0');
+  }
+  function monthLabel(ym) {
+    var names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return names[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4);
+  }
+  function monthlyProductStats(ym) {
+    var b = monthBounds(ym);
+    var inRange = function (d) { return d && d >= b.from && d <= b.to; };
+    var sold = {}, replaced = 0, gifts = 0, tumblers = 0;
+    state.orders.forEach(function (o) {
+      if (o.status === 'cancelled' || !inRange(o.date)) return;
+      (o.items || []).forEach(function (i) {
+        var qty = Number(i.qty) || 0;
+        var p = state.products.find(function (x) { return x.id === i.productId; });
+        if (o.isReplacement) { replaced += qty; return; }
+        if (i.isGift) { gifts += qty; return; }
+        if (p && p.type === 'Tumbler') tumblers += qty;
+        var key = i.productId || i.productName;
+        if (!sold[key]) sold[key] = { name: p ? p.name + (p.variant ? ' — ' + p.variant : '') : (i.productName || 'Deleted product'), qty: 0, revenue: 0 };
+        sold[key].qty += qty;
+        sold[key].revenue += qty * (Number(i.unitPrice) || 0);
+      });
+    });
+    var best = Object.keys(sold).map(function (k) { return sold[k]; })
+      .sort(function (a, b2) { return b2.qty - a.qty || b2.revenue - a.revenue; }).slice(0, 5);
+    return { best: best, replaced: replaced, gifts: gifts, tumblers: tumblers };
+  }
+  function renderMonthlyReport() {
+    var el = document.getElementById('monthly-content');
+    if (!el) return;
+    var ym = monthlyReportMonth;
+    var prevYm = shiftMonth(ym, -1);
+    var cb = monthBounds(ym), pb = monthBounds(prevYm);
+    var cur = financialsForRange(cb.from, cb.to);
+    var prev = financialsForRange(pb.from, pb.to);
+    var stats = monthlyProductStats(ym);
+    var options = '';
+    for (var i = 0; i < 18; i++) {
+      var opt = shiftMonth(todayISO().slice(0, 7), -i);
+      options += '<option value="' + opt + '"' + (opt === ym ? ' selected' : '') + '>' + monthLabel(opt) + '</option>';
+    }
+    function vsLast(c, p, lowerIsBetter) {
+      var label = pctChangeLabel(c, p);
+      if (label === '—') return '<div class="muted" style="font-size:12px;">same as ' + monthLabel(prevYm).split(' ')[0] + '</div>';
+      var good = lowerIsBetter ? c <= p : c >= p;
+      return '<div style="font-size:12px; color:' + (good ? 'var(--green,#3b6d11)' : 'var(--red,#a32d2d)') + ';">' + label + ' vs ' + monthLabel(prevYm).split(' ')[0] + '</div>';
+    }
+    function card(label, value, sub) {
+      return '<div class="card" style="flex:1 1 150px; min-width:140px;"><div class="muted" style="font-size:12px;">' + label + '</div>' +
+        '<div style="font-size:22px; font-weight:700; margin:2px 0;">' + value + '</div>' + (sub || '') + '</div>';
+    }
+    var html = '<div style="display:flex; justify-content:flex-end; margin-bottom:14px;"><select id="monthly-filter-month" style="width:190px;">' + options + '</select></div>' +
+      '<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">' +
+        card('Revenue', money(cur.revenue), vsLast(cur.revenue, prev.revenue)) +
+        card('Costs', money(cur.allCostsSpent), vsLast(cur.allCostsSpent, prev.allCostsSpent, true)) +
+        card('Net profit', money(cur.netProfit), vsLast(cur.netProfit, prev.netProfit)) +
+        card('Orders', String(cur.orderCount), '<div class="muted" style="font-size:12px;">' + stats.tumblers + ' Tumbler' + (stats.tumblers === 1 ? '' : 's') + '</div>') +
+      '</div>' +
+      '<div class="card"><div style="font-weight:600; margin-bottom:6px;">Best sellers</div>' +
+      (stats.best.length
+        ? stats.best.map(function (b2, idx) {
+            return '<div style="display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px;">' +
+              '<span>' + (idx + 1) + '. ' + escapeHtml(b2.name) + '</span><span class="muted">' + b2.qty + ' sold · ' + money(b2.revenue) + '</span></div>';
+          }).join('')
+        : '<div class="muted" style="font-size:13px;">No sales this month yet.</div>') +
+      '<div class="muted" style="display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-size:13px;">' +
+        '<span>Replaced: ' + stats.replaced + '</span><span>Gifts: ' + stats.gifts + '</span><span>Wastage: ' + money(cur.wastageLoss) + '</span>' +
+        (cur.refundsGiven ? '<span>Refunds: ' + money(cur.refundsGiven) + '</span>' : '') +
+      '</div></div>';
+    el.innerHTML = html;
+  }
+  document.getElementById('monthly-content').addEventListener('change', function (e) {
+    if (e.target.id === 'monthly-filter-month') { monthlyReportMonth = e.target.value; renderMonthlyReport(); }
+  });
+
+  // ================= TO-DO =================
+  // Her own daily list (a page of its own, last in the menu), plus a few things the app already
+  // knows need doing that day — Tumblers scheduled for it, customers still owing an address, and
+  // J&T to book the day before a pack day. Unfinished one-off items roll over to the next day.
+  // Repeating items ("every day", "every pack day", "every week") are ticked off per date.
+  var todoViewDate = null; // null = today
+  var todoShowDone = false;
+  function todoAddDays(iso, n) {
+    var d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function todoWeekday(iso) { return new Date(iso + 'T00:00:00').getDay(); }
+  function todoPackDays() { return (state.weeklyBreakDays && state.weeklyBreakDays.length) ? state.weeklyBreakDays : [2, 6]; }
+  function todoRepeatLabel(r) {
+    if (r === 'daily') return 'Every day';
+    if (r === 'packday') return 'Every pack day';
+    if (r === 'weekly') return 'Every week';
+    return '';
+  }
+  function todoRepeatsOn(item, day) {
+    if (day < item.date) return false;
+    if (item.repeat === 'daily') return true;
+    if (item.repeat === 'packday') return todoPackDays().indexOf(todoWeekday(day)) !== -1;
+    if (item.repeat === 'weekly') return todoWeekday(day) === todoWeekday(item.date);
+    return false;
+  }
+  // Her own items that belong on `day`, each with its done-state for that day.
+  function todoOwnItems(day) {
+    var today = todayISO();
+    var out = [];
+    (state.todos || []).forEach(function (t) {
+      if (t.repeat) {
+        if (todoRepeatsOn(t, day)) out.push({ item: t, done: !!(t.doneDates && t.doneDates[day]), carried: false });
+        return;
+      }
+      if (t.date === day) { out.push({ item: t, done: !!t.done && (!t.doneOn || t.doneOn <= day), carried: false }); return; }
+      // Rolled over from an earlier day: still open, or finished on/after this day.
+      if (t.date < day && day <= today && (!t.done || (t.doneOn && t.doneOn >= day))) {
+        out.push({ item: t, done: !!t.done && t.doneOn === day, carried: true });
+      }
+    });
+    return out;
+  }
+  // Suggestions worked out from orders/shipping for `day` (today or later only).
+  function todoAutoItems(day) {
+    var today = todayISO();
+    if (day < today) return [];
+    var out = [];
+    var making = state.orders.filter(function (o) { return o.status === 'queueing' && !o.productionDone && o.scheduledDate === day; });
+    if (making.length) {
+      var cups = making.reduce(function (s, o) { return s + orderTumblerQty(o); }, 0);
+      var names = making.map(function (o) { return o.buyerName || 'Unknown'; }).join(', ');
+      out.push({ key: 'make', text: (cups ? 'Make ' + cups + ' Tumbler' + (cups === 1 ? '' : 's') : 'Make ' + making.length + ' order' + (making.length === 1 ? '' : 's')) + ' — ' + names, tag: 'From orders' });
+    }
+    if (day === today) {
+      state.orders.filter(function (o) {
+        return !o.shipTo && ['queueing', 'uv curing', 'ready to ship'].indexOf(o.status) !== -1;
+      }).forEach(function (o) {
+        out.push({ key: 'addr-' + o.id, text: 'Ask ' + (o.buyerName || 'customer') + ' for shipping address', tag: 'From orders' });
+      });
+    }
+    var readyWithAddr = state.orders.filter(function (o) { return o.status === 'ready to ship' && !!o.shipTo; }).length;
+    var tomorrow = todoAddDays(day, 1);
+    if (todoPackDays().indexOf(todoWeekday(tomorrow)) !== -1 && readyWithAddr > 0) {
+      out.push({ key: 'book', text: 'Book J&T for ' + formatDateLong(tomorrow) + ' pack day (' + readyWithAddr + ' parcel' + (readyWithAddr === 1 ? '' : 's') + ')', tag: 'From shipping' });
+    }
+    var toPack = state.orders.filter(function (o) { return o.status === 'order shipment' || o.status === 'ready to ship'; }).length;
+    if (todoPackDays().indexOf(todoWeekday(day)) !== -1 && toPack > 0) {
+      out.push({ key: 'pack', text: 'Pack ' + toPack + ' parcel' + (toPack === 1 ? '' : 's'), tag: 'From shipping' });
+    }
+    var doneMap = (state.todoAutoDone && state.todoAutoDone[day]) || {};
+    out.forEach(function (a) { a.done = !!doneMap[a.key]; });
+    return out;
+  }
+  function renderTodo() {
+    var el = document.getElementById('todo-content');
+    if (!el) return;
+    var today = todayISO();
+    var day = todoViewDate || today;
+    var own = todoOwnItems(day);
+    var showAuto = state.todoShowAuto !== false;
+    var auto = showAuto ? todoAutoItems(day) : [];
+    var total = own.length + auto.length;
+    var doneCount = own.filter(function (x) { return x.done; }).length + auto.filter(function (x) { return x.done; }).length;
+    var dayLabel = (day === today ? 'Today · ' : (day === todoAddDays(today, 1) ? 'Tomorrow · ' : (day === todoAddDays(today, -1) ? 'Yesterday · ' : ''))) + formatDateLong(day);
+    function ownRow(x) {
+      var t = x.item;
+      var tag = x.carried ? '<span class="todo-tag todo-tag-old">From ' + escapeHtml(formatDate(t.date)) + '</span>'
+        : (t.repeat ? '<span class="todo-tag todo-tag-rep">' + todoRepeatLabel(t.repeat) + '</span>' : '');
+      return '<div class="todo-row' + (x.done ? ' todo-done' : '') + '">' +
+        '<input type="checkbox" class="todo-check" data-todo-id="' + t.id + '"' + (x.done ? ' checked' : '') + '>' +
+        '<span class="todo-text">' + escapeHtml(t.text) + '</span>' + tag +
+        '<button type="button" class="btn-text todo-delete" data-todo-delete="' + t.id + '" title="Remove" aria-label="Remove">✕</button>' +
+      '</div>';
+    }
+    function autoRow(a) {
+      return '<div class="todo-row' + (a.done ? ' todo-done' : '') + '">' +
+        '<input type="checkbox" class="todo-check" data-todo-auto="' + escapeHtml(a.key) + '"' + (a.done ? ' checked' : '') + '>' +
+        '<span class="todo-text">' + escapeHtml(a.text) + '</span><span class="todo-tag todo-tag-auto">' + escapeHtml(a.tag) + '</span>' +
+      '</div>';
+    }
+    var ownOpen = own.filter(function (x) { return !x.done; }), ownDone = own.filter(function (x) { return x.done; });
+    var autoOpen = auto.filter(function (x) { return !x.done; }), autoDone = auto.filter(function (x) { return x.done; });
+    var doneRows = ownDone.map(ownRow).concat(autoDone.map(autoRow));
+    var packNames = todoPackDays().map(function (d) { return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]; }).join(' & ');
+    var html = '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">' +
+        '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+          '<button type="button" class="btn btn-secondary btn-small" id="todo-filter-prev" aria-label="Previous day">‹</button>' +
+          '<span style="font-weight:600; font-size:15px;">' + escapeHtml(dayLabel) + '</span>' +
+          '<button type="button" class="btn btn-secondary btn-small" id="todo-filter-next" aria-label="Next day">›</button>' +
+          (day !== today ? '<button type="button" class="btn-text" id="todo-filter-today" style="font-size:13px;">Back to today</button>' : '') +
+        '</div>' +
+        '<span class="muted" style="font-size:13px;">' + doneCount + ' of ' + total + ' done</span>' +
+      '</div>' +
+      '<div class="card">' +
+        '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+          '<input id="todo-new-text" placeholder="Add something to do…" style="flex:1; min-width:180px;">' +
+          '<select id="todo-new-repeat" style="width:190px;"><option value="">Just this day</option><option value="daily">Every day</option><option value="packday">Every pack day (' + packNames + ')</option><option value="weekly">Every week</option></select>' +
+          '<button type="button" class="btn btn-primary btn-small" id="btn-todo-add">Add</button>' +
+        '</div>' +
+        '<div id="todo-add-error" style="color:var(--red); font-size:13px; margin-top:4px;"></div>' +
+        '<div class="todo-section">My list</div>' +
+        (ownOpen.length ? ownOpen.map(ownRow).join('') : '<div class="muted" style="font-size:13px; padding:6px 0;">Nothing here yet.</div>') +
+        (showAuto
+          ? '<div class="todo-section">Suggested by the app</div>' + (autoOpen.length ? autoOpen.map(autoRow).join('') : '<div class="muted" style="font-size:13px; padding:6px 0;">' + (day < today ? 'Suggestions only show for today and later.' : 'Nothing from orders or shipping.') + '</div>')
+          : '') +
+        (doneRows.length
+          ? '<button type="button" class="btn-text" id="btn-todo-toggle-done" style="font-size:13px; margin-top:10px;">' + (todoShowDone ? '▾ Hide' : '▸ Show') + ' ' + doneRows.length + ' done</button>' + (todoShowDone ? doneRows.join('') : '')
+          : '') +
+        '<div style="margin-top:12px;"><label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;" class="muted"><input type="checkbox" id="todo-show-auto"' + (showAuto ? ' checked' : '') + '> Show suggestions from orders &amp; shipping</label></div>' +
+      '</div>';
+    el.innerHTML = html;
+  }
+  function addTodoItem() {
+    var input = document.getElementById('todo-new-text');
+    var text = input ? input.value.trim() : '';
+    var err = document.getElementById('todo-add-error');
+    if (!text) { if (err) err.textContent = 'Type something first.'; return; }
+    if (!state.todos) state.todos = [];
+    var repeat = document.getElementById('todo-new-repeat').value;
+    state.todos.push({ id: uid(), text: text, date: todoViewDate || todayISO(), repeat: repeat, done: false, doneOn: null, doneDates: {} });
+    save();
+    renderTodo();
+    var again = document.getElementById('todo-new-text');
+    if (again) again.focus();
+  }
+  document.getElementById('todo-content').addEventListener('click', function (e) {
+    var id = e.target.id;
+    var today = todayISO();
+    if (id === 'todo-filter-prev') { todoViewDate = todoAddDays(todoViewDate || today, -1); renderTodo(); return; }
+    if (id === 'todo-filter-next') { todoViewDate = todoAddDays(todoViewDate || today, 1); renderTodo(); return; }
+    if (id === 'todo-filter-today') { todoViewDate = null; renderTodo(); return; }
+    if (id === 'btn-todo-add') { addTodoItem(); return; }
+    if (id === 'btn-todo-toggle-done') { todoShowDone = !todoShowDone; renderTodo(); return; }
+    var del = e.target.getAttribute && e.target.getAttribute('data-todo-delete');
+    if (del) {
+      var t = (state.todos || []).find(function (x) { return x.id === del; });
+      if (t && t.repeat && !confirm('Remove "' + t.text + '"? It repeats — this removes it from every day.')) return;
+      state.todos = (state.todos || []).filter(function (x) { return x.id !== del; });
+      save();
+      renderTodo();
+    }
+  });
+  document.getElementById('todo-content').addEventListener('keydown', function (e) {
+    if (e.target.id === 'todo-new-text' && e.key === 'Enter') { e.preventDefault(); addTodoItem(); }
+  });
+  document.getElementById('todo-content').addEventListener('input', function (e) {
+    if (e.target.id === 'todo-new-text') { var err = document.getElementById('todo-add-error'); if (err) err.textContent = ''; }
+  });
+  document.getElementById('todo-content').addEventListener('change', function (e) {
+    var day = todoViewDate || todayISO();
+    if (e.target.id === 'todo-show-auto') { state.todoShowAuto = e.target.checked; save(); renderTodo(); return; }
+    var tid = e.target.getAttribute('data-todo-id');
+    if (tid) {
+      var t = (state.todos || []).find(function (x) { return x.id === tid; });
+      if (!t) return;
+      if (t.repeat) {
+        if (!t.doneDates) t.doneDates = {};
+        if (e.target.checked) t.doneDates[day] = true; else delete t.doneDates[day];
+      } else {
+        t.done = e.target.checked;
+        t.doneOn = e.target.checked ? day : null;
+      }
+      save();
+      renderTodo();
+      return;
+    }
+    var akey = e.target.getAttribute('data-todo-auto');
+    if (akey) {
+      if (!state.todoAutoDone) state.todoAutoDone = {};
+      if (!state.todoAutoDone[day]) state.todoAutoDone[day] = {};
+      if (e.target.checked) state.todoAutoDone[day][akey] = true; else delete state.todoAutoDone[day][akey];
+      save();
+      renderTodo();
+    }
+  });
+
+  // ================= SIMPLE MODE =================
+  // A big-button home screen (mainly for mum): today's work at the top and just four things she
+  // actually needs — New order, Today's work, Restock, Broken/wastage. Each opens the normal page
+  // with a big "← Home" button to come back. Remembered per device, so her phone can stay in
+  // Simple mode while Evvyne's stays in full mode.
+  var SIMPLE_MODE_KEY = 'sipsSimpleMode';
+  var simpleMode = false;
+  try { simpleMode = localStorage.getItem(SIMPLE_MODE_KEY) === '1'; } catch (e) {}
+  var simpleRestockOpen = false;
+  function activatePage(tab) {
+    document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
+    document.querySelectorAll('.page').forEach(function (p) { p.classList.toggle('active', p.id === 'page-' + tab); });
+  }
+  function goToPage(tab) { activatePage(tab); renderAll(); window.scrollTo && window.scrollTo(0, 0); }
+  function setSimpleMode(on) {
+    simpleMode = !!on;
+    try { localStorage.setItem(SIMPLE_MODE_KEY, simpleMode ? '1' : '0'); } catch (e) {}
+    document.body.classList.toggle('simple-mode', simpleMode);
+    simpleRestockOpen = false;
+    goToPage(simpleMode ? 'simple' : 'dashboard');
+  }
+  function updateSimpleBar() {
+    var bar = document.getElementById('simple-home-bar');
+    var onHome = !!document.querySelector('#page-simple.active');
+    if (bar) bar.style.display = (simpleMode && !onHome) ? '' : 'none';
+  }
+  function renderSimpleHome() {
+    var el = document.getElementById('simple-content');
+    if (!el) return;
+    var today = todayISO();
+    var todays = state.orders.filter(function (o) { return o.status !== 'cancelled' && !o.productionDone && o.scheduledDate === today; });
+    var tumblersToday = todays.reduce(function (s, o) { return s + orderTumblerQty(o); }, 0);
+    var readyToShip = state.orders.filter(function (o) { return o.status === 'ready to ship'; }).length;
+    var d = new Date(today + 'T00:00:00');
+    var dayLabel = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+    var html = '<div style="max-width:640px; margin:0 auto 16px; background:#eef4ff; color:var(--blue); border-radius:14px; padding:16px 18px;">' +
+        '<div style="font-size:14px;">Today, ' + escapeHtml(dayLabel) + '</div>' +
+        '<div style="font-size:20px; font-weight:700; margin-top:2px;">' + (tumblersToday ? tumblersToday + ' Tumbler' + (tumblersToday === 1 ? '' : 's') + ' to make' : (todays.length ? todays.length + ' order' + (todays.length === 1 ? '' : 's') + ' to do' : 'Nothing scheduled today')) + '</div>' +
+        (readyToShip ? '<div style="font-size:14px; margin-top:4px;">' + readyToShip + ' ready to ship</div>' : '') +
+      '</div>' +
+      '<div class="simple-grid">' +
+        '<button type="button" class="simple-big" data-simple="neworder"><span class="simple-icon">＋</span>New order</button>' +
+        '<button type="button" class="simple-big" data-simple="today"><span class="simple-icon">📅</span>Today\'s work</button>' +
+        '<button type="button" class="simple-big" data-simple="restock"><span class="simple-icon">📦</span>Restock</button>' +
+        '<button type="button" class="simple-big" data-simple="wastage"><span class="simple-icon">🗑</span>Broken / wastage</button>' +
+        '<button type="button" class="simple-big" data-simple="todo"><span class="simple-icon">📝</span>To-do</button>' +
+      '</div>';
+    if (simpleRestockOpen) {
+      var groups = ['Tumbler', 'Stickers', 'Add ons', 'Others'].map(function (t) {
+        var ps = state.products.filter(function (p) { return p.type === t; })
+          .sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+        if (!ps.length) return '';
+        return '<optgroup label="' + escapeHtml(t) + '">' + ps.map(function (p) {
+          return '<option value="' + p.id + '">' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : (p.theme ? ' — ' + p.theme : ''))) + ' (' + p.stock + (p.unit || '') + ' left)</option>';
+        }).join('') + '</optgroup>';
+      }).join('');
+      html += '<div class="card" style="max-width:640px; margin:14px auto 0;">' +
+        '<div style="font-size:17px; font-weight:600; margin-bottom:10px;">What did you buy?</div>' +
+        '<select id="simple-restock-product" style="font-size:16px; padding:10px;"><option value="">Choose…</option>' + groups + '</select>' +
+        '<div id="simple-restock-error" style="color:var(--red); font-size:13px; margin-top:6px;"></div>' +
+        '<button type="button" class="btn btn-primary" data-simple="restock-go" style="margin-top:12px; font-size:16px; padding:10px 20px;">Next</button>' +
+      '</div>';
+    }
+    html += '<div style="text-align:center; margin-top:22px;"><button type="button" class="btn-text" data-simple="full" style="font-size:14px;">Switch to full mode</button></div>';
+    el.innerHTML = html;
+  }
+  document.getElementById('simple-content').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-simple]') : null;
+    if (!b) return;
+    var what = b.getAttribute('data-simple');
+    if (what === 'neworder') { goToPage('orders'); var addBtn = document.getElementById('btn-add-order'); if (addBtn) addBtn.click(); return; }
+    if (what === 'today') { scheduleFilterFrom = todayISO(); scheduleFilterTo = todayISO(); goToPage('calendar'); return; }
+    if (what === 'restock') { simpleRestockOpen = !simpleRestockOpen; renderSimpleHome(); return; }
+    if (what === 'restock-go') {
+      var sel = document.getElementById('simple-restock-product');
+      if (!sel || !sel.value) { document.getElementById('simple-restock-error').textContent = 'Choose what you bought first.'; return; }
+      simpleRestockOpen = false;
+      openRestockFor(sel.value);
+      return;
+    }
+    if (what === 'wastage') { goToPage('wastage'); var wBtn = document.getElementById('btn-add-wastage'); if (wBtn) wBtn.click(); return; }
+    if (what === 'todo') { goToPage('todo'); return; }
+    if (what === 'full') { setSimpleMode(false); return; }
+  });
+  document.getElementById('simple-content').addEventListener('change', function (e) {
+    if (e.target.id === 'simple-restock-product') { var err = document.getElementById('simple-restock-error'); if (err) err.textContent = ''; }
+  });
+  document.getElementById('btn-simple-home').addEventListener('click', function () { goToPage('simple'); });
+  document.getElementById('btn-simple-mode').addEventListener('click', function () { setSimpleMode(true); });
+  if (simpleMode) { document.body.classList.add('simple-mode'); activatePage('simple'); }
+
   // ================= ORDERS =================
   var draftItems = [];
   var editingOrderId = null;
@@ -4076,7 +4627,62 @@
     else { dateInput.disabled = false; clearBtn.disabled = false; }
   });
 
+  // Shipping details pasted from WhatsApp, in whatever shape the customer typed them — pulls out
+  // the phone number and 5-digit postcode, takes the first plain line as the name, and the rest
+  // as the address. Labels like "Name:", "Nama:", "Tel:", "Alamat:" are understood too.
+  function parseShippingPaste(text) {
+    var out = { name: '', phone: '', address: '', postcode: '' };
+    if (!text || !text.trim()) return out;
+    var labelRe = /^\s*(name|nama|recipient|receiver|penerima|phone\s*(?:number|no\.?)?|tel(?:efon)?(?:\s*no\.?)?|hp|h\/p|handphone|fon|no\.?\s*(?:tel(?:efon)?|hp|h\/p|phone|fon|handphone)|nombor\s*(?:telefon|phone|fon)|contact(?:\s*no\.?)?|mobile(?:\s*no\.?)?|address|alamat|postcode|poskod|postal code)\s*[:：\-]\s*/i;
+    var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+    var addrParts = [];
+    lines.forEach(function (raw) {
+      var labelMatch = raw.match(labelRe);
+      var label = labelMatch ? labelMatch[1].toLowerCase() : '';
+      var line = raw.replace(labelRe, '').trim();
+      if (!line) return;
+      var phoneM = line.match(/(\+?6?0?1\d[\d\s-]{6,11}\d)/);
+      // Everything on ONE line ("Nurul 0123456789 Lot 5 Jalan ..."): lift the phone out and keep
+      // going with the rest, instead of treating the whole line as address.
+      if (!out.phone && phoneM && !label && /[a-z]{3,}/i.test(line.replace(phoneM[1], ''))) {
+        out.phone = phoneM[1].replace(/\s+/g, ' ').trim();
+        line = line.replace(phoneM[1], ' ').replace(/\s{2,}/g, ' ').trim();
+        phoneM = null;
+      }
+      // A name typed in front of the address on the same line: the words before the first number.
+      if (!out.name && !label && !addrParts.length && /\d/.test(line)) {
+        var nm = line.match(/^([A-Za-z@'.\/\s]+?)\s+((?:lot|no\.?|blk|block|unit|jalan|jln|taman|tmn|kg|kampung|lorong|lrg)?\s*[A-Za-z]?-?\d[\s\S]*)$/i);
+        if (nm && nm[1].trim().split(/\s+/).length >= 2 && nm[1].length <= 40) { out.name = nm[1].trim(); line = nm[2].trim(); }
+      }
+      if (!out.phone && (phoneM && (/^(phone|tel|hp|h\/p|handphone|fon|nombor|contact|mobile|no)/.test(label) || line.replace(/[\s+-]/g, '').length <= 13 && /^\+?[\d\s-]+$/.test(line)))) {
+        out.phone = phoneM[1].replace(/\s+/g, ' ').trim();
+        return;
+      }
+      if (!out.name && (/^(name|nama|recipient|receiver|penerima)/.test(label) || (!label && !/\d/.test(line) && line.length <= 40 && !addrParts.length))) {
+        out.name = line;
+        return;
+      }
+      if (/^(postcode|poskod|postal)/.test(label)) { out.postcode = (line.match(/\d{5}/) || [line])[0]; return; }
+      addrParts.push(line);
+    });
+    // Lines that already end in a comma ("NO 887, JALAN X,") mustn't turn into ",," when joined.
+    out.address = addrParts.map(function (a) { return a.replace(/[,\s]+$/, ''); }).join(', ');
+    if (!out.postcode) { var pc = out.address.match(/\b(\d{5})\b/); if (pc) out.postcode = pc[1]; }
+    return out;
+  }
+  document.getElementById('of-ship-paste').addEventListener('input', function () {
+    var parsed = parseShippingPaste(this.value);
+    if (parsed.name) document.getElementById('of-recipient-name').value = parsed.name;
+    if (parsed.phone) document.getElementById('of-recipient-phone').value = parsed.phone;
+    if (parsed.address) document.getElementById('of-shipto').value = parsed.address;
+    if (parsed.postcode) document.getElementById('of-postcode').value = parsed.postcode;
+  });
+
   function clearOrderForm() {
+    document.getElementById('of-paid').checked = false;
+    ['of-ship-paste', 'of-recipient-name', 'of-recipient-phone', 'of-shipto', 'of-postcode'].forEach(function (id) { document.getElementById(id).value = ''; });
+    document.getElementById('of-more-options').open = false;
+    document.getElementById('of-production-hint').textContent = 'Production date is picked for you (5 cups a day). Change it under More options.';
     document.getElementById('of-buyer-name').value = '';
     document.getElementById('of-buyer-handle').value = '';
     document.getElementById('of-buyer-whatsapp').value = '';
@@ -4439,6 +5045,13 @@
     var shippingCostActual = shippingCostEntered ? (Number(shippingCostRaw) || 0) : 0;
     var discount = Number(document.getElementById('of-discount').value) || 0;
     var notes = document.getElementById('of-notes').value.trim();
+    var paidChecked = document.getElementById('of-paid').checked;
+    var shipInfo = {
+      recipientName: document.getElementById('of-recipient-name').value.trim(),
+      recipientPhone: document.getElementById('of-recipient-phone').value.trim(),
+      shipTo: document.getElementById('of-shipto').value.trim(),
+      postcode: document.getElementById('of-postcode').value.trim()
+    };
     // If she's editing an order, carry over how many of each line item were already marked as
     // "made" (see the per-item made-qty tracker on the expanded order row) — matched by
     // position, since that's how the draft item list lines up with the order's saved items.
@@ -4483,10 +5096,11 @@
         order.buyerWhatsapp = buyerWhatsapp;
         order.date = date;
         order.status = status;
-        // Recipient name/phone/address are no longer editable from this form — they're filled in
-        // later, from the Shipping tab, once she actually has that info from the customer. Leaving
-        // these four fields untouched here means re-saving an edited order can never wipe out an
-        // address she already added.
+        // Shipping details: only ever filled in or updated from here, never wiped — an empty box
+        // leaves whatever she already added (e.g. from the Shipping tab) untouched.
+        Object.keys(shipInfo).forEach(function (k) { if (shipInfo[k]) order[k] = shipInfo[k]; });
+        if (paidChecked && !order.paid) { order.paid = true; order.paymentDate = order.paymentDate || todayISO(); }
+        else if (!paidChecked && order.paid) { order.paid = false; }
         order.shippingZone = shippingZone;
         order.shippingWeight = shippingWeight;
         order.shippingFee = shippingFee;
@@ -4517,16 +5131,16 @@
         buyerWhatsapp: buyerWhatsapp,
         date: date,
         status: status,
-        paid: false,
-        paymentDate: '',
+        paid: paidChecked,
+        paymentDate: paidChecked ? todayISO() : '',
         paymentRef: '',
         paymentBankName: '',
-        // Blank until she adds them from the Shipping tab later (see comment on the edit path
-        // above) — a brand new order never has this info yet anyway.
-        recipientName: '',
-        recipientPhone: '',
-        shipTo: '',
-        postcode: '',
+        // Usually blank until she adds them from the Shipping tab later — unless the customer
+        // already sent them and she pasted them in under More options.
+        recipientName: shipInfo.recipientName,
+        recipientPhone: shipInfo.recipientPhone,
+        shipTo: shipInfo.shipTo,
+        postcode: shipInfo.postcode,
         shippingZone: shippingZone,
         shippingWeight: shippingWeight,
         shippingFee: shippingFee,
@@ -4710,6 +5324,110 @@
     }
     order.status = newStatus;
   }
+
+  // Saves her a few taps: when every item on a queueing order is marked made it moves to
+  // "uv curing" by itself, and adding a tracking number moves it to "shipped". Each automatic
+  // change pops up a small bar with Undo, in case it jumped too early.
+  function showUndoToast(label, onUndo) {
+    var existing = document.getElementById('app-undo-toast');
+    if (existing) existing.remove();
+    var bar = document.createElement('div');
+    bar.id = 'app-undo-toast';
+    bar.style.cssText = 'position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#1f2937; color:#fff; padding:10px 12px 10px 18px; border-radius:20px; font-size:13px; z-index:9999; display:flex; align-items:center; gap:12px; box-shadow:0 2px 10px rgba(0,0,0,0.25);';
+    var text = document.createElement('span');
+    text.textContent = label;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'btn-undo-auto-status';
+    btn.textContent = 'Undo';
+    btn.style.cssText = 'background:#fff; color:#1f2937; border:none; border-radius:12px; padding:4px 12px; font-weight:600; cursor:pointer;';
+    btn.addEventListener('click', function () { if (bar.parentNode) bar.parentNode.removeChild(bar); onUndo(); });
+    bar.appendChild(text);
+    bar.appendChild(btn);
+    document.body.appendChild(bar);
+    setTimeout(function () { if (bar.parentNode) bar.parentNode.removeChild(bar); }, 7000);
+  }
+  function autoAdvanceStatus(order, newStatus) {
+    if (!order || order.status === newStatus) return;
+    var prevStatus = order.status;
+    var hadPackagingDeducted = !!order.parcelBagDeducted;
+    changeOrderStatusCore(order, newStatus);
+    showUndoToast((order.buyerName ? order.buyerName + ': ' : '') + 'status changed to ' + newStatus, function () {
+      if (!hadPackagingDeducted && order.parcelBagDeducted) restoreParcelBag(order);
+      if (pendingPackagingChoiceOrderId === order.id) pendingPackagingChoiceOrderId = null;
+      order.status = prevStatus;
+      save();
+      renderAll();
+    });
+  }
+  // Copies text to the clipboard (with a fallback for browsers without the modern clipboard API)
+  // and shows the small "Copied" toast either way.
+  function copyTextWithToast(text, label) {
+    var done = function () { showCopiedToast(label || 'Copied!'); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { legacyCopy(); });
+        return;
+      }
+    } catch (e) {}
+    legacyCopy();
+    function legacyCopy() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        if (document.execCommand) document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch (e2) {}
+      done();
+    }
+  }
+  // "Ask for address" — works at any stage (she sometimes asks right when they order).
+  var DEFAULT_ASK_ADDRESS_TEMPLATE = "Hihi Kakak {buyerName}! 😍\n\nCould you send me your shipping details so I can arrange your parcel?\n\nName:\nPhone number:\nFull address (with postcode):\n\nThank you so much! 🎁";
+  function buildAskAddressMessage(order) {
+    return (state.askAddressTemplate || DEFAULT_ASK_ADDRESS_TEMPLATE).split('{buyerName}').join(order.buyerName || 'there');
+  }
+  function copyAskAddressMessage(orderId) {
+    var o = state.orders.find(function (x) { return x.id === orderId; });
+    if (!o) return;
+    var msg = buildAskAddressMessage(o);
+    window.__lastCopiedText = msg;
+    copyTextWithToast(msg, 'Message copied — paste it into WhatsApp');
+  }
+  // One tap from the order row: queueing -> (everything made) -> UV curing -> ready to ship, and
+  // shipped -> delivered. Undo is offered each time, same as the automatic moves.
+  function advanceOrderOneStep(orderId) {
+    var o = state.orders.find(function (x) { return x.id === orderId; });
+    if (!o) return;
+    if (o.status === 'queueing') {
+      var missing = (o.items || []).filter(function (i) {
+        var p = state.products.find(function (pp) { return pp.id === i.productId; });
+        return p && p.type === 'Tumbler' && !i.pattern && (Number(i.madeQty) || 0) === 0;
+      });
+      if (missing.length) {
+        alert('Pick which pattern each Tumbler was made with first (tap the order to open it).');
+        expandedOrderId = o.id;
+        renderOrders();
+        return;
+      }
+      (o.items || []).forEach(function (i) { i.madeQty = Number(i.qty) || 0; });
+      autoAdvanceStatus(o, 'uv curing');
+    } else if (o.status === 'uv curing') {
+      autoAdvanceStatus(o, 'ready to ship');
+    } else if (o.status === 'shipped') {
+      autoAdvanceStatus(o, 'delivered');
+    } else {
+      return;
+    }
+    save();
+    renderAll();
+  }
+
+  function orderAllItemsMade(order) {
+    var items = order.items || [];
+    return items.length > 0 && items.every(function (i) { return (Number(i.madeQty) || 0) >= (Number(i.qty) || 0); });
+  }
+  var PRE_SHIP_STATUSES = ['queueing', 'uv curing', 'ready to ship', 'order shipment'];
 
   function changeOrderStatus(id, newStatus) {
     var order = state.orders.find(function (o) { return o.id === id; });
@@ -5344,6 +6062,48 @@
     if (sortBtn) sortBtn.textContent = orderSortAscending ? '↑ Oldest added first' : '↓ Newest added first';
   }
 
+  // Orders split by where they are in her real workflow. "All" keeps the old everything-at-once
+  // view; the choice is remembered on this device.
+  var ORDER_STAGES = [
+    { key: 'all', label: 'All', statuses: null },
+    { key: 'make', label: 'To make', statuses: ['queueing'] },
+    { key: 'uv', label: 'UV curing', statuses: ['uv curing'] },
+    { key: 'ready', label: 'Ready to ship', statuses: ['ready to ship', 'order shipment'] },
+    { key: 'shipped', label: 'Shipped', statuses: ['shipped'] },
+    { key: 'done', label: 'Done', statuses: ['delivered', 'cancelled'] }
+  ];
+  var orderStage = 'all';
+  try { orderStage = localStorage.getItem('sipsOrderStage') || 'all'; } catch (e) {}
+  function orderInStage(o, key) {
+    var st = ORDER_STAGES.filter(function (x) { return x.key === key; })[0];
+    return !st || !st.statuses || st.statuses.indexOf(o.status) !== -1;
+  }
+  function renderOrderStageBar(baseList) {
+    var bar = document.getElementById('order-stage-bar');
+    if (!bar) return;
+    bar.innerHTML = ORDER_STAGES.map(function (st) {
+      var n = baseList.filter(function (o) { return orderInStage(o, st.key); }).length;
+      var on = st.key === orderStage;
+      return '<button type="button" class="btn ' + (on ? 'btn-primary' : 'btn-secondary') + ' btn-small" data-order-stage-filter="' + st.key + '">' + st.label + ' (' + n + ')</button>';
+    }).join('');
+  }
+  document.getElementById('order-stage-bar').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-order-stage-filter]') : null;
+    if (!b) return;
+    orderStage = b.getAttribute('data-order-stage-filter');
+    try { localStorage.setItem('sipsOrderStage', orderStage); } catch (err) {}
+    renderOrders();
+  });
+
+  // The one obvious next thing to do with an order, as a single button on its row.
+  function nextStepButtonHtml(o) {
+    if (o.status === 'queueing') return '<button class="btn btn-secondary btn-small" data-next-step="' + o.id + '" title="All items made — move to UV curing">✔ Made</button> ';
+    if (o.status === 'uv curing') return '<button class="btn btn-secondary btn-small" data-next-step="' + o.id + '" title="UV curing finished — ready to ship">✔ Cured</button> ';
+    if (o.status === 'ready to ship' || o.status === 'order shipment') return '<button class="btn btn-secondary btn-small" data-go-shipping="' + o.id + '">Shipping →</button> ';
+    if (o.status === 'shipped') return '<button class="btn btn-secondary btn-small" data-next-step="' + o.id + '" title="Customer received it">✔ Delivered</button> ';
+    return '';
+  }
+
   function renderOrders() {
     renderOrderFilterBar();
     // Drop any selected id that no longer exists (e.g. that order was just deleted) so the bulk
@@ -5354,6 +6114,7 @@
     var empty = document.getElementById('order-empty');
     var countEl = document.getElementById('order-filter-count');
     if (state.orders.length === 0) {
+      renderOrderStageBar([]);
       tbody.innerHTML = '';
       empty.style.display = 'block';
       if (countEl) countEl.textContent = '';
@@ -5371,10 +6132,12 @@
       }
       return true;
     });
+    renderOrderStageBar(filteredOrders);
+    filteredOrders = filteredOrders.filter(function (o) { return orderInStage(o, orderStage); });
     if (filteredOrders.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
-      empty.textContent = (orderFilterStatus || orderFilterType || orderSearchText) ? 'No orders match this status/type/date range/search.' : 'No orders match this date range.';
+      empty.textContent = (orderStage !== 'all' && !orderFilterStatus && !orderFilterType && !orderSearchText) ? 'No orders in this stage right now.' : ((orderFilterStatus || orderFilterType || orderSearchText) ? 'No orders match this status/type/date range/search.' : 'No orders match this date range.');
       if (countEl) countEl.textContent = '';
       return;
     }
@@ -5412,6 +6175,8 @@
             (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : '')) + '</td>' +
         '<td><select class="order-status-select" data-order-id="' + o.id + '" style="padding:5px 8px; font-size:13px;">' + statusOptions + '</select></td>' +
         '<td style="text-align:right; white-space:nowrap;">' +
+        nextStepButtonHtml(o) +
+        ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button class="btn-text" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button> ' : '') +
         '<button class="btn-text" data-edit-order="' + o.id + '">Edit</button> ' +
         (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
           ? '<button class="btn-text" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">+ Add another order</button> '
@@ -5528,6 +6293,13 @@
     document.getElementById('of-shipping-cost').value = isShippingFieldEntered(order.shippingCostEntered, order.shippingCostActual) ? (order.shippingCostActual || 0) : '';
     document.getElementById('of-discount').value = order.discount || 0;
     document.getElementById('of-notes').value = order.notes || '';
+    document.getElementById('of-paid').checked = !!order.paid;
+    document.getElementById('of-ship-paste').value = '';
+    document.getElementById('of-recipient-name').value = order.recipientName || '';
+    document.getElementById('of-recipient-phone').value = order.recipientPhone || '';
+    document.getElementById('of-shipto').value = order.shipTo || '';
+    document.getElementById('of-postcode').value = order.postcode || '';
+    document.getElementById('of-production-hint').textContent = order.scheduledDate ? 'Production date: ' + formatDate(order.scheduledDate) + ' (change under More options)' : '';
     draftItems = order.items.map(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
       if (!p) return null;
@@ -5544,6 +6316,12 @@
   }
 
   document.querySelector('#order-table tbody').addEventListener('click', function (e) {
+    var nextStepId = e.target.getAttribute('data-next-step');
+    if (nextStepId) { advanceOrderOneStep(nextStepId); return; }
+    var goShipId = e.target.getAttribute('data-go-shipping');
+    if (goShipId) { var shipNav = document.querySelector('nav button[data-tab="shipping"]'); if (shipNav) shipNav.click(); return; }
+    var askAddrId = e.target.getAttribute('data-ask-address');
+    if (askAddrId) { copyAskAddressMessage(askAddrId); return; }
     var packagingChoice = e.target.getAttribute('data-packaging-choice');
     if (packagingChoice) { resolvePackagingChoice(e.target.getAttribute('data-packaging-order'), packagingChoice); return; }
     var packagingSkipId = e.target.getAttribute('data-packaging-skip');
@@ -5709,6 +6487,13 @@
         }
         // Clamp to [0, ordered qty] — "made" can never be negative or exceed what was ordered.
         item.madeQty = newMadeQty;
+        if (madeOrder && madeOrder.status === 'queueing' && newMadeQty > oldMadeQty && orderAllItemsMade(madeOrder)) {
+          // Everything made -> next stop is UV curing (her real workflow), not straight to shipping.
+          autoAdvanceStatus(madeOrder, 'uv curing');
+          save();
+          renderAll();
+          return;
+        }
         save();
         renderOrders();
       }
@@ -5914,233 +6699,488 @@
   }
 
   // ================= INVESTOR REPORT EXPORT (Excel) =================
-  // Builds a 5-tab investor-facing Excel workbook, entirely from the app's own real numbers
-  // (reusing financials(), never a separate recalculation, so this can never disagree with what
-  // the Dashboard shows on screen). Split into a pure data-building function (buildInvestorReportData,
-  // no XLSX calls — safe to unit-test without the CDN library present) and a thin writer
-  // (exportInvestorReport) that actually needs the SheetJS library loaded.
-  //
-  // Row-tracking helper: pushes a row onto an aoa array and returns its 1-based Excel row number
-  // (aoa.length after the push), so formula cell references never have to be hand-counted.
-  function addSheetRow(aoa, row) {
-    aoa.push(row);
-    return aoa.length;
-  }
+  // A styled, investor-facing workbook for a chosen period. Profit is worked out the way
+  // investors expect: Revenue minus the cost of the goods actually SOLD (each order item keeps the
+  // unit cost it had when it was sold), minus operating costs. Money spent buying stock that's
+  // still on the shelf is NOT treated as a loss — it's shown as stock on hand instead. No
+  // customer names anywhere. buildInvestorReportData() is pure (no XLSX calls, unit-testable);
+  // exportInvestorReport() turns its cell descriptions into a styled .xlsx with xlsx-js-style.
+  var INV_MONEY = '"RM"#,##0.00;[Red]-"RM"#,##0.00';
+  var INV_PCT = '0.0%';
+  var INV_INT = '#,##0';
+  var INV_LINE_ORDER = ['Tumbler', 'Stickers', 'Add ons', 'Others'];
+  var INV_OPEX_LINES = [
+    { key: 'ads', label: 'Marketing & ads' },
+    { key: 'fees', label: 'Platform fees' },
+    { key: 'packaging', label: 'Packaging & supplies' },
+    { key: 'outbound', label: 'Shipping to customers' },
+    { key: 'inbound', label: 'Delivery of supplies' },
+    { key: 'testing', label: 'Testing / R&D' },
+    { key: 'wastage', label: 'Wastage & damaged stock' },
+    { key: 'refunds', label: 'Refunds to customers' },
+    { key: 'other', label: 'Other expenses' }
+  ];
 
-  // A formula cell needs a cached value alongside the formula string, or it gets silently dropped
-  // when the file is read back (confirmed against the real SheetJS library, not just assumed) —
-  // real Excel/Google Sheets recalculate on open regardless, but the cache still has to be there
-  // and of the right type for the cell to round-trip at all. numVal is the number the formula
-  // would evaluate to; pass isBlank:true for formulas whose IF(...,"",...) branch is currently
-  // blank (e.g. a margin that depends on a cell she hasn't filled in yet).
-  function setFormula(formulas, ref, f, numVal, isBlank) {
-    formulas[ref] = isBlank ? { f: f, v: '', t: 'str' } : { f: f, v: numVal, t: 'n' };
+  function invFmtDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
-
-  // A "TOTAL" row's SUM formula only makes sense when there's at least one data row above it.
-  // With zero matching entries, firstRow > lastRow, and — because the TOTAL row itself sits at
-  // firstRow — a naive SUM(firstRow:lastRow) would actually span firstRow-1:firstRow, which
-  // INCLUDES the TOTAL cell itself: a self-referencing circular formula (confirmed by directly
-  // generating a workbook from empty categories and inspecting the formulas). Writing a plain
-  // literal 0 instead sidesteps that entirely, and is numerically identical to "sum of nothing".
-  function setSumTotal(formulas, aoa, rowIdx1, colIdx0, colLetter, firstRow, lastRow, computedSum) {
-    if (lastRow >= firstRow) {
-      setFormula(formulas, colLetter + rowIdx1, 'SUM(' + colLetter + firstRow + ':' + colLetter + lastRow + ')', computedSum);
-    } else {
-      aoa[rowIdx1 - 1][colIdx0] = computedSum;
+  function invMonthKey(iso) { return (iso || '').slice(0, 7); }
+  function invMonthLabel(ym) {
+    var names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return names[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4);
+  }
+  function invMonthsBetween(from, to) {
+    var out = [];
+    var ym = invMonthKey(from), end = invMonthKey(to);
+    var guard = 0;
+    while (ym <= end && guard < 240) {
+      out.push(ym);
+      var y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7));
+      m++; if (m > 12) { m = 1; y++; }
+      ym = y + '-' + String(m).padStart(2, '0');
+      guard++;
+    }
+    return out;
+  }
+  function invEarliestDate() {
+    var dates = [];
+    state.orders.forEach(function (o) { if (o.date) dates.push(o.date); });
+    state.costs.forEach(function (c) { if (c.date) dates.push(c.date); });
+    dates.sort();
+    return dates[0] || todayISO();
+  }
+  // Preset -> { from, to } (inclusive ISO dates).
+  function investorPeriodFor(preset, customFrom, customTo) {
+    var today = todayISO();
+    var y = Number(today.slice(0, 4)), m = Number(today.slice(5, 7));
+    function monthStart(offset) {
+      var mm = m - 1 + offset, yy = y + Math.floor(mm / 12);
+      mm = ((mm % 12) + 12) % 12;
+      return yy + '-' + String(mm + 1).padStart(2, '0') + '-01';
+    }
+    function monthEnd(offset) {
+      var s = monthStart(offset);
+      var last = new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)), 0).getDate();
+      return s.slice(0, 8) + String(last).padStart(2, '0');
+    }
+    switch (preset) {
+      case 'thismonth': return { from: monthStart(0), to: today };
+      case 'lastmonth': return { from: monthStart(-1), to: monthEnd(-1) };
+      case 'last3': return { from: monthStart(-2), to: today };
+      case 'last6': return { from: monthStart(-5), to: today };
+      case 'last12': return { from: monthStart(-11), to: today };
+      case 'thisyear': return { from: y + '-01-01', to: today };
+      case 'custom': return { from: customFrom || invEarliestDate(), to: customTo || today };
+      default: return { from: invEarliestDate(), to: today };
     }
   }
 
-  function buildInvestorReportData() {
+  // Classifies every order item / add-on and cost entry once, so every tab reads the same numbers.
+  function investorFacts(from, to) {
+    var inRange = function (d) { return !!d && d >= from && d <= to; };
+    var productById = {};
+    state.products.forEach(function (p) { productById[p.id] = p; });
+    var active = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
+    var periodOrders = active.filter(function (o) { return inRange(o.date); });
+    var lines = []; // { ym, type, productId, name, units, revenue, cost, isGift, isDefect }
+    periodOrders.forEach(function (o) {
+      var ym = invMonthKey(o.date);
+      function push(productId, name, qty, unitPrice, unitCost, flags, revenueOverride) {
+        var p = productById[productId];
+        var costEach = (typeof unitCost === 'number' && isFinite(unitCost)) ? unitCost : (p ? Number(p.cost) || 0 : 0);
+        lines.push({
+          ym: ym, productId: productId || name, name: p ? p.name + (p.variant ? ' (' + p.variant + ')' : '') : (name || 'Deleted product'),
+          type: p ? (p.type || 'Others') : 'Others', units: qty,
+          revenue: revenueOverride != null ? revenueOverride : qty * (Number(unitPrice) || 0),
+          cost: qty * costEach, isGift: !!flags.isGift, isDefect: !!flags.isDefect
+        });
+      }
+      (o.items || []).forEach(function (i) {
+        var qty = Number(i.qty) || 0;
+        if (!qty) return;
+        // A FREE replacement's cost is already recorded as a wastage cost entry when it's sent,
+        // so it's skipped here to avoid counting it twice. Paid replacement items are real sales.
+        if (o.isReplacement && !(Number(i.unitPrice) > 0)) return;
+        push(i.productId, i.productName, qty, i.unitPrice, i.unitCost, i);
+      });
+      (o.addOns || []).forEach(function (a) {
+        var qty = Number(a.qty) || 0;
+        if (!qty) return;
+        push(a.productId, a.productName, qty, a.unitPrice, a.unitCost, {}, addOnAmount(a));
+      });
+    });
+
+    // Standalone "shipping" cost entries that other purchases claimed a share of are already
+    // folded into those products' landed unit cost — expensing them again would double count.
+    var claimedShippingSources = {};
+    state.costs.forEach(function (c) { if (c.shippingSourceId) claimedShippingSources[c.shippingSourceId] = true; });
+    var costRows = []; // { ym, line: opex key | 'stock', amount, c }
+    state.costs.forEach(function (c) {
+      if (!inRange(c.date)) return;
+      var amt = Number(c.amount) || 0;
+      var line;
+      if (c.category === 'testing') line = 'testing';
+      else if (c.category === 'wastage') line = 'wastage';
+      else if (c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0)) line = 'stock';
+      else if (c.category === 'shipping') { if (claimedShippingSources[c.id]) return; line = 'inbound'; }
+      else if (c.category === 'ads') line = 'ads';
+      else if (c.category === 'tiktok_fee') line = 'fees';
+      else if (c.category === 'packaging') line = 'packaging';
+      else line = 'other';
+      costRows.push({ ym: invMonthKey(c.date), line: line, amount: amt, c: c });
+    });
+    periodOrders.forEach(function (o) {
+      var ship = Number(o.shippingCostActual || 0);
+      if (ship) costRows.push({ ym: invMonthKey(o.date), line: 'outbound', amount: ship });
+      var refund = Number(o.refundAmount || 0);
+      if (refund) costRows.push({ ym: invMonthKey(o.date), line: 'refunds', amount: refund });
+    });
+    return { from: from, to: to, periodOrders: periodOrders, active: active, lines: lines, costRows: costRows, productById: productById };
+  }
+
+  function invSum(arr, fn) { return arr.reduce(function (s, x) { return s + (fn ? fn(x) : x); }, 0); }
+
+  function investorPnl(facts, ym) {
+    var orders = ym ? facts.periodOrders.filter(function (o) { return invMonthKey(o.date) === ym; }) : facts.periodOrders;
+    var lines = ym ? facts.lines.filter(function (l) { return l.ym === ym; }) : facts.lines;
+    var costRows = ym ? facts.costRows.filter(function (r) { return r.ym === ym; }) : facts.costRows;
+    var revenue = invSum(orders, orderTotal);
+    var cogs = invSum(lines, function (l) { return l.cost; });
+    var opex = {};
+    INV_OPEX_LINES.forEach(function (x) { opex[x.key] = 0; });
+    var stockPurchases = 0;
+    costRows.forEach(function (r) { if (r.line === 'stock') stockPurchases += r.amount; else opex[r.line] += r.amount; });
+    var opexTotal = invSum(INV_OPEX_LINES, function (x) { return opex[x.key]; });
+    var gross = revenue - cogs;
+    var net = gross - opexTotal;
+    var nonReplacement = orders.filter(function (o) { return !o.isReplacement; });
+    var tumblers = invSum(lines.filter(function (l) { return l.type === 'Tumbler' && !l.isGift; }), function (l) { return l.units; });
+    return {
+      revenue: revenue, cogs: cogs, gross: gross, grossMargin: revenue ? gross / revenue : null,
+      opex: opex, opexTotal: opexTotal, net: net, netMargin: revenue ? net / revenue : null,
+      orders: nonReplacement.length, aov: nonReplacement.length ? invSum(nonReplacement, orderTotal) / nonReplacement.length : null,
+      tumblers: tumblers, stockPurchases: stockPurchases
+    };
+  }
+
+  // Cell helpers: every cell is { v, fmt, style } — the writer maps these to real Excel styles.
+  function invCell(v, fmt, style) { return { v: v, fmt: fmt || null, style: style || null }; }
+  var C = invCell;
+  function sheetSpec(name, cols) { return { name: name, cols: cols, rows: [], merges: [], heights: {} }; }
+  function addRow(sh, cells, height) {
+    sh.rows.push(cells);
+    if (height) sh.heights[sh.rows.length - 1] = height;
+    return sh.rows.length - 1;
+  }
+  function addTitle(sh, title, subtitleLines) {
+    var n = sh.cols.length;
+    var r = addRow(sh, [C(title, null, 'title')], 30);
+    sh.merges.push({ s: { r: r, c: 0 }, e: { r: r, c: n - 1 } });
+    (subtitleLines || []).forEach(function (t) {
+      var rr = addRow(sh, [C(t, null, 'subtitle')], 18);
+      sh.merges.push({ s: { r: rr, c: 0 }, e: { r: rr, c: n - 1 } });
+    });
+    addRow(sh, [], 8);
+  }
+  function addSection(sh, title) {
+    var n = sh.cols.length;
+    var r = addRow(sh, [C(title, null, 'section')], 22);
+    sh.merges.push({ s: { r: r, c: 0 }, e: { r: r, c: n - 1 } });
+  }
+  function addHeader(sh, labels) { addRow(sh, labels.map(function (l, i) { return C(l, null, i === 0 ? 'headerLeft' : 'header'); }), 30); }
+
+  function buildInvestorReportData(opts) {
+    opts = opts || {};
+    var period = (opts.from && opts.to) ? { from: opts.from, to: opts.to } : investorPeriodFor(opts.preset || 'all');
+    var facts = investorFacts(period.from, period.to);
+    var pnl = investorPnl(facts);
     var fin = financials();
-    var today = todayISO();
-
-    // ---------- Cost per Product ----------
-    var cpAoa = [];
-    var cpFormulas = {};
-    addSheetRow(cpAoa, ['Product', 'Type', 'Theme', 'Stock', 'Cost per unit (RM)', 'Sell price (RM)', 'Margin per unit (RM)', 'Margin %', 'Inventory value (RM)']);
-    var sortedProducts = state.products.slice().sort(function (a, b) {
-      return (a.type || '').localeCompare(b.type || '') || (a.name || '').localeCompare(b.name || '');
-    });
-    var cpFirstDataRow = cpAoa.length + 1;
-    var invValueSum = 0;
-    sortedProducts.forEach(function (p) {
-      var displayName = p.name + (p.variant ? ' (' + p.variant + ')' : '');
-      var rowNum = addSheetRow(cpAoa, [displayName, p.type || '', p.theme || '', p.stock, p.cost, p.price, null, null, null]);
-      var marginPerUnit = Number(p.price) - Number(p.cost);
-      var invValueRow = Number(p.stock) * Number(p.cost);
-      invValueSum += invValueRow;
-      setFormula(cpFormulas, 'G' + rowNum, 'F' + rowNum + '-E' + rowNum, marginPerUnit);
-      if (Number(p.price) === 0) {
-        setFormula(cpFormulas, 'H' + rowNum, 'IF(F' + rowNum + '=0,"",G' + rowNum + '/F' + rowNum + ')', 0, true);
-      } else {
-        setFormula(cpFormulas, 'H' + rowNum, 'IF(F' + rowNum + '=0,"",G' + rowNum + '/F' + rowNum + ')', marginPerUnit / Number(p.price));
-      }
-      setFormula(cpFormulas, 'I' + rowNum, 'D' + rowNum + '*E' + rowNum, invValueRow);
-    });
-    var cpLastDataRow = cpAoa.length;
-    var cpTotalRow = addSheetRow(cpAoa, ['TOTAL', '', '', '', '', '', '', '', null]);
-    setSumTotal(cpFormulas, cpAoa, cpTotalRow, 8, 'I', cpFirstDataRow, cpLastDataRow, invValueSum);
-
-    // ---------- Packaging & Shipping ----------
-    var psAoa = [];
-    var psFormulas = {};
-    addSheetRow(psAoa, ['Date', 'Category', 'Description', 'Amount (RM)']);
-    var packagingShippingCosts = state.costs.filter(function (c) { return c.category === 'packaging' || c.category === 'shipping'; })
-      .slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
-    var psInboundFirstRow = psAoa.length + 1;
-    var psInboundSum = 0;
-    packagingShippingCosts.forEach(function (c) {
-      addSheetRow(psAoa, [c.date || '', c.category, c.description || '', c.amount]);
-      psInboundSum += Number(c.amount);
-    });
-    var psInboundLastRow = psAoa.length;
-    var psInboundTotalRow = addSheetRow(psAoa, ['TOTAL inbound (packaging + shipping)', '', '', null]);
-    setSumTotal(psFormulas, psAoa, psInboundTotalRow, 3, 'D', psInboundFirstRow, psInboundLastRow, psInboundSum);
-    addSheetRow(psAoa, []);
-    addSheetRow(psAoa, ['Outbound shipping paid to customers', '', '', '']);
-    addSheetRow(psAoa, ['Date', 'Buyer', '', 'Shipping cost paid (RM)']);
-    var shippedOrders = fin.active.filter(function (o) { return Number(o.shippingCostActual || 0) > 0; })
-      .slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
-    var psOutboundFirstRow = psAoa.length + 1;
-    var psOutboundSum = 0;
-    shippedOrders.forEach(function (o) {
-      var shipCost = Number(o.shippingCostActual || 0);
-      addSheetRow(psAoa, [o.date || '', o.buyerName || '', '', shipCost]);
-      psOutboundSum += shipCost;
-    });
-    var psOutboundLastRow = psAoa.length;
-    var psOutboundTotalRow = addSheetRow(psAoa, ['TOTAL outbound shipping paid', '', '', null]);
-    setSumTotal(psFormulas, psAoa, psOutboundTotalRow, 3, 'D', psOutboundFirstRow, psOutboundLastRow, psOutboundSum);
-    addSheetRow(psAoa, []);
-    var psGrandTotalRow = addSheetRow(psAoa, ['TOTAL packaging + shipping (RM)', '', '', null]);
-    setFormula(psFormulas, 'D' + psGrandTotalRow, 'D' + psInboundTotalRow + '+D' + psOutboundTotalRow, psInboundSum + psOutboundSum);
-
-    // ---------- Testing Pipeline ----------
-    var tpAoa = [];
-    var tpFormulas = {};
-    addSheetRow(tpAoa, ['Date', 'Description', 'Qty', 'Unit', 'Amount (RM)', 'Cost per unit (RM)', 'Suggested sell price (RM) — fill in', 'Margin per unit (RM)']);
-    var testingEntries = state.costs.filter(function (c) { return c.category === 'testing'; })
-      .slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
-    var tpFirstDataRow = tpAoa.length + 1;
-    var testingSum = 0;
-    testingEntries.forEach(function (c) {
-      var hasQty = typeof c.qty === 'number' && c.qty > 0;
-      var qtyVal = (typeof c.qty === 'number') ? c.qty : '';
-      var rowNum = addSheetRow(tpAoa, [c.date || '', c.description || '', qtyVal, c.unit || '', c.amount, null, null, null]);
-      testingSum += Number(c.amount);
-      var fCostPerUnit = 'IF(AND(ISNUMBER(C' + rowNum + '),C' + rowNum + '>0),E' + rowNum + '/C' + rowNum + ',"")';
-      if (hasQty) {
-        setFormula(tpFormulas, 'F' + rowNum, fCostPerUnit, Number(c.amount) / Number(c.qty));
-      } else {
-        setFormula(tpFormulas, 'F' + rowNum, fCostPerUnit, 0, true);
-      }
-      // Margin always starts blank — the "Suggested sell price" cell (G) is intentionally left
-      // empty for her to fill in, so ISNUMBER(G) is false until she does.
-      setFormula(tpFormulas, 'H' + rowNum, 'IF(AND(ISNUMBER(G' + rowNum + '),ISNUMBER(F' + rowNum + ')),G' + rowNum + '-F' + rowNum + ',"")', 0, true);
-    });
-    var tpLastDataRow = tpAoa.length;
-    var tpTotalRow = addSheetRow(tpAoa, ['TOTAL testing spend', '', '', '', null, '', '', '']);
-    setSumTotal(tpFormulas, tpAoa, tpTotalRow, 4, 'E', tpFirstDataRow, tpLastDataRow, testingSum);
+    var periodLabel = invFmtDate(period.from) + ' – ' + invFmtDate(period.to);
+    var subtitle = ['Period: ' + periodLabel, 'Generated ' + invFmtDate(todayISO()) + ' · All amounts in Malaysian Ringgit (RM)'];
+    var sheets = [];
 
     // ---------- Summary ----------
-    // Revenue/Inventory spend/Operating expense/Outbound shipping/Cash are literal actuals pulled
-    // straight from financials() (the same source the Dashboard reads) — these are historical cash
-    // facts, not something a formula should ever recompute differently. Testing spend and Inventory
-    // value ARE formulas referencing the other tabs, so opening this file doubles as a consistency
-    // check: if those don't match the literal figures, something in the sheet was edited.
-    var sumAoa = [];
-    var sumFormulas = {};
-    addSheetRow(sumAoa, ['Sips by Evve — Investor Summary', '', '']);
-    addSheetRow(sumAoa, ['Generated', today, '']);
-    addSheetRow(sumAoa, []);
-    addSheetRow(sumAoa, ['Metric', 'Value (RM)', 'Notes']);
-    var rRevenue = addSheetRow(sumAoa, ['Total revenue', fin.revenue, 'All-time, cancelled orders excluded']);
-    var rInvSpend = addSheetRow(sumAoa, ['Inventory spend', fin.inventorySpend, 'Restocks + new inventory purchases']);
-    var rOpEx = addSheetRow(sumAoa, ['Operating expense', fin.expenseFromCosts, 'Ads, packaging, fees etc. (excl. outbound shipping)']);
-    var rOutShip = addSheetRow(sumAoa, ['Outbound shipping paid', fin.shippingCostsPaid, 'Shipping paid to send orders to customers']);
-    var rTesting = addSheetRow(sumAoa, ['Testing / R&D spend', null, '= Testing Pipeline tab total']);
-    // References the Testing Pipeline tab's own TOTAL cell (rather than re-summing its raw row
-    // range here) so this always points at a valid cell, even when there are zero testing entries.
-    setFormula(sumFormulas, 'B' + rTesting, '\'Testing Pipeline\'!E' + tpTotalRow, fin.testingSpend);
-    var rTotalSpent = addSheetRow(sumAoa, ['Total spent', null, '= Inventory spend + Operating expense + Testing spend']);
-    setFormula(sumFormulas, 'B' + rTotalSpent, 'B' + rInvSpend + '+B' + rOpEx + '+B' + rTesting, fin.inventorySpend + fin.expenseFromCosts + fin.testingSpend);
-    // Wastage/loss is deliberately its own line, separate from Total spent — that money was
-    // already counted once in Inventory spend when the stock was originally purchased, so adding
-    // it to Total spent again would double-count it. It still reduces Net profit below, since the
-    // inventory really is worth less now.
-    var rWastage = addSheetRow(sumAoa, ['Wastage / loss', fin.wastageLoss, 'Broken/lost stock, at cost — excluded from Total spent (already counted at purchase)']);
-    var rNetProfit = addSheetRow(sumAoa, ['Net profit', null, '= Revenue − Inventory spend − Operating expense − Outbound shipping − Testing spend − Wastage/loss']);
-    setFormula(sumFormulas, 'B' + rNetProfit, 'B' + rRevenue + '-B' + rInvSpend + '-B' + rOpEx + '-B' + rOutShip + '-B' + rTesting + '-B' + rWastage, fin.netProfit);
-    var rCash = addSheetRow(sumAoa, ['Cash position', fin.cash, 'Starting cash − all spend + revenue actually collected']);
-    var rInvValue = addSheetRow(sumAoa, ['Inventory value (at cost)', null, '= Cost per Product tab total']);
-    // Same reasoning as Testing spend above: references the Cost per Product tab's own TOTAL
-    // cell instead of re-summing its row range, so this is always valid even with zero products.
-    setFormula(sumFormulas, 'B' + rInvValue, '\'Cost per Product\'!I' + cpTotalRow, fin.invValue);
-    var rTotalAccountValue = addSheetRow(sumAoa, ['Total account value', null, '= Cash position + Inventory value']);
-    setFormula(sumFormulas, 'B' + rTotalAccountValue, 'B' + rCash + '+B' + rInvValue, fin.totalAccountValue);
+    var s = sheetSpec('Summary', [30, 16, 42]);
+    addTitle(s, 'Sips by Evve — Investor Report', subtitle);
+    addSection(s, 'Profit & loss for the period');
+    addHeader(s, ['', 'RM', 'What it means']);
+    addRow(s, [C('Revenue', null, 'label'), C(pnl.revenue, INV_MONEY, 'value'), C('Orders in the period, after discounts', null, 'note')]);
+    addRow(s, [C('Cost of goods sold', null, 'label'), C(pnl.cogs, INV_MONEY, 'value'), C('Cost of the items sold or gifted', null, 'note')]);
+    addRow(s, [C('Gross profit', null, 'subtotalLabel'), C(pnl.gross, INV_MONEY, 'subtotal'), C('Revenue − cost of goods sold', null, 'subtotalNote')]);
+    addRow(s, [C('Gross margin', null, 'label'), C(pnl.grossMargin, INV_PCT, 'value'), C('Gross profit ÷ revenue', null, 'note')]);
+    INV_OPEX_LINES.forEach(function (x) {
+      addRow(s, [C(x.label, null, 'labelIndent'), C(pnl.opex[x.key], INV_MONEY, 'value'), C(null, null, 'note')]);
+    });
+    addRow(s, [C('Total operating costs', null, 'subtotalLabel'), C(pnl.opexTotal, INV_MONEY, 'subtotal'), C(null, null, 'subtotalNote')]);
+    addRow(s, [C('Net profit', null, 'totalLabel'), C(pnl.net, INV_MONEY, 'total'), C('Gross profit − operating costs', null, 'totalNote')], 22);
+    addRow(s, [C('Net margin', null, 'label'), C(pnl.netMargin, INV_PCT, 'value'), C(null, null, 'note')]);
+    addRow(s, [], 10);
 
-    // ---------- Investment to Date ----------
-    var idAoa = [];
-    var idFormulas = {};
-    addSheetRow(idAoa, ['Investment to Date', '', '']);
-    addSheetRow(idAoa, []);
-    addSheetRow(idAoa, ['Metric', 'Value', 'Notes']);
-    var rTotalInvested = addSheetRow(idAoa, ['Total invested to date (RM)', null, 'Inventory + Operating expense + Outbound shipping + Testing']);
-    var totalInvested = fin.inventorySpend + fin.expenseFromCosts + fin.shippingCostsPaid + fin.testingSpend;
-    setFormula(idFormulas, 'B' + rTotalInvested, 'Summary!B' + rInvSpend + '+Summary!B' + rOpEx + '+Summary!B' + rOutShip + '+Summary!B' + rTesting, totalInvested);
-    var rTotalRevenue = addSheetRow(idAoa, ['Total revenue to date (RM)', null, '']);
-    setFormula(idFormulas, 'B' + rTotalRevenue, 'Summary!B' + rRevenue, fin.revenue);
-    var rGrossProfit = addSheetRow(idAoa, ['Gross profit (Revenue − Inventory spend) (RM)', null, '']);
-    setFormula(idFormulas, 'B' + rGrossProfit, 'Summary!B' + rRevenue + '-Summary!B' + rInvSpend, fin.revenue - fin.inventorySpend);
-    var rNetProfit2 = addSheetRow(idAoa, ['Net profit (RM)', null, '']);
-    setFormula(idFormulas, 'B' + rNetProfit2, 'Summary!B' + rNetProfit, fin.netProfit);
-    var rOrderCount = addSheetRow(idAoa, ['Number of orders (excl. cancelled)', fin.active.length, '']);
-    var rAvgProfit = addSheetRow(idAoa, ['Average profit per order (RM)', null, '']);
-    if (fin.active.length === 0) {
-      setFormula(idFormulas, 'B' + rAvgProfit, 'IF(B' + rOrderCount + '=0,"",B' + rNetProfit2 + '/B' + rOrderCount + ')', 0, true);
-    } else {
-      setFormula(idFormulas, 'B' + rAvgProfit, 'IF(B' + rOrderCount + '=0,"",B' + rNetProfit2 + '/B' + rOrderCount + ')', fin.netProfit / fin.active.length);
+    addSection(s, 'Key numbers for the period');
+    addHeader(s, ['', 'Value', '']);
+    var giftUnits = invSum(facts.lines.filter(function (l) { return l.isGift; }), function (l) { return l.units; });
+    var soldUnits = invSum(facts.lines.filter(function (l) { return !l.isGift; }), function (l) { return l.units; });
+    var defectUnits = invSum(facts.lines.filter(function (l) { return l.isDefect; }), function (l) { return l.units; });
+    var replacementUnits = 0;
+    facts.periodOrders.forEach(function (o) { if (o.isReplacement) (o.items || []).forEach(function (i) { replacementUnits += Number(i.qty) || 0; }); });
+    function custKey(o) { return normalizeIdentifier(o.buyerWhatsapp || '') || ('name:' + String(o.buyerName || '').trim().toLowerCase()); }
+    var periodCustomers = {};
+    facts.periodOrders.forEach(function (o) { if (!o.isReplacement) periodCustomers[custKey(o)] = true; });
+    var ordersByCustomer = {};
+    facts.active.forEach(function (o) { if (!o.isReplacement && o.date && o.date <= period.to) { var k = custKey(o); ordersByCustomer[k] = (ordersByCustomer[k] || 0) + 1; } });
+    var custKeys = Object.keys(periodCustomers);
+    var repeatCount = custKeys.filter(function (k) { return ordersByCustomer[k] >= 2; }).length;
+    addRow(s, [C('Orders', null, 'label'), C(pnl.orders, INV_INT, 'value'), C('Excludes replacement orders', null, 'note')]);
+    addRow(s, [C('Average order value', null, 'label'), C(pnl.aov, INV_MONEY, 'value'), C(null, null, 'note')]);
+    addRow(s, [C('Units sold', null, 'label'), C(soldUnits, INV_INT, 'value'), C('All products, excluding gifts', null, 'note')]);
+    addRow(s, [C('Tumblers sold', null, 'label'), C(pnl.tumblers, INV_INT, 'value'), C(null, null, 'note')]);
+    addRow(s, [C('Customers', null, 'label'), C(custKeys.length, INV_INT, 'value'), C(null, null, 'note')]);
+    addRow(s, [C('Repeat customers', null, 'label'), C(custKeys.length ? repeatCount / custKeys.length : null, INV_PCT, 'value'), C(repeatCount + ' of ' + custKeys.length + ' customers ordered more than once', null, 'note')]);
+    addRow(s, [C('Gifts given (units)', null, 'label'), C(giftUnits, INV_INT, 'value'), C(null, null, 'note')]);
+    addRow(s, [C('Sold at a defect discount (units)', null, 'label'), C(defectUnits, INV_INT, 'value'), C(null, null, 'note')]);
+    addRow(s, [C('Replacements sent (units)', null, 'label'), C(replacementUnits, INV_INT, 'value'), C(null, null, 'note')]);
+    addRow(s, [], 10);
+
+    addSection(s, 'Financial position — as of ' + invFmtDate(todayISO()));
+    addHeader(s, ['', 'RM', 'What it means']);
+    var receivables = invSum(fin.active, unpaidAmountFor);
+    var owedToOwner = unclaimedOwnerAmountExcludingWastage();
+    var netAssets = fin.cash + fin.invValue + receivables - owedToOwner;
+    addRow(s, [C('Cash in the business', null, 'label'), C(fin.cash, INV_MONEY, 'value'), C('Starting capital − spending + payments in', null, 'note')]);
+    addRow(s, [C('Stock on hand (at cost)', null, 'label'), C(fin.invValue, INV_MONEY, 'value'), C('Inventory valued at average purchase cost', null, 'note')]);
+    addRow(s, [C('Owed by customers', null, 'label'), C(receivables, INV_MONEY, 'value'), C('Orders not fully paid yet', null, 'note')]);
+    addRow(s, [C('Owed to the owner', null, 'label'), C(owedToOwner, INV_MONEY, 'value'), C('Paid personally, not yet reimbursed', null, 'note')]);
+    addRow(s, [C('Net assets', null, 'totalLabel'), C(netAssets, INV_MONEY, 'total'), C('Cash + stock + owed to us − owed to owner', null, 'totalNote')], 22);
+    addRow(s, [C('Starting capital', null, 'label'), C(Number(state.startingCash || 0), INV_MONEY, 'value'), C('Money originally put into the business', null, 'note')]);
+    addRow(s, [C('Stock bought in the period', null, 'label'), C(pnl.stockPurchases, INV_MONEY, 'value'), C('Becomes a cost only once the stock is sold', null, 'note')]);
+    sheets.push(s);
+
+    // ---------- Monthly Trend ----------
+    var months = invMonthsBetween(period.from, period.to);
+    if (months.length > 36) months = months.slice(months.length - 36);
+    var mt = sheetSpec('Monthly Trend', [14, 15, 15, 15, 12, 17, 15, 11, 11, 13, 12]);
+    addTitle(mt, 'Monthly trend', subtitle);
+    addHeader(mt, ['Month', 'Revenue', 'Cost of goods', 'Gross profit', 'Gross margin', 'Operating costs', 'Net profit', 'Net margin', 'Orders', 'Avg order', 'Tumblers']);
+    months.forEach(function (ym, idx) {
+      var p = investorPnl(facts, ym);
+      var z = idx % 2 ? 'Alt' : '';
+      addRow(mt, [C(invMonthLabel(ym), null, 'labelCell' + z), C(p.revenue, INV_MONEY, 'value' + z), C(p.cogs, INV_MONEY, 'value' + z), C(p.gross, INV_MONEY, 'value' + z),
+        C(p.grossMargin, INV_PCT, 'value' + z), C(p.opexTotal, INV_MONEY, 'value' + z), C(p.net, INV_MONEY, 'value' + z), C(p.netMargin, INV_PCT, 'value' + z),
+        C(p.orders, INV_INT, 'value' + z), C(p.aov, INV_MONEY, 'value' + z), C(p.tumblers, INV_INT, 'value' + z)]);
+    });
+    addRow(mt, [C('Total', null, 'totalLabel'), C(pnl.revenue, INV_MONEY, 'total'), C(pnl.cogs, INV_MONEY, 'total'), C(pnl.gross, INV_MONEY, 'total'),
+      C(pnl.grossMargin, INV_PCT, 'total'), C(pnl.opexTotal, INV_MONEY, 'total'), C(pnl.net, INV_MONEY, 'total'), C(pnl.netMargin, INV_PCT, 'total'),
+      C(pnl.orders, INV_INT, 'total'), C(pnl.aov, INV_MONEY, 'total'), C(pnl.tumblers, INV_INT, 'total')], 22);
+    sheets.push(mt);
+
+    // ---------- Product Performance ----------
+    var pp = sheetSpec('Product Performance', [6, 38, 14, 12, 15, 14, 15, 12, 14]);
+    addTitle(pp, 'Product performance', subtitle);
+    addSection(pp, 'By product line');
+    addHeader(pp, ['', 'Product line', '', 'Units sold', 'Revenue', 'Cost of goods', 'Gross profit', 'Margin', 'Share of sales']);
+    var lastHdr = pp.rows.length - 1;
+    pp.merges.push({ s: { r: lastHdr, c: 1 }, e: { r: lastHdr, c: 2 } });
+    var productRevenueTotal = invSum(facts.lines, function (l) { return l.revenue; });
+    var lineTotals = { units: 0, revenue: 0, cost: 0 };
+    var lineIdx = 0;
+    INV_LINE_ORDER.forEach(function (t) {
+      var ls = facts.lines.filter(function (l) { return l.type === t; });
+      if (!ls.length) return;
+      var z = lineIdx++ % 2 ? 'Alt' : '';
+      var units = invSum(ls.filter(function (l) { return !l.isGift; }), function (l) { return l.units; });
+      var rev = invSum(ls, function (l) { return l.revenue; });
+      var cost = invSum(ls, function (l) { return l.cost; });
+      lineTotals.units += units; lineTotals.revenue += rev; lineTotals.cost += cost;
+      var r = addRow(pp, [C(null, null, 'value' + z), C(t === 'Others' ? 'Other products' : t, null, 'labelCell' + z), C(null, null, 'value' + z), C(units, INV_INT, 'value' + z), C(rev, INV_MONEY, 'value' + z),
+        C(cost, INV_MONEY, 'value' + z), C(rev - cost, INV_MONEY, 'value' + z), C(rev ? (rev - cost) / rev : null, INV_PCT, 'value' + z), C(productRevenueTotal ? rev / productRevenueTotal : null, INV_PCT, 'value' + z)]);
+      pp.merges.push({ s: { r: r, c: 1 }, e: { r: r, c: 2 } });
+    });
+    var tr = addRow(pp, [C(null, null, 'total'), C('Total', null, 'totalLabel'), C(null, null, 'total'), C(lineTotals.units, INV_INT, 'total'), C(lineTotals.revenue, INV_MONEY, 'total'),
+      C(lineTotals.cost, INV_MONEY, 'total'), C(lineTotals.revenue - lineTotals.cost, INV_MONEY, 'total'),
+      C(lineTotals.revenue ? (lineTotals.revenue - lineTotals.cost) / lineTotals.revenue : null, INV_PCT, 'total'), C(productRevenueTotal ? 1 : null, INV_PCT, 'total')], 22);
+    pp.merges.push({ s: { r: tr, c: 1 }, e: { r: tr, c: 2 } });
+    addRow(pp, [], 10);
+    addSection(pp, 'Top 10 products');
+    addHeader(pp, ['#', 'Product', 'Line', 'Units sold', 'Revenue', 'Avg price', 'Gross profit', 'Margin', '']);
+    var byProduct = {};
+    facts.lines.forEach(function (l) {
+      if (l.isGift) return;
+      var b = byProduct[l.productId] || (byProduct[l.productId] = { name: l.name, type: l.type, units: 0, revenue: 0, cost: 0 });
+      b.units += l.units; b.revenue += l.revenue; b.cost += l.cost;
+    });
+    var top = Object.keys(byProduct).map(function (k) { return byProduct[k]; })
+      .sort(function (a, b) { return b.revenue - a.revenue || b.units - a.units; }).slice(0, 10);
+    if (!top.length) addRow(pp, [C(null, null, 'value'), C('No sales in this period', null, 'note')]);
+    top.forEach(function (b, idx) {
+      var z = idx % 2 ? 'Alt' : '';
+      addRow(pp, [C(idx + 1, INV_INT, 'rank' + z), C(b.name, null, 'labelCell' + z), C(b.type === 'Others' ? 'Other' : b.type, null, 'textCell' + z), C(b.units, INV_INT, 'value' + z), C(b.revenue, INV_MONEY, 'value' + z),
+        C(b.units ? b.revenue / b.units : null, INV_MONEY, 'value' + z), C(b.revenue - b.cost, INV_MONEY, 'value' + z), C(b.revenue ? (b.revenue - b.cost) / b.revenue : null, INV_PCT, 'value' + z), C(null, null, 'value' + z)]);
+    });
+    addRow(pp, [], 8);
+    var nr = addRow(pp, [C('Product figures are before order-level discounts and shipping charges, so they can differ slightly from total revenue.', null, 'footnote')], 18);
+    pp.merges.push({ s: { r: nr, c: 0 }, e: { r: nr, c: pp.cols.length - 1 } });
+    sheets.push(pp);
+
+    // ---------- Costs Breakdown ----------
+    var costMonths = months.length <= 12 ? months : [];
+    var cbCols = [30].concat(costMonths.map(function () { return 13; })).concat([15, 12]);
+    var cb = sheetSpec('Costs Breakdown', cbCols);
+    addTitle(cb, 'Where the money went', subtitle.concat(costMonths.length ? [] : ['(Period longer than 12 months — showing totals only)']));
+    var monthHeaders = costMonths.map(invMonthLabel);
+    function costCell(line, ym) {
+      return invSum(facts.costRows.filter(function (r) { return r.line === line && (!ym || r.ym === ym); }), function (r) { return r.amount; });
     }
-    var rCash2 = addSheetRow(idAoa, ['Cash position (RM)', null, '']);
-    setFormula(idFormulas, 'B' + rCash2, 'Summary!B' + rCash, fin.cash);
-    var rTotalAccountValue2 = addSheetRow(idAoa, ['Total account value (RM)', null, '']);
-    setFormula(idFormulas, 'B' + rTotalAccountValue2, 'Summary!B' + rTotalAccountValue, fin.totalAccountValue);
+    addSection(cb, 'Operating costs (reduce profit)');
+    addHeader(cb, ['Category'].concat(monthHeaders, ['Total', '% of costs']));
+    INV_OPEX_LINES.forEach(function (x, idx) {
+      var z = idx % 2 ? 'Alt' : '';
+      var total = costCell(x.key);
+      addRow(cb, [C(x.label, null, 'labelCell' + z)].concat(costMonths.map(function (ym) { return C(costCell(x.key, ym), INV_MONEY, 'value' + z); }),
+        [C(total, INV_MONEY, 'value' + z), C(pnl.opexTotal ? total / pnl.opexTotal : null, INV_PCT, 'value' + z)]));
+    });
+    addRow(cb, [C('Total operating costs', null, 'totalLabel')].concat(costMonths.map(function (ym) { return C(investorPnl(facts, ym).opexTotal, INV_MONEY, 'total'); }),
+      [C(pnl.opexTotal, INV_MONEY, 'total'), C(pnl.opexTotal ? 1 : null, INV_PCT, 'total')]), 22);
+    addRow(cb, [], 10);
+    addSection(cb, 'Stock purchases (become cost of goods only when sold)');
+    addHeader(cb, ['Category'].concat(monthHeaders, ['Total', '']));
+    addRow(cb, [C('Stock & materials bought', null, 'labelCell')].concat(costMonths.map(function (ym) { return C(costCell('stock', ym), INV_MONEY, 'value'); }),
+      [C(costCell('stock'), INV_MONEY, 'value'), C(null, null, 'value')]));
+    sheets.push(cb);
 
-    return [
-      { name: 'Summary', aoa: sumAoa, formulas: sumFormulas },
-      { name: 'Cost per Product', aoa: cpAoa, formulas: cpFormulas },
-      { name: 'Packaging & Shipping', aoa: psAoa, formulas: psFormulas },
-      { name: 'Testing Pipeline', aoa: tpAoa, formulas: tpFormulas },
-      { name: 'Investment to Date', aoa: idAoa, formulas: idFormulas }
-    ];
+    // ---------- Optional: Testing / R&D ----------
+    if (opts.includeTesting) {
+      var tp = sheetSpec('Testing & R&D', [14, 44, 10, 15, 16]);
+      addTitle(tp, 'Testing & product development', subtitle);
+      addHeader(tp, ['Date', 'What was tested', 'Qty', 'Amount', 'Cost per unit']);
+      var testRows = facts.costRows.filter(function (r) { return r.line === 'testing'; }).sort(function (a, b) { return (a.c.date || '').localeCompare(b.c.date || ''); });
+      if (!testRows.length) addRow(tp, [C(null, null, 'value'), C('No testing costs in this period', null, 'note')]);
+      testRows.forEach(function (r, idx) {
+        var z = idx % 2 ? 'Alt' : '';
+        var q = Number(r.c.qty) > 0 ? Number(r.c.qty) : null;
+        addRow(tp, [C(invFmtDate(r.c.date), null, 'textCell' + z), C(r.c.description || 'Testing', null, 'labelCell' + z), C(q, INV_INT, 'value' + z), C(r.amount, INV_MONEY, 'value' + z), C(q ? r.amount / q : null, INV_MONEY, 'value' + z)]);
+      });
+      addRow(tp, [C('Total', null, 'totalLabel'), C(null, null, 'total'), C(null, null, 'total'), C(invSum(testRows, function (r) { return r.amount; }), INV_MONEY, 'total'), C(null, null, 'total')], 22);
+      sheets.push(tp);
+    }
+
+    // ---------- Optional: Cost details ----------
+    if (opts.includeCostDetails) {
+      var cd = sheetSpec('Cost Details', [14, 26, 50, 15]);
+      addTitle(cd, 'All costs in the period', subtitle);
+      addHeader(cd, ['Date', 'Category', 'Description', 'Amount']);
+      var labelFor = {};
+      INV_OPEX_LINES.forEach(function (x) { labelFor[x.key] = x.label; });
+      labelFor.stock = 'Stock & materials';
+      var detailRows = facts.costRows.filter(function (r) { return r.c; }).sort(function (a, b) { return (a.c.date || '').localeCompare(b.c.date || ''); });
+      detailRows.forEach(function (r, idx) {
+        var z = idx % 2 ? 'Alt' : '';
+        var desc = r.c.description || '';
+        // Wastage descriptions can include who a replacement went to — keep customers out of it.
+        if (r.line === 'wastage') {
+          var wp = facts.productById[r.c.productId];
+          desc = 'Damaged / replaced stock' + (wp ? ' — ' + wp.name + (wp.variant ? ' (' + wp.variant + ')' : '') : '');
+        }
+        addRow(cd, [C(invFmtDate(r.c.date), null, 'textCell' + z), C(labelFor[r.line] || 'Other expenses', null, 'textCell' + z), C(desc, null, 'labelCell' + z), C(r.amount, INV_MONEY, 'value' + z)]);
+      });
+      addRow(cd, [C('Total', null, 'totalLabel'), C(null, null, 'total'), C(null, null, 'total'), C(invSum(detailRows, function (r) { return r.amount; }), INV_MONEY, 'total')], 22);
+      sheets.push(cd);
+    }
+
+    return { period: period, sheets: sheets, pnl: pnl };
   }
 
-  function exportInvestorReport() {
+  // Excel styles for each named cell style (xlsx-js-style format).
+  function investorCellStyle(name) {
+    var navy = '1F3864', blue = '2F5597', light = 'DDEBF7', grey = 'F2F2F2', alt = 'F7F9FC', line = 'D9D9D9', noteGrey = '7F7F7F', ink = '262626';
+    var thin = { style: 'thin', color: { rgb: line } };
+    var box = { top: thin, bottom: thin, left: thin, right: thin };
+    var heavy = { top: { style: 'medium', color: { rgb: navy } }, bottom: { style: 'medium', color: { rgb: navy } }, left: thin, right: thin };
+    function font(extra) { var f = { name: 'Calibri', sz: 11, color: { rgb: ink } }; for (var k in extra) f[k] = extra[k]; return f; }
+    function solid(rgb) { return { patternType: 'solid', fgColor: { rgb: rgb } }; }
+    var isAlt = /Alt$/.test(name || '');
+    var n = (name || '').replace(/Alt$/, '');
+    var st;
+    switch (n) {
+      case 'title': return { font: font({ sz: 18, bold: true, color: { rgb: navy } }), alignment: { vertical: 'center' } };
+      case 'subtitle': return { font: font({ sz: 10, italic: true, color: { rgb: noteGrey } }), alignment: { vertical: 'center' } };
+      case 'section': return { font: font({ sz: 12, bold: true, color: { rgb: navy } }), fill: solid(light), alignment: { vertical: 'center', indent: 1 } };
+      case 'header': return { font: font({ sz: 10, bold: true, color: { rgb: 'FFFFFF' } }), fill: solid(blue), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: box };
+      case 'headerLeft': return { font: font({ sz: 10, bold: true, color: { rgb: 'FFFFFF' } }), fill: solid(blue), alignment: { horizontal: 'left', vertical: 'center', wrapText: true, indent: 1 }, border: box };
+      case 'subtotalLabel': return { font: font({ bold: true }), fill: solid(grey), alignment: { vertical: 'center', indent: 1 }, border: box };
+      case 'subtotal': return { font: font({ bold: true }), fill: solid(grey), alignment: { horizontal: 'right', vertical: 'center' }, border: box };
+      case 'subtotalNote': return { font: font({ sz: 10, italic: true, color: { rgb: noteGrey } }), fill: solid(grey), alignment: { vertical: 'center', indent: 1 }, border: box };
+      case 'totalLabel': return { font: font({ sz: 12, bold: true, color: { rgb: navy } }), fill: solid(light), alignment: { vertical: 'center', indent: 1 }, border: heavy };
+      case 'total': return { font: font({ sz: 12, bold: true, color: { rgb: navy } }), fill: solid(light), alignment: { horizontal: 'right', vertical: 'center' }, border: heavy };
+      case 'totalNote': return { font: font({ sz: 10, italic: true, color: { rgb: noteGrey } }), fill: solid(light), alignment: { vertical: 'center', indent: 1 }, border: heavy };
+      case 'footnote': return { font: font({ sz: 9, italic: true, color: { rgb: noteGrey } }), alignment: { vertical: 'center', wrapText: true } };
+      case 'label': case 'labelCell': st = { font: font({}), alignment: { vertical: 'center', indent: 1 }, border: box }; break;
+      case 'labelIndent': st = { font: font({}), alignment: { vertical: 'center', indent: 3 }, border: box }; break;
+      case 'textCell': st = { font: font({}), alignment: { horizontal: 'center', vertical: 'center' }, border: box }; break;
+      case 'rank': st = { font: font({ bold: true, color: { rgb: blue } }), alignment: { horizontal: 'center', vertical: 'center' }, border: box }; break;
+      case 'note': st = { font: font({ sz: 10, italic: true, color: { rgb: noteGrey } }), alignment: { vertical: 'center', indent: 1 }, border: box }; break;
+      case 'value': st = { font: font({}), alignment: { horizontal: 'right', vertical: 'center' }, border: box }; break;
+      default: return { font: font({}), alignment: { vertical: 'center' } };
+    }
+    if (isAlt) st.fill = solid(alt);
+    return st;
+  }
+
+  // Turns the cell descriptions into a real worksheet. Takes the XLSX library as a parameter so the
+  // regression tests can run it against the npm build of the same library.
+  function investorSheetToWorksheet(X, sh) {
+    var ws = {};
+    var maxC = sh.cols.length - 1;
+    sh.rows.forEach(function (row, r) {
+      if (!row.length) return;
+      var firstStyle = row[0] && row[0].style;
+      var spanning = firstStyle === 'title' || firstStyle === 'subtitle' || firstStyle === 'section' || firstStyle === 'footnote';
+      for (var c = 0; c <= maxC; c++) {
+        var cell = row[c];
+        var ref = X.utils.encode_cell({ r: r, c: c });
+        if (!cell) {
+          // Fill in the empty cells of a merged banner row so its colour runs the full width.
+          if (spanning) ws[ref] = { t: 's', v: '', s: investorCellStyle(firstStyle) };
+          continue;
+        }
+        var v = cell.v;
+        var isEmpty = (v === null || v === undefined || v === '' || (typeof v === 'number' && !isFinite(v)));
+        // A number that can't be worked out (e.g. margin with no sales) shows a dash, not a blank.
+        var out = isEmpty ? { t: 's', v: cell.fmt ? '–' : '' } : (typeof v === 'number' ? { t: 'n', v: v } : { t: 's', v: String(v) });
+        out.s = investorCellStyle(cell.style);
+        if (cell.fmt && out.t === 'n') { out.z = cell.fmt; out.s.numFmt = cell.fmt; }
+        ws[ref] = out;
+      }
+    });
+    ws['!ref'] = X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, sh.rows.length - 1), c: maxC } });
+    ws['!cols'] = sh.cols.map(function (w) { return { wch: w }; });
+    ws['!rows'] = sh.rows.map(function (_, r) { return { hpt: sh.heights[r] || 20 }; });
+    ws['!merges'] = sh.merges;
+    // Narrow page margins so the Summary tab prints on a single page width.
+    ws['!margins'] = { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
+    return ws;
+  }
+  function buildInvestorWorkbook(X, report) {
+    var wb = X.utils.book_new();
+    report.sheets.forEach(function (sh) { X.utils.book_append_sheet(wb, investorSheetToWorksheet(X, sh), sh.name); });
+    return wb;
+  }
+
+  function exportInvestorReport(opts) {
     if (typeof XLSX === 'undefined') {
       alert('Could not load the Excel export library — check your internet connection and try again.');
       return;
     }
-    var sheets = buildInvestorReportData();
-    var wb = XLSX.utils.book_new();
-    sheets.forEach(function (sh) {
-      var ws = XLSX.utils.aoa_to_sheet(sh.aoa);
-      Object.keys(sh.formulas).forEach(function (cellRef) {
-        var entry = sh.formulas[cellRef];
-        // Every formula cell carries a pre-computed cache value (entry.v) alongside the formula
-        // (entry.f) — without it, SheetJS's own reader drops the cell entirely on read-back
-        // (confirmed by direct testing). Real Excel/Google Sheets recalculate on open regardless.
-        ws[cellRef] = { t: entry.t || 'n', f: entry.f, v: entry.v };
-      });
-      XLSX.utils.book_append_sheet(wb, ws, sh.name);
-    });
-    XLSX.writeFile(wb, 'sips-by-evve-investor-report-' + todayISO() + '.xlsx');
+    var report = buildInvestorReportData(opts);
+    var wb = buildInvestorWorkbook(XLSX, report);
+    XLSX.writeFile(wb, 'sips-by-evve-investor-report-' + report.period.from + '-to-' + report.period.to + '.xlsx');
   }
 
-  // Test-only hook: lets the regression suite inspect the exact sheet/formula data this builds,
-  // without needing the SheetJS CDN script to actually load (it never loads in the jsdom test
-  // sandbox, same as the Supabase script). Harmless for real users — just an extra property.
+  // Test-only hooks: let the regression suite inspect the report data and build the workbook with
+  // the npm copy of the Excel library (the CDN one never loads in the offline test sandbox).
   window.__buildInvestorReportData = buildInvestorReportData;
+  window.__buildInvestorWorkbook = buildInvestorWorkbook;
 
   // Ephemeral UI state for the Dashboard date-range filter — not persisted, resets on reload,
   // same pattern as dashboardEditingCash below. Empty string means "no bound" (all-time).
@@ -6215,6 +7255,37 @@
     '</div>';
   }
 
+  // Investor Report options — picked in a small panel before downloading.
+  var investorExport = { open: false, preset: 'last3', from: '', to: '', testing: false, details: false };
+  function investorExportPanelHtml() {
+    if (!investorExport.open) return '';
+    var presets = [['thismonth', 'This month'], ['lastmonth', 'Last month'], ['last3', 'Last 3 months'], ['last6', 'Last 6 months'],
+      ['thisyear', 'This year'], ['last12', 'Last 12 months'], ['all', 'All time'], ['custom', 'Choose dates…']];
+    var p = investorPeriodFor(investorExport.preset, investorExport.from, investorExport.to);
+    return '<div class="card" id="investor-export-panel" style="margin-bottom:14px;">' +
+      '<div style="font-weight:600; margin-bottom:10px;">📊 Investor Report</div>' +
+      '<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">' +
+        '<label class="field-label" style="margin:0;">Period</label>' +
+        '<select id="inv-export-preset" style="width:180px;">' + presets.map(function (x) {
+          return '<option value="' + x[0] + '"' + (x[0] === investorExport.preset ? ' selected' : '') + '>' + x[1] + '</option>';
+        }).join('') + '</select>' +
+        (investorExport.preset === 'custom'
+          ? '<input type="date" id="inv-export-from" value="' + escapeHtml(investorExport.from) + '" style="width:150px;">' +
+            '<span class="muted">to</span><input type="date" id="inv-export-to" value="' + escapeHtml(investorExport.to) + '" style="width:150px;">'
+          : '<span class="muted" style="font-size:13px;">' + escapeHtml(invFmtDate(p.from) + ' – ' + invFmtDate(p.to)) + '</span>') +
+      '</div>' +
+      '<div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:13px;">' +
+        '<label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="inv-export-testing"' + (investorExport.testing ? ' checked' : '') + '> Include Testing & R&D sheet</label>' +
+        '<label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="inv-export-details"' + (investorExport.details ? ' checked' : '') + '> Include every cost line</label>' +
+      '</div>' +
+      '<div class="muted" style="font-size:12px; margin-top:8px;">Tabs: Summary · Monthly Trend · Product Performance · Costs Breakdown. No customer names are included.</div>' +
+      '<div id="inv-export-error" style="color:var(--red); font-size:13px; margin-top:6px;"></div>' +
+      '<div style="display:flex; gap:8px; margin-top:10px;">' +
+        '<button class="btn btn-primary btn-small" id="btn-inv-export-download">Download Excel</button>' +
+        '<button class="btn btn-secondary btn-small" id="btn-inv-export-cancel">Cancel</button>' +
+      '</div></div>';
+  }
+
   function dashboardDateRangeHtml() {
     return '<div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; justify-content:flex-end; align-items:center;">' +
       '<button class="btn btn-secondary btn-small" id="btn-export-investor-report" style="margin-right:auto;">📊 Export Investor Report</button>' +
@@ -6238,7 +7309,11 @@
   function computeStorageStats() {
     var raw = '';
     try { raw = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) { raw = JSON.stringify(state); }
-    var totalChars = raw.length;
+    // Plus the "last synced copy" kept for two-device merging (see reconcileWithCloud) — it
+    // lives in the same browser storage, so it counts against the same limit.
+    var syncMetaChars = 0;
+    try { syncMetaChars = (localStorage.getItem('snowglobeTrackerSyncMeta') || '').length; } catch (e) {}
+    var totalChars = raw.length + syncMetaChars;
     var photoChars = state.products.reduce(function (s, p) { return s + (p.image ? p.image.length : 0); }, 0);
     var otherChars = Math.max(0, totalChars - photoChars);
     var photosCount = state.products.filter(function (p) { return !!p.image; }).length;
@@ -6328,7 +7403,7 @@
 
     var html = backupReminderBannerHtml() +
       monthComparisonHtml() +
-      dashboardDateRangeHtml() +
+      dashboardDateRangeHtml() + investorExportPanelHtml() +
       '<div class="stat-grid">' +
       statCard('Total account value', money(fin.totalAccountValue), 'Cash + inventory value') +
       cashStatCard(fin.cash, state.startingCash) +
@@ -6355,10 +7430,33 @@
     enhanceStorageCardWithRealQuota();
   }
 
+  document.getElementById('dashboard-content').addEventListener('change', function (e) {
+    if (e.target.id === 'inv-export-preset') {
+      investorExport.preset = e.target.value;
+      if (investorExport.preset === 'custom' && !investorExport.from) {
+        var cp = investorPeriodFor('last3');
+        investorExport.from = cp.from; investorExport.to = cp.to;
+      }
+      renderDashboard();
+      return;
+    }
+    if (e.target.id === 'inv-export-from') { investorExport.from = e.target.value; return; }
+    if (e.target.id === 'inv-export-to') { investorExport.to = e.target.value; return; }
+    if (e.target.id === 'inv-export-testing') { investorExport.testing = e.target.checked; return; }
+    if (e.target.id === 'inv-export-details') { investorExport.details = e.target.checked; return; }
+  });
+
   document.getElementById('dashboard-content').addEventListener('click', function (e) {
     var el = e.target.closest ? e.target.closest('[data-dash-order]') : null;
     if (el) { goToOrder(el.getAttribute('data-dash-order')); return; }
-    if (e.target.id === 'btn-export-investor-report') { exportInvestorReport(); return; }
+    if (e.target.id === 'btn-export-investor-report') { investorExport.open = !investorExport.open; renderDashboard(); return; }
+    if (e.target.id === 'btn-inv-export-cancel') { investorExport.open = false; renderDashboard(); return; }
+    if (e.target.id === 'btn-inv-export-download') {
+      var ip = investorPeriodFor(investorExport.preset, investorExport.from, investorExport.to);
+      if (ip.from > ip.to) { document.getElementById('inv-export-error').textContent = 'The start date is after the end date.'; return; }
+      exportInvestorReport({ from: ip.from, to: ip.to, includeTesting: investorExport.testing, includeCostDetails: investorExport.details });
+      return;
+    }
     if (e.target.id === 'btn-backup-reminder-export') { document.getElementById('btn-export').click(); return; }
     if (e.target.id === 'btn-dash-edit-startingcash') { dashboardEditingCash = true; renderDashboard(); return; }
     if (e.target.id === 'btn-dash-startingcash-cancel') { dashboardEditingCash = false; renderDashboard(); return; }
@@ -6533,7 +7631,7 @@
     var unpaid = active.filter(function (o) { return !orderFullyPaid(o); });
     var unpaidTotal = unpaid.reduce(function (s, o) { return s + unpaidAmountFor(o); }, 0);
 
-    var html = '<div class="stat-grid">' +
+    var html = runningLowHtml() + '<div class="stat-grid">' +
       statCard('💳 Owed to you', money(fin.unclaimedOwed), 'Purchases paid with your own money, not yet claimed back', fin.unclaimedOwed > 0 ? 'var(--red)' : 'var(--green)') +
       statCard('Awaiting payment', money(unpaidTotal), unpaid.length + ' unpaid orders', unpaid.length > 0 ? 'var(--red)' : 'var(--green)') +
       statCard('🔧 Defect loss', money(fin.defectLoss), fin.defectCount + ' item' + (fin.defectCount === 1 ? '' : 's') + ' sold cheap due to defect — already reflected in Revenue, shown here separately for visibility') +
@@ -6555,7 +7653,60 @@
     document.getElementById('alerts-content').innerHTML = html;
   }
 
+  // Running low: only the things she actually sells (Tumblers, Stickers, Add ons) — raw
+  // materials are left out on purpose. Each one shows where/when/how much it was last bought,
+  // with a Restock button that jumps straight to that product's restock form in Inventory.
+  var RUNNING_LOW_TYPES = ['Tumbler', 'Stickers', 'Add ons'];
+  function lastPurchaseFor(p) {
+    var buys = state.costs.filter(function (c) {
+      return c.productId === p.id && Number(c.qty) > 0 && (c.category === 'restock' || c.category === 'new_inventory' || c.category === 'packaging');
+    }).sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    return buys[0] || null;
+  }
+  function runningLowProducts() {
+    return state.products.filter(function (p) {
+      return RUNNING_LOW_TYPES.indexOf(p.type) !== -1 && Number(p.stock) <= Number(p.threshold || 0);
+    }).sort(function (a, b) { return (Number(a.stock) - Number(a.threshold || 0)) - (Number(b.stock) - Number(b.threshold || 0)); });
+  }
+  function runningLowHtml() {
+    var list = runningLowProducts();
+    if (!list.length) return '';
+    return '<div class="card" style="margin-bottom:14px;"><div style="font-weight:600; margin-bottom:8px;">Running low (' + list.length + ')</div>' +
+      list.map(function (p) {
+        var last = lastPurchaseFor(p);
+        var where = [last && last.platform, last && last.seller, p.sourcePlatform].filter(Boolean);
+        var whereText = where.length ? where.filter(function (v, i) { return where.indexOf(v) === i; }).join(' · ') : '';
+        var lastText = last
+          ? 'Last bought ' + formatDate(last.date) + (whereText ? ' · ' + escapeHtml(whereText) : '') + ' · ' + money(Number(last.amount) / Number(last.qty)) + ' each (' + last.qty + (p.unit || '') + ')'
+          : (whereText ? 'Usually from ' + escapeHtml(whereText) : 'No purchase recorded yet');
+        var link = (p.sourceLink && /^https?:\/\//i.test(p.sourceLink)) ? p.sourceLink : '';
+        var out = Number(p.stock) <= 0;
+        return '<div style="padding:10px 0; border-top:1px solid var(--border);">' +
+          '<div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">' +
+            '<span style="font-weight:500;">' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : (p.theme ? ' — ' + p.theme : ''))) + '</span>' +
+            '<span class="pill ' + (out ? 'pill-red' : 'pill-amber') + '" style="font-size:11px;">' + (out ? 'Out of stock' : p.stock + (p.unit || '') + ' left') + '</span>' +
+          '</div>' +
+          '<div class="muted" style="font-size:12px; margin:4px 0 8px;">' + lastText + '</div>' +
+          '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+            '<button type="button" class="btn btn-secondary btn-small" data-lowstock-restock="' + p.id + '">Restock</button>' +
+            (link ? '<a class="btn btn-secondary btn-small" href="' + escapeHtml(link) + '" target="_blank" rel="noopener">Open seller link</a>' : '') +
+          '</div></div>';
+      }).join('') + '</div>';
+  }
+  function openRestockFor(productId) {
+    var p = state.products.find(function (x) { return x.id === productId; });
+    if (!p) return;
+    restockingProductId = p.id;
+    if (p.type === 'Stickers' && p.theme) expandedThemes[p.theme] = true;
+    var invBtn = document.querySelector('nav button[data-tab="inventory"]');
+    if (invBtn) invBtn.click();
+    var input = document.getElementById('rf-packs-' + p.id);
+    if (input) { if (input.scrollIntoView) input.scrollIntoView({ block: 'center' }); input.focus(); }
+  }
+
   document.getElementById('alerts-content').addEventListener('click', function (e) {
+    var restockBtn = e.target.closest ? e.target.closest('[data-lowstock-restock]') : null;
+    if (restockBtn) { openRestockFor(restockBtn.getAttribute('data-lowstock-restock')); return; }
     var el = e.target.closest ? e.target.closest('[data-dash-order]') : null;
     if (el) { goToOrder(el.getAttribute('data-dash-order')); return; }
     if (e.target.id === 'btn-toggle-replacement-breakdown') { dashboardShowReplacementBreakdown = !dashboardShowReplacementBreakdown; renderAlerts(); return; }
@@ -6655,6 +7806,12 @@
     }
 
     document.getElementById('schedule-content').innerHTML = html;
+    var listTitle = document.getElementById('schedule-list-title');
+    if (listTitle) {
+      listTitle.textContent = (scheduleFilterFrom && scheduleFilterFrom === scheduleFilterTo)
+        ? 'Orders for ' + formatDateLong(scheduleFilterFrom)
+        : 'Orders to make';
+    }
     var toggleBtn = document.getElementById('btn-toggle-completed-schedule');
     if (toggleBtn) {
       toggleBtn.addEventListener('click', function () {
@@ -6751,7 +7908,11 @@
   // ================= RESET ALL DATA =================
   document.getElementById('btn-reset-data').addEventListener('click', function () {
     if (!confirm('This will permanently delete ALL products, costs, orders and calendar data — including anything already synced to your account. This cannot be undone. Continue?')) return;
-    if (!confirm('Really sure? This clears everything and starts you with a blank tracker.')) return;
+    // Moved out of the top bar (too easy to hit by accident next to Viewer access) and now
+    // needs the word RESET typed in — a single stray tap can never wipe everything.
+    var typed = prompt('To confirm, type RESET (in capitals) below. Tip: press Export first if you want a backup.');
+    if (typed === null) return;
+    if (String(typed).trim() !== 'RESET') { alert('Nothing was deleted — you need to type RESET exactly.'); return; }
     state = { products: [], costs: [], orders: [], blockedDates: {}, weeklyBreakDays: [2, 6], dailyTumblerCapacity: 5, stockLog: [], chatLog: [], startingCash: 5000 };
     quickAddLastEntryId = null;
     quickAddLastShipping = null;
@@ -6884,11 +8045,23 @@
       }).join('') +
     '</div>';
   }
+  // Same smart paste as the Quick order form, for when the address only arrives later.
+  document.getElementById('shipping-content').addEventListener('input', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('sa-paste')) return;
+    var sid = e.target.getAttribute('data-order-id');
+    var parsed = parseShippingPaste(e.target.value);
+    var set = function (field, v) { var el = document.getElementById('sa-' + field + '-' + sid); if (el && v) el.value = v; };
+    set('recipientName', parsed.name);
+    set('recipientPhone', parsed.phone);
+    set('shipTo', parsed.address);
+    set('postcode', parsed.postcode);
+  });
   function shippingAddressBlockHtml(o) {
     if (editingShippingAddressOrderId === o.id) {
       return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
         pastAddressSuggestionsHtml(o) +
-        '<div class="field-block"><label class="field-label">Recipient name</label><input id="sa-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '" placeholder="e.g. name on the parcel/courier label"></div>' +
+        '<div class="field-block"><label class="field-label">Paste what the customer sent <span class="muted">(name, phone and address in any order — fills the boxes below)</span></label><textarea class="sa-paste" data-order-id="' + o.id + '" rows="3" style="width:100%;"></textarea></div>' +
+        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Recipient name</label><input id="sa-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '" placeholder="e.g. name on the parcel/courier label"></div>' +
         '<div class="field-block" style="margin-top:6px;"><label class="field-label">Recipient phone <span class="muted">(blank = use WhatsApp number)</span></label><input id="sa-recipientPhone-' + o.id + '" value="' + escapeHtml(o.recipientPhone || '') + '" placeholder="+60123456789"></div>' +
         '<div class="field-block" style="margin-top:6px;"><label class="field-label">Ship to (address)</label><textarea id="sa-shipTo-' + o.id + '" rows="2" style="resize:vertical; width:100%;" placeholder="e.g. 12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
         '<div class="field-block" style="margin-top:6px;"><label class="field-label">Postcode</label><input id="sa-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '" placeholder="e.g. 43000"></div>' +
@@ -7581,7 +8754,206 @@
         : '') +
     '</div>';
   }
+  // ================= PACK DAY (top of Shipping) =================
+  // Built around her real week: pack on her pack days (Tue/Sat), book J&T the day before, drop off,
+  // then come back and type in tracking numbers. One checklist of every parcel still to go out,
+  // a booking helper that copies whole ready-to-paste blocks for J&T's smart detect (her own
+  // sender details saved once), and a finder that matches J&T's address-only list back to the
+  // right customer by postcode/address.
+  var packDaySkipIds = {};
+  var editingSenderInfo = false;
+  var editingAskTemplate = false;
+  var packDayTrackQuery = '';
+  function nextPackDay() {
+    var days = state.weeklyBreakDays || [];
+    if (!days.length) return '';
+    var d = new Date(todayISO() + 'T00:00:00');
+    for (var i = 0; i < 8; i++) {
+      if (days.indexOf(d.getDay()) !== -1) return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      d.setDate(d.getDate() + 1);
+    }
+    return '';
+  }
+  function packDayParcels() {
+    return state.orders.filter(function (o) { return o.status === 'uv curing' || o.status === 'ready to ship' || o.status === 'order shipment'; })
+      .slice().sort(function (a, b) { return (a.scheduledDate || a.date || '').localeCompare(b.scheduledDate || b.date || ''); });
+  }
+  function shortPlace(o) {
+    var addr = o.shipTo || '';
+    return (o.postcode ? o.postcode + ' ' : '') + (addr.length > 38 ? addr.slice(0, 38) + '…' : addr);
+  }
+  function receiverBlock(o) {
+    var phone = o.recipientPhone || o.buyerWhatsapp || '';
+    var addr = (o.shipTo || '') + (o.postcode && (o.shipTo || '').indexOf(o.postcode) === -1 ? ', ' + o.postcode : '');
+    return [o.recipientName || o.buyerName || '', phone, addr].filter(Boolean).join('\n');
+  }
+  function senderBlock() {
+    var s = state.senderInfo || {};
+    return [s.name, s.phone, s.address].filter(Boolean).join('\n');
+  }
+  function packDayBookingQueue() {
+    return packDayParcels().filter(function (o) { return o.status === 'ready to ship' && !!o.shipTo && !packDaySkipIds[o.id]; });
+  }
+  function packDayTrackCandidates() {
+    return state.orders.filter(function (o) { return (o.status === 'order shipment' || o.status === 'ready to ship') && !o.trackingNumber && !(o.parcels && o.parcels.length); });
+  }
+  function packDayTrackResultsHtml() {
+    var q = packDayTrackQuery.trim().toLowerCase();
+    var list = packDayTrackCandidates().filter(function (o) {
+      if (!q) return o.status === 'order shipment';
+      var hay = [o.postcode, o.shipTo, o.recipientName, o.buyerName, o.recipientPhone, o.buyerWhatsapp].join(' ').toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+    if (!list.length) return '<div class="muted" style="font-size:13px; padding:6px 0;">' + (q ? 'No booked parcel matches that.' : 'Nothing booked is waiting for a tracking number.') + '</div>';
+    return list.map(function (o) {
+      return '<div style="padding:8px 0; border-bottom:1px solid var(--border);">' +
+        '<div style="font-size:14px;"><strong>' + escapeHtml(o.recipientName || o.buyerName || 'Unknown') + '</strong> · ' + escapeHtml((o.shipTo || '') + (o.postcode && (o.shipTo || '').indexOf(o.postcode) === -1 ? ' ' + o.postcode : '')) + '</div>' +
+        '<div style="display:flex; gap:6px; margin-top:6px;">' +
+          '<input class="pd-tracking-input" data-order-id="' + o.id + '" placeholder="Tracking no." style="flex:1;">' +
+          '<button type="button" class="btn btn-primary btn-small" data-pd-save-tracking="' + o.id + '">Save + copy message</button>' +
+        '</div></div>';
+    }).join('');
+  }
+  function packDayPanelHtml() {
+    var parcels = packDayParcels();
+    var pd = nextPackDay();
+    var tick = '<span style="color:var(--green,#3b6d11); font-weight:600;">✔</span>';
+    var dash = '<span class="muted">—</span>';
+    var rows = parcels.map(function (o, idx) {
+      var booked = o.status === 'order shipment';
+      var hasTracking = !!o.trackingNumber || (o.parcels || []).some(function (p) { return p.trackingNumber; });
+      return '<tr>' +
+        '<td>' + (idx + 1) + '</td>' +
+        '<td><div style="font-weight:500;">' + escapeHtml(o.buyerName || 'Unknown') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') + (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
+          (o.shipTo ? '<div class="muted" style="font-size:12px;">' + escapeHtml(shortPlace(o)) + '</div>' : '') + '</td>' +
+        '<td style="text-align:center;">' + (orderFullyPaid(o) ? tick : '<span style="color:var(--red); font-weight:600;">✘</span>') + '</td>' +
+        '<td style="text-align:center;">' + (o.shipTo ? tick : '<button type="button" class="btn btn-secondary btn-small" data-pd-ask-address="' + o.id + '" style="font-size:11px; padding:3px 8px;">Ask for address</button>') + '</td>' +
+        '<td style="text-align:center;">' + (booked ? tick : dash) + '</td>' +
+        '<td style="text-align:center;">' + (hasTracking ? tick : dash) + '</td>' +
+      '</tr>';
+    }).join('');
+    var table = parcels.length
+      ? '<div style="overflow-x:auto;"><table style="width:100%; font-size:14px;"><thead><tr><th>#</th><th>Buyer</th><th style="text-align:center;">Paid</th><th style="text-align:center;">Address</th><th style="text-align:center;">Booked</th><th style="text-align:center;">Tracking</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      : '<div class="muted" style="font-size:13px;">No parcels waiting to go out.</div>';
+
+    // Sender (her own details, saved once)
+    var s = state.senderInfo || {};
+    var senderHtml = editingSenderInfo || !senderBlock()
+      ? '<div class="field-label">Your details (sender)</div>' +
+        '<input id="pd-sender-name" placeholder="Your name" value="' + escapeHtml(s.name || '') + '" style="margin-bottom:6px;">' +
+        '<input id="pd-sender-phone" placeholder="Your phone" value="' + escapeHtml(s.phone || '') + '" style="margin-bottom:6px;">' +
+        '<textarea id="pd-sender-address" rows="2" placeholder="Your pick-up / return address" style="width:100%;">' + escapeHtml(s.address || '') + '</textarea>' +
+        '<button type="button" class="btn btn-primary btn-small" id="btn-pd-save-sender" style="margin-top:6px;">Save my details</button>'
+      : '<div style="display:flex; justify-content:space-between; align-items:center;"><div class="field-label" style="margin:0;">Your details (sender)</div><button type="button" class="btn-text" id="btn-pd-edit-sender" style="font-size:12px;">Edit</button></div>' +
+        '<div style="background:var(--bg); border-radius:8px; padding:8px 10px; font-size:13px; line-height:1.6; white-space:pre-line; margin:6px 0;">' + escapeHtml(senderBlock()) + '</div>' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-pd-copy-sender" style="width:100%;">Copy sender</button>';
+
+    // Receiver (next parcel to book)
+    var bookQ = packDayBookingQueue();
+    var totalToBook = packDayParcels().filter(function (o) { return o.status === 'ready to ship' && !!o.shipTo; }).length;
+    var waitingAddr = packDayParcels().filter(function (o) { return !o.shipTo && o.status !== 'order shipment'; }).length;
+    var cur = bookQ[0];
+    var receiverHtml = cur
+      ? '<div style="display:flex; justify-content:space-between; align-items:center;"><div class="field-label" style="margin:0;">Receiver · ' + (totalToBook - bookQ.length + 1) + ' of ' + totalToBook + '</div><span class="muted" style="font-size:12px;">' + escapeHtml(cur.buyerName || '') + '</span></div>' +
+        '<div style="background:var(--bg); border-radius:8px; padding:8px 10px; font-size:13px; line-height:1.6; white-space:pre-line; margin:6px 0;">' + escapeHtml(receiverBlock(cur)) + '</div>' +
+        '<button type="button" class="btn btn-secondary btn-small" data-pd-copy-receiver="' + cur.id + '" style="width:100%;">Copy receiver (name + phone + address)</button>' +
+        '<div style="display:flex; gap:6px; margin-top:6px;">' +
+          '<button type="button" class="btn btn-primary btn-small" data-pd-booked="' + cur.id + '" style="flex:1;">✔ Booked, next</button>' +
+          '<button type="button" class="btn btn-secondary btn-small" data-pd-skip="' + cur.id + '">Skip</button>' +
+        '</div>'
+      : '<div class="field-label">Receiver</div><div class="muted" style="font-size:13px;">' + (totalToBook ? 'All done for now 🎉' : 'Nothing ready to book yet.') + '</div>';
+    if (waitingAddr) receiverHtml += '<div class="muted" style="font-size:12px; margin-top:6px;">' + waitingAddr + ' parcel' + (waitingAddr === 1 ? '' : 's') + ' still waiting for an address.</div>';
+
+    var askTplHtml = editingAskTemplate
+      ? '<div style="margin-top:10px;"><div class="muted" style="font-size:12px; margin-bottom:6px;">Use <code>{buyerName}</code> where the buyer\'s name should go.</div>' +
+        '<textarea id="pd-ask-template-input" rows="8" style="width:100%; font-size:13px;">' + escapeHtml(state.askAddressTemplate || DEFAULT_ASK_ADDRESS_TEMPLATE) + '</textarea>' +
+        '<div style="margin-top:6px;"><button type="button" class="btn btn-primary btn-small" id="btn-pd-save-ask-template">Save message</button> <button type="button" class="btn btn-secondary btn-small" id="btn-pd-cancel-ask-template">Cancel</button></div></div>'
+      : '';
+
+    return '<div class="card" id="pack-day-panel" style="margin-bottom:12px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">' +
+        '<div style="font-weight:600; font-size:16px;">📦 ' + (pd ? 'Next pack day · ' + escapeHtml(formatDateLong(pd)) : 'Parcels to send') + ' · ' + parcels.length + ' parcel' + (parcels.length === 1 ? '' : 's') + '</div>' +
+        (editingAskTemplate ? '' : '<button type="button" class="btn-text" id="btn-pd-edit-ask-template" style="font-size:12px;">✏️ Edit ask-for-address message</button>') +
+      '</div>' + askTplHtml + table +
+      '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:12px;">' +
+        '<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px;"><div style="font-weight:600; margin-bottom:6px;">Book on J&amp;T</div>' + senderHtml + '<div style="height:10px;"></div>' + receiverHtml + '</div>' +
+        '<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px;"><div style="font-weight:600; margin-bottom:6px;">Enter tracking numbers</div>' +
+          '<input type="text" id="pd-track-search" placeholder="Type postcode or part of the address…" value="' + escapeHtml(packDayTrackQuery) + '">' +
+          '<div id="pd-track-results" style="margin-top:6px;">' + packDayTrackResultsHtml() + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  document.getElementById('packday-content').addEventListener('input', function (e) {
+    if (e.target.id === 'pd-track-search') {
+      packDayTrackQuery = e.target.value;
+      var box = document.getElementById('pd-track-results');
+      if (box) box.innerHTML = packDayTrackResultsHtml();
+    }
+  });
+  document.getElementById('packday-content').addEventListener('click', function (e) {
+    var t = e.target;
+    var askId = t.getAttribute && t.getAttribute('data-pd-ask-address');
+    if (askId) { copyAskAddressMessage(askId); return; }
+    if (t.id === 'btn-pd-edit-sender') { editingSenderInfo = true; renderShipping(); return; }
+    if (t.id === 'btn-pd-save-sender') {
+      state.senderInfo = {
+        name: document.getElementById('pd-sender-name').value.trim(),
+        phone: document.getElementById('pd-sender-phone').value.trim(),
+        address: document.getElementById('pd-sender-address').value.trim()
+      };
+      editingSenderInfo = false;
+      save();
+      renderShipping();
+      return;
+    }
+    if (t.id === 'btn-pd-copy-sender') { window.__lastCopiedText = senderBlock(); copyTextWithToast(senderBlock(), 'Sender copied'); return; }
+    var recId = t.getAttribute && t.getAttribute('data-pd-copy-receiver');
+    if (recId) {
+      var ro = state.orders.find(function (o) { return o.id === recId; });
+      if (ro) { window.__lastCopiedText = receiverBlock(ro); copyTextWithToast(receiverBlock(ro), 'Receiver copied — paste into J&T'); }
+      return;
+    }
+    var bookedId = t.getAttribute && t.getAttribute('data-pd-booked');
+    if (bookedId) {
+      var bo = state.orders.find(function (o) { return o.id === bookedId; });
+      if (bo) { changeOrderStatusCore(bo, 'order shipment'); save(); renderAll(); }
+      return;
+    }
+    var skipId = t.getAttribute && t.getAttribute('data-pd-skip');
+    if (skipId) { packDaySkipIds[skipId] = true; renderShipping(); return; }
+    var saveTrkId = t.getAttribute && t.getAttribute('data-pd-save-tracking');
+    if (saveTrkId) {
+      var to = state.orders.find(function (o) { return o.id === saveTrkId; });
+      var inp = document.querySelector('.pd-tracking-input[data-order-id="' + saveTrkId + '"]');
+      var trk = inp ? inp.value.trim() : '';
+      if (!to) return;
+      if (!trk) { alert('Type the tracking number first.'); return; }
+      if (!to.courier) to.courier = 'jt';
+      to.trackingNumber = trk;
+      to.trackingMessageSent = false;
+      if (PRE_SHIP_STATUSES.indexOf(to.status) !== -1) autoAdvanceStatus(to, 'shipped');
+      var msg = buildShippedMessage(to, shippingTrackingLink(to));
+      window.__lastCopiedText = msg;
+      save();
+      renderAll();
+      copyTextWithToast(msg, 'Saved — shipped message copied');
+      return;
+    }
+    if (t.id === 'btn-pd-edit-ask-template') { editingAskTemplate = true; renderShipping(); return; }
+    if (t.id === 'btn-pd-cancel-ask-template') { editingAskTemplate = false; renderShipping(); return; }
+    if (t.id === 'btn-pd-save-ask-template') {
+      state.askAddressTemplate = document.getElementById('pd-ask-template-input').value || DEFAULT_ASK_ADDRESS_TEMPLATE;
+      editingAskTemplate = false;
+      save();
+      renderShipping();
+      return;
+    }
+  });
+
   function renderShipping() {
+    var pdBox = document.getElementById('packday-content');
+    if (pdBox) pdBox.innerHTML = packDayPanelHtml();
     var fullQueue = state.orders.filter(function (o) { return o.status === 'uv curing' || o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped'; })
       .slice().sort(function (a, b) {
         return shippingSortNewestFirst
@@ -8066,8 +9438,15 @@
       var stOrder = state.orders.find(function (o) { return o.id === stOrderId; });
       if (stOrder) {
         var newTracking = e.target.value.trim();
+        var hadTracking = !!stOrder.trackingNumber;
         if (stOrder.trackingNumber !== newTracking) stOrder.trackingMessageSent = false;
         stOrder.trackingNumber = newTracking;
+        if (newTracking && !hadTracking && PRE_SHIP_STATUSES.indexOf(stOrder.status) !== -1) {
+          autoAdvanceStatus(stOrder, 'shipped');
+          save();
+          renderAll();
+          return;
+        }
         save();
         renderShipping();
       }
@@ -8099,8 +9478,17 @@
       var ptParcel = ptOrder && (ptOrder.parcels || []).find(function (p) { return p.id === ptParcelId; });
       if (ptParcel) {
         var newPtTracking = e.target.value.trim();
+        var parcelHadTracking = !!ptParcel.trackingNumber;
         if (ptParcel.trackingNumber !== newPtTracking) ptParcel.trackingMessageSent = false;
         ptParcel.trackingNumber = newPtTracking;
+        // Split order: only counts as shipped once EVERY parcel has its tracking number.
+        var allParcelsTracked = (ptOrder.parcels || []).every(function (pp) { return !!pp.trackingNumber; });
+        if (newPtTracking && !parcelHadTracking && allParcelsTracked && PRE_SHIP_STATUSES.indexOf(ptOrder.status) !== -1) {
+          autoAdvanceStatus(ptOrder, 'shipped');
+          save();
+          renderAll();
+          return;
+        }
         save();
         renderShipping();
       }
@@ -8365,7 +9753,12 @@
     var dayEl = e.target.closest ? e.target.closest('.cal-day[data-cal-day]') : null;
     if (dayEl) {
       calEditingDate = dayEl.getAttribute('data-cal-day');
+      // The order list under the calendar (the old Schedule page) narrows to just this day —
+      // "Clear dates" in that list's filter bar shows everything again.
+      scheduleFilterFrom = calEditingDate;
+      scheduleFilterTo = calEditingDate;
       renderCalendar();
+      renderSchedule();
     }
   });
 
@@ -8424,7 +9817,7 @@
     // every purchase of the same material lands under one Inventory entry/filter option
     // instead of splintering into a differently-named product each time she phrases it
     // differently. 颜料/染料 deliberately left out — she doesn't use those words.
-    { category: 'other', canonicalName: 'Glitter', words: ['glitter', '闪粉'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Glitter', words: ['glitter', '闪粉', '亮粉', '金葱粉', '闪光粉', '细闪', '粗闪', 'glitter powder'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
     { category: 'other', canonicalName: 'Sequin', words: ['sequin', 'sequins', '亮片'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
     { category: 'other', canonicalName: 'Mica Powder', words: ['mica powder', 'mica', '珠光粉', '云母粉'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
     { category: 'other', canonicalName: 'Food Colouring', words: ['food colouring', 'food coloring', 'edible colouring', 'edible color', '食用色素', '色素'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
@@ -8461,6 +9854,46 @@
   // created, so chatBubbleHtml can show a "Mark as self-paid" quick-action under it — for when
   // she forgot to type "self paid"/"自己垫" on the line itself and wants to fix it right there
   // without digging through the Costs table.
+  function markOrderPaidFromQuickAdd(o) {
+    o.paid = true;
+    o.paymentDate = o.paymentDate || todayISO();
+    state.chatLog.push({ id: uid(), role: 'bot', ts: new Date().toISOString(), kind: null, costId: null, paidOrderId: o.id,
+      text: '✓ Marked ' + (o.buyerName || 'the order') + '\'s order (' + money(orderTotal(o)) + ', ' + formatDate(o.date) + ') as paid.' });
+  }
+  function handleQuickAddPaidCommand(rest) {
+    var amtMatch = rest.match(/(?:rm\s*)?(\d+(?:\.\d{1,2})?)\s*(?:rm|myr)?\s*$/i);
+    var amt = amtMatch ? Number(amtMatch[1]) : null;
+    var who = (amtMatch ? rest.slice(0, amtMatch.index) : rest).trim().toLowerCase();
+    var whoDigits = who.replace(/\D/g, '');
+    var unpaid = state.orders.filter(function (o) { return o.status !== 'cancelled' && !o.paid; });
+    var matches = unpaid.filter(function (o) {
+      if (!who) return false;
+      var hay = [o.buyerName, o.buyerHandle, o.recipientName].join(' ').toLowerCase();
+      if (hay.indexOf(who) !== -1) return true;
+      return whoDigits.length >= 6 && String(o.buyerWhatsapp || '').replace(/\D/g, '').indexOf(whoDigits) !== -1;
+    });
+    if (amt != null && matches.length > 1) {
+      var byAmt = matches.filter(function (o) { return Math.abs(orderTotal(o) - amt) < 0.01; });
+      if (byAmt.length) matches = byAmt;
+    }
+    if (matches.length === 1) {
+      var o = matches[0];
+      if (amt != null && Math.abs(orderTotal(o) - amt) >= 0.01) {
+        state.chatLog.push({ id: uid(), role: 'bot', ts: new Date().toISOString(), kind: null, costId: null,
+          text: '⚠ ' + (o.buyerName || 'That order') + '\'s order total is ' + money(orderTotal(o)) + ', not ' + money(amt) + ' — marked it paid anyway; check the amount.' });
+      }
+      markOrderPaidFromQuickAdd(o);
+    } else if (matches.length > 1) {
+      state.chatLog.push({ id: uid(), role: 'bot', ts: new Date().toISOString(), kind: null, costId: null,
+        payChoices: matches.map(function (x) { return x.id; }),
+        text: 'Found ' + matches.length + ' unpaid orders for "' + rest.trim() + '" — which one was paid?' });
+    } else {
+      state.chatLog.push({ id: uid(), role: 'bot', ts: new Date().toISOString(), kind: null, costId: null,
+        text: 'Couldn\'t find an unpaid order for "' + rest.trim() + '". Try the buyer\'s name as it is in Orders.' });
+    }
+    save();
+  }
+
   function pushChatMsg(role, text, kind, costId) {
     state.chatLog.push({ id: uid(), role: role, text: text, ts: new Date().toISOString(), kind: kind || null, costId: costId || null });
     save();
@@ -8777,7 +10210,38 @@
         }
       }
     }
-    return bestGroup;
+    if (bestGroup) return bestGroup;
+    // Nothing matched exactly — she doesn't always spell a material the same way ("gliter",
+    // "glitters", "micca"), so allow a one-letter slip (two for long words) on the material
+    // names only. Kept away from the cost-category words on purpose: "shopping" is one letter
+    // from "shipping" and must NOT be read as a shipping fee.
+    var tokens = nd.split(/[^a-z]+/).filter(function (t) { return t.length >= 4; });
+    for (var gi = 0; gi < QUICKADD_CATEGORY_KEYWORDS.length; gi++) {
+      var g = QUICKADD_CATEGORY_KEYWORDS[gi];
+      if (!g.canonicalName) continue;
+      for (var wi = 0; wi < g.words.length; wi++) {
+        var kw = normalizeDesc(g.words[wi]);
+        if (!/^[a-z]{5,}$/.test(kw)) continue;
+        var maxDist = kw.length >= 8 ? 2 : 1;
+        for (var ti = 0; ti < tokens.length; ti++) {
+          if (tokens[ti] === kw + 's' || tokens[ti] === kw + 'es' || editDistance(tokens[ti], kw) <= maxDist) return g;
+        }
+      }
+    }
+    return null;
+  }
+  function editDistance(a, b) {
+    if (Math.abs(a.length - b.length) > 2) return 99;
+    var prev = [], cur, i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      cur = [i];
+      for (j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+      prev = cur;
+    }
+    return prev[b.length];
   }
 
   // Explicit signal that a line is topping up an EXISTING inventory item rather than
@@ -9056,7 +10520,9 @@
       }
       var cat = matchedGroup.category;
       var pType = matchedGroup.productType || null;
-      // Always ask seller/platform (skippable) for a keyword-matched line, regardless of category.
+      // Seller/platform + shipping questions only matter for stock she buys — not for ads,
+      // platform fees, courses, shipping payments etc., which are saved straight away.
+      if (!isStockCategory(cat)) { continueNonStockLine(item, cat, pType); return; }
       quickAddStage = { type: 'sellerplatform', item: item, category: cat, productType: pType };
       renderQuickAdd();
       return;
@@ -9201,8 +10667,8 @@
             renderAll();
             return;
           }
+          linkedP.cost = blendedUnitCost(linkedP, item.parsedQty, perUnitExact);
           linkedP.stock += item.parsedQty;
-          linkedP.cost = perUnitExact;
           logStock(productId, item.parsedQty, 'restock', 'Cost entry (' + category + ', via Quick Add)', entry.date, entry.id);
         }
       }
@@ -9285,14 +10751,15 @@
     claimants.forEach(function (c) {
       var share = subtotal > 0 ? (Number(c.amount) / subtotal) * poolAmount : poolAmount / claimants.length;
       share = Math.round(share * 100) / 100;
+      var oldShare = Number(c.shippingAmount) || 0;
       c.shippingAmount = share;
       c.shippingSourceId = sourceEntryId;
       if (c.productId && c.qty) {
         var p = state.products.find(function (x) { return x.id === c.productId; });
-        // Full precision here too (see finalizeQuickAddCost) — only the rounded `share` above
-        // is for display; the stored per-unit cost stays exact so Inventory's Total number
-        // (cost * stock) always matches what was actually paid, even with large quantities.
-        if (p) p.cost = (Number(c.amount) + share) / c.qty;
+        // This batch is already part of the product's weighted-average cost (at its old landed
+        // price) — shift the average by just the change in its shipping share, rather than
+        // overwriting the whole product's cost with this one batch's price.
+        if (p) p.cost = reblendedUnitCost(p, c.qty, (Number(c.amount) + oldShare) / c.qty, (Number(c.amount) + share) / c.qty);
       }
     });
   }
@@ -9348,9 +10815,14 @@
       renderQuickAdd();
       return;
     }
-    // Always ask seller/platform (skippable), regardless of category.
+    if (!isStockCategory(category)) { continueNonStockLine(item, category, null); return; }
     quickAddStage = { type: 'sellerplatform', item: item, category: category };
     renderQuickAdd();
+  }
+  function isStockCategory(cat) { return cat === 'restock' || cat === 'new_inventory'; }
+  function continueNonStockLine(item, cat, pType) {
+    if (cat === 'shipping') { proceedAfterSeller(item, cat, null, null, null, pType); return; }
+    finalizeQuickAddCost(item, cat, null, null, null, undefined, pType);
   }
 
   function confirmQuickAddProductPicker() {
@@ -9652,13 +11124,28 @@
         ? '<div class="muted" style="font-size:11px; margin:2px 4px 4px;">✓ Marked self-paid</div>'
         : '<button type="button" class="btn-text" data-mark-selfpaid="' + linkedCost.id + '" style="font-size:11px; margin:2px 4px 4px;">💳 Mark as self-paid</button>';
     }
+    // Undo on any logged line (not only the last one), and on a "marked as paid" line.
+    var undoHtml = '';
+    if (linkedCost && m.role === 'bot' && m.kind !== 'delete') undoHtml = '<button type="button" class="btn-text danger" data-qa-undo-cost="' + linkedCost.id + '" style="font-size:11px; margin:0 4px 4px;">↩ Undo</button>';
+    var paidOrder = m.paidOrderId ? state.orders.find(function (o) { return o.id === m.paidOrderId; }) : null;
+    if (paidOrder && paidOrder.paid) undoHtml = '<button type="button" class="btn-text danger" data-qa-undo-paid="' + paidOrder.id + '" style="font-size:11px; margin:0 4px 4px;">↩ Undo</button>';
+    var choicesHtml = '';
+    if (m.payChoices) {
+      choicesHtml = m.payChoices.map(function (id) {
+        var co = state.orders.find(function (o) { return o.id === id; });
+        if (!co || co.paid) return '';
+        return '<button type="button" class="btn btn-secondary btn-small" data-qa-pay-order="' + co.id + '" style="margin:2px 4px;">' + escapeHtml((co.buyerName || '') + ' · ' + formatDate(co.date) + ' · ' + money(orderTotal(co))) + '</button>';
+      }).join('');
+    }
     return '<div class="qa-row" style="justify-content:' + (isUser ? 'flex-end' : 'flex-start') + '; flex-direction:column; align-items:' + (isUser ? 'flex-end' : 'flex-start') + ';">' +
       '<div class="qa-bubble ' + bubbleClass + '">' + escapeHtml(m.text) + '</div>' +
+      (choicesHtml ? '<div style="display:flex; flex-wrap:wrap;">' + choicesHtml + '</div>' : '') +
       (tsLabel ? '<div class="muted qa-bubble-ts" style="font-size:10px; margin:1px 4px 4px;">' + escapeHtml(tsLabel) + '</div>' : '') +
-      selfPaidHtml +
+      '<div style="display:flex; align-items:center;">' + selfPaidHtml + undoHtml + '</div>' +
     '</div>';
   }
 
+  var quickAddHelpOpen = false;
   function renderQuickAdd() {
     var container = document.getElementById('quickadd-content');
     if (!container) return;
@@ -9678,6 +11165,22 @@
         '<div>700ml x3 50rmb</div>' +
         '<div>400ml x5 100myr</div>' +
       '</div>' +
+      '<div class="muted" style="margin-top:10px; font-size:12px;">中文也可以，例如：</div>' +
+      '<div style="font-family:monospace; font-size:12px; line-height:1.9; background:#f7f8fb; border-radius:8px; padding:10px 12px; margin-top:6px;">' +
+        '<div>闪粉 马卡龙色 25</div>' +
+        '<div>运费 12</div>' +
+        '<div>补货 甘油 44.98</div>' +
+        '<div>广告 50</div>' +
+      '</div>' +
+      '<div class="muted" style="margin-top:10px; font-size:12px;">Customer paid? Type <b>paid</b> + their name (and the amount if you like) and I\'ll mark their order as paid:</div>' +
+      '<div style="font-family:monospace; font-size:12px; line-height:1.9; background:#f7f8fb; border-radius:8px; padding:10px 12px; margin-top:6px;">' +
+        '<div>paid Aisha 70</div>' +
+        '<div>已付 Mei</div>' +
+      '</div>' +
+      '<div class="muted" style="margin-top:10px; font-size:12px;"><b>Words I understand:</b> ' +
+        'shipping / 运费 / 快递 · packaging / 包装 · ads / 广告 · tiktok fee / 手续费 · broken / 报废 · ' +
+        'glitter / 闪粉 / 亮粉 · sequin / 亮片 · mica / 珠光粉 · glycerin / 甘油 · UV glue / UV胶 · mineral oil / 矿物油 · resin / 树脂 · ' +
+        'bubble wrap / 泡泡纸 · parcel bag / 快递袋 · restock / 补货 · self paid / 自己垫. Small spelling slips in material names (e.g. "gliter") are fine.</div>' +
     '</div>';
 
     var logHtml;
@@ -9963,7 +11466,11 @@
       ? '<div style="text-align:right; margin-bottom:6px;"><button class="btn-text danger" id="btn-qa-clear-old" style="font-size:12px;">Clear old messages</button></div>'
       : '';
 
+    var helpToggleHtml = state.chatLog.length
+      ? '<div style="margin-bottom:6px;"><button type="button" class="btn-text" id="btn-qa-toggle-help" style="font-size:12px;">' + (quickAddHelpOpen ? '▾ Hide help' : '❓ What can I type?') + '</button></div>' + (quickAddHelpOpen ? welcomeHtml : '')
+      : '';
     container.innerHTML =
+      helpToggleHtml +
       clearOldHtml +
       '<div class="qa-log">' + logHtml + '</div>' +
       stageHtml +
@@ -9986,6 +11493,21 @@
   }
 
   document.getElementById('quickadd-content').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-qa-toggle-help') { quickAddHelpOpen = !quickAddHelpOpen; renderQuickAdd(); return; }
+    var undoCostId = e.target.getAttribute && e.target.getAttribute('data-qa-undo-cost');
+    if (undoCostId) { deleteCost(undoCostId); renderAll(); return; }
+    var undoPaidId = e.target.getAttribute && e.target.getAttribute('data-qa-undo-paid');
+    if (undoPaidId) {
+      var upo = state.orders.find(function (o) { return o.id === undoPaidId; });
+      if (upo) { upo.paid = false; upo.paymentDate = ''; pushChatMsg('bot', '↩ ' + (upo.buyerName || 'Order') + '\'s order set back to unpaid.', 'cancel'); renderAll(); }
+      return;
+    }
+    var payOrderId = e.target.getAttribute && e.target.getAttribute('data-qa-pay-order');
+    if (payOrderId) {
+      var ppo = state.orders.find(function (o) { return o.id === payOrderId; });
+      if (ppo && !ppo.paid) { markOrderPaidFromQuickAdd(ppo); save(); renderAll(); }
+      return;
+    }
     var markSelfPaidId = e.target.getAttribute && e.target.getAttribute('data-mark-selfpaid');
     if (markSelfPaidId) {
       var costToMark = state.costs.find(function (c) { return c.id === markSelfPaidId; });
@@ -10029,6 +11551,21 @@
         document.getElementById('qa-input').value = '';
         renderQuickAdd();
         return;
+      }
+      // "paid Aisha 70" / "已付 Aisha" — marks that customer's unpaid order as paid instead of
+      // logging a cost (bank-in usually arrives after the live, when she's in Quick Add anyway).
+      if (!testingBatch) {
+        lines = lines.filter(function (line) {
+          var pm = line.match(/^\s*(paid|bank ?in|banked ?in|已付|付了|已转账)\s*[:\-]?\s*(.+)$/i);
+          if (!pm) return true;
+          handleQuickAddPaidCommand(pm[2]);
+          return false;
+        });
+        if (!lines.length) {
+          document.getElementById('qa-input').value = '';
+          renderQuickAdd();
+          return;
+        }
       }
       var parsedLines = [];
       lines.forEach(function (line) {
@@ -10246,7 +11783,12 @@
     renderSchedule();
     renderCalendar();
     renderQuickAdd();
+    renderMonthlyReport();
+    renderSimpleHome();
+    renderTodo();
     applyViewerLock();
+    updateNavGroups();
+    updateSimpleBar();
   }
 
   // Round 10: everything a Viewer can reach visually stays IDENTICAL to what Evvyne sees — same
@@ -10401,15 +11943,223 @@
     syncPhotosToCloud();
   }
 
+  // ---------- Two-device safety (no more "older copy overwrites newer") ----------
+  // The old push simply uploaded this device's whole copy, so a phone that had been sitting
+  // open since yesterday could wipe out everything done on the laptop in the meantime. Now each
+  // device remembers the last cloud copy it was in sync with (the "base"). A push only goes
+  // through if the cloud is still at that same version; if another device saved in between, the
+  // two sets of changes are MERGED record-by-record (orders, costs, products... matched by id)
+  // instead of one replacing the other:
+  //   - changed on one side only -> that side's version is kept
+  //   - changed on both sides    -> field-by-field; stock counts combine both changes
+  //   - deleted on one side and untouched on the other -> stays deleted
+  var SYNC_META_KEY = 'snowglobeTrackerSyncMeta';
+  function cloneJSON(o) { return JSON.parse(JSON.stringify(o)); }
+  function stableStr(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(stableStr).join(',') + ']';
+    return '{' + Object.keys(v).sort().filter(function (k) { return v[k] !== undefined; })
+      .map(function (k) { return JSON.stringify(k) + ':' + stableStr(v[k]); }).join(',') + '}';
+  }
+  function sameValue(a, b) { return stableStr(a) === stableStr(b); }
+  function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; return c; }
+  function loadSyncMeta(userId) {
+    try {
+      var m = JSON.parse(localStorage.getItem(SYNC_META_KEY) || 'null');
+      return (m && m.userId === userId) ? m : null;
+    } catch (e) { return null; }
+  }
+  function saveSyncMeta(userId, syncedCopy) {
+    var meta = { userId: userId, remoteUpdatedAt: syncedCopy.updatedAt || 0, base: syncedCopy };
+    try { localStorage.setItem(SYNC_META_KEY, JSON.stringify(meta)); }
+    catch (e) {
+      // Not enough room for a second copy — keep just the version stamp so pushes still refuse
+      // to blindly overwrite a newer cloud copy (merge then falls back to "newer wins").
+      try { localStorage.setItem(SYNC_META_KEY, JSON.stringify({ userId: userId, remoteUpdatedAt: meta.remoteUpdatedAt, base: null })); } catch (e2) {}
+    }
+  }
+  function isIdList(arr) {
+    return Array.isArray(arr) && arr.length > 0 && arr.every(function (x) { return x && typeof x === 'object' && !Array.isArray(x) && x.id != null; });
+  }
+  function mergeRecord(b, l, r) {
+    if (sameValue(l, b)) return r;
+    if (sameValue(r, b)) return l;
+    if (!l || !r || typeof l !== 'object' || typeof r !== 'object' || Array.isArray(l) || Array.isArray(r)) return l;
+    b = (b && typeof b === 'object') ? b : {};
+    var out = {};
+    var keys = {};
+    Object.keys(l).concat(Object.keys(r), Object.keys(b)).forEach(function (k) { keys[k] = true; });
+    Object.keys(keys).forEach(function (k) {
+      var lv = l[k], rv = r[k], bv = b[k], v;
+      if (sameValue(lv, bv)) v = rv;
+      else if (sameValue(rv, bv)) v = lv;
+      else if (k === 'stock' && typeof lv === 'number' && typeof rv === 'number') v = rv + (lv - (Number(bv) || 0));
+      else v = lv;
+      if (v !== undefined) out[k] = v;
+    });
+    return out;
+  }
+  function mergeIdList(bArr, lArr, rArr) {
+    function byId(arr) { var m = {}; (arr || []).forEach(function (x) { if (x && x.id != null) m[x.id] = x; }); return m; }
+    var B = byId(bArr), L = byId(lArr), R = byId(rArr);
+    var out = [];
+    var seen = {};
+    function decide(id) {
+      if (seen[id]) return; seen[id] = true;
+      var inB = B.hasOwnProperty(id), inL = L.hasOwnProperty(id), inR = R.hasOwnProperty(id);
+      if (inL && inR) out.push(inB ? mergeRecord(B[id], L[id], R[id]) : L[id]);
+      else if (inL && !inR) { if (!inB || !sameValue(L[id], B[id])) out.push(L[id]); }
+      else if (!inL && inR) { if (!inB || !sameValue(R[id], B[id])) out.push(R[id]); }
+    }
+    (rArr || []).forEach(function (x) { if (x && x.id != null) decide(x.id); });
+    (lArr || []).forEach(function (x) { if (x && x.id != null) decide(x.id); });
+    return out;
+  }
+  function mergeStates(base, local, remote) {
+    var out = {};
+    var keys = {};
+    [base, local, remote].forEach(function (s) { Object.keys(s || {}).forEach(function (k) { keys[k] = true; }); });
+    Object.keys(keys).forEach(function (k) {
+      if (k === 'updatedAt') return;
+      var b = base[k], l = local[k], r = remote[k];
+      if (isIdList(b) || isIdList(l) || isIdList(r)) out[k] = mergeIdList(b || [], l || [], r || []);
+      else {
+        var v = mergeRecord(b, l, r);
+        if (v !== undefined) out[k] = v;
+      }
+    });
+    out.updatedAt = Date.now();
+    return out;
+  }
+  // Brings a freshly-downloaded cloud copy into this device (fills in defaults and applies
+  // the same one-off data migrations as a normal page load), then stores it locally without
+  // kicking off another push.
+  function adoptStateLocally(newState) {
+    state = newState;
+    if (!state.blockedDates) state.blockedDates = {};
+    if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6];
+    if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
+    if (!state.products) state.products = [];
+    if (!state.costs) state.costs = [];
+    if (!state.orders) state.orders = [];
+    if (!state.stockLog) state.stockLog = [];
+    if (!state.chatLog) state.chatLog = [];
+    if (!state.customerCredits) state.customerCredits = [];
+    if (state.startingCash == null) state.startingCash = 5000;
+    if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
+    else if (state.shippedMessageTemplate === OLD_DEFAULT_SHIPPED_MESSAGE_TEMPLATE) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
+    state.costs.forEach(function (c) {
+      if (c.category === 'materials') c.category = 'restock';
+      if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; }
+    });
+    state.orders.forEach(function (o) {
+      if (o.buyerTelegram && !o.buyerWhatsapp) { o.buyerWhatsapp = o.buyerTelegram; }
+      if (o.status === 'pending') o.status = 'queueing';
+      if (o.estimatedDate && !o.scheduledDate) o.scheduledDate = o.estimatedDate;
+      if (o.estimatedDate !== undefined) delete o.estimatedDate;
+    });
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+    renderAll();
+  }
+  function showMergedNotice() {
+    showCopiedToast('Merged in changes from your other device');
+  }
+  // Only writes if the cloud is still at `expectedRemoteUpdatedAt` — returns a promise of true
+  // (written) / false (someone else saved first) / null (couldn't reach the server).
+  function conditionalCloudWrite(userId, data, expectedRemoteUpdatedAt) {
+    return sb.from('app_state').update({ data: data })
+      .eq('user_id', userId)
+      .eq('data->>updatedAt', String(expectedRemoteUpdatedAt))
+      .select('user_id')
+      .then(function (res) {
+        if (res.error) return null;
+        return !!(res.data && res.data.length);
+      });
+  }
+  // Compares this device with the cloud and settles the difference (adopt, push, or merge).
+  // `remote` can be passed in when the caller has already downloaded it.
+  function reconcileWithCloud(userId, remote, attempt) {
+    attempt = attempt || 0;
+    var fetchRemote = remote !== undefined
+      ? Promise.resolve({ data: remote ? { data: remote } : null })
+      : sb.from('app_state').select('data').eq('user_id', userId).maybeSingle();
+    return fetchRemote.then(function (res) {
+      if (res.error) { setSyncStatus('offline'); return; }
+      var cloud = res.data && res.data.data;
+      if (!cloud) {
+        var firstCopy = cloneJSON(state);
+        return sb.from('app_state').upsert({ user_id: userId, data: firstCopy }).then(function (r2) {
+          if (r2.error) { setSyncStatus('offline'); return; }
+          saveSyncMeta(userId, firstCopy);
+          setSyncStatus('synced');
+        });
+      }
+      var meta = loadSyncMeta(userId);
+      var base = meta && meta.base;
+      var localChanged, remoteChanged;
+      if (base) {
+        localChanged = !sameValue(withoutStamp(state), withoutStamp(base));
+        remoteChanged = !sameValue(withoutStamp(cloud), withoutStamp(base));
+      } else {
+        // First sync on this device since this safety feature arrived — no shared starting point
+        // to merge from, so the more recently saved copy wins (same rule as before).
+        localChanged = (state.updatedAt || 0) > (cloud.updatedAt || 0);
+        remoteChanged = !localChanged;
+      }
+      if (!localChanged) {
+        if (remoteChanged || !base) adoptStateLocally(cloneJSON(cloud));
+        saveSyncMeta(userId, cloneJSON(cloud));
+        setSyncStatus('synced');
+        return;
+      }
+      var toWrite = (base && remoteChanged) ? mergeStates(base, cloneJSON(state), cloneJSON(cloud)) : cloneJSON(state);
+      var wasMerge = !!(base && remoteChanged);
+      // A cloud copy saved before version stamps existed can't be matched on — plain write.
+      var writeAttempt = cloud.updatedAt
+        ? conditionalCloudWrite(userId, toWrite, cloud.updatedAt)
+        : sb.from('app_state').upsert({ user_id: userId, data: toWrite }).then(function (r3) { return r3.error ? null : true; });
+      return writeAttempt.then(function (ok) {
+        if (ok === null) { setSyncStatus('offline'); return; }
+        if (!ok) {
+          if (attempt >= 3) { setSyncStatus('offline'); return; }
+          return reconcileWithCloud(userId, undefined, attempt + 1);
+        }
+        saveSyncMeta(userId, toWrite);
+        if (wasMerge) { adoptStateLocally(cloneJSON(toWrite)); showMergedNotice(); }
+        setSyncStatus('synced');
+      });
+    });
+  }
+
   function pushStateToCloud() {
     if (!sb) return;
+    clearTimeout(cloudPushTimer);
+    cloudPushTimer = null; // nothing pending any more — this push is it
     sb.auth.getUser().then(function (res) {
       var user = res.data && res.data.user;
       if (!user) return;
-      sb.from('app_state').upsert({ user_id: user.id, data: state }).then(function (res2) {
-        setSyncStatus(res2.error ? 'offline' : 'synced');
+      var meta = loadSyncMeta(user.id);
+      var snapshot = cloneJSON(state);
+      if (!meta || !meta.remoteUpdatedAt) return reconcileWithCloud(user.id);
+      // Fast path: nobody else has saved since this device last synced — just write.
+      return conditionalCloudWrite(user.id, snapshot, meta.remoteUpdatedAt).then(function (ok) {
+        if (ok === null) { setSyncStatus('offline'); return; }
+        if (ok) { saveSyncMeta(user.id, snapshot); setSyncStatus('synced'); return; }
+        return reconcileWithCloud(user.id); // another device saved in between — merge instead of overwriting
       });
     }).catch(function () { setSyncStatus('offline'); });
+  }
+
+  // Picks up changes from the other device whenever this one comes back to the foreground, so
+  // the two copies rarely drift apart in the first place.
+  function refreshFromCloudIfChanged() {
+    if (!sb || cloudSyncSuspended || isViewerMode) return;
+    if (cloudPushTimer) return; // a push is pending — it will reconcile on its own
+    sb.auth.getUser().then(function (res) {
+      var user = res.data && res.data.user;
+      if (!user) return;
+      return reconcileWithCloud(user.id);
+    }).catch(function () {});
   }
 
   // Round 10: if this signed-in account has no app_state row of its OWN, before assuming
@@ -10498,42 +12248,10 @@
         // already fixed once for tab-refocus (see the auth-event guard below); a full page
         // reload needs the same protection. Both sides default to 0 for old data saved before
         // this timestamp existed, so this only changes behavior once both sides actually have one.
-        var cloudUpdatedAt = res.data.data.updatedAt || 0;
-        var localUpdatedAt = state.updatedAt || 0;
-        if (cloudUpdatedAt < localUpdatedAt) {
-          // Local is ahead — keep it, and push it up so the cloud catches up instead of staying stale.
-          setSyncStatus('synced');
-          pushStateToCloud();
-          return;
-        }
-        // Cloud already has a state for this account — adopt it as the source of truth.
-        state = res.data.data;
-        if (!state.blockedDates) state.blockedDates = {};
-        if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6];
-        if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
-        if (!state.products) state.products = [];
-        if (!state.costs) state.costs = [];
-        if (!state.orders) state.orders = [];
-        if (!state.stockLog) state.stockLog = [];
-        if (!state.chatLog) state.chatLog = [];
-        if (state.startingCash == null) state.startingCash = 5000;
-        if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
-        else if (state.shippedMessageTemplate === OLD_DEFAULT_SHIPPED_MESSAGE_TEMPLATE) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
-        if (state.costs) {
-          state.costs.forEach(function (c) {
-            if (c.category === 'materials') c.category = 'restock';
-            if (c.sstAmount && !c.shippingAmount) { c.shippingAmount = c.sstAmount; }
-          });
-        }
-        if (state.orders) {
-          state.orders.forEach(function (o) {
-            if (o.buyerTelegram && !o.buyerWhatsapp) { o.buyerWhatsapp = o.buyerTelegram; }
-            if (o.status === 'pending') o.status = 'queueing';
-          });
-        }
-        save();
-        renderAll();
-        setSyncStatus('synced');
+        // Now handled by reconcileWithCloud: adopts the cloud copy if nothing changed here,
+        // keeps + pushes this device's copy if the cloud hasn't moved, and MERGES the two if
+        // both sides changed since they were last in sync (instead of one wiping the other).
+        return reconcileWithCloud(userId, res.data.data);
       } else {
         // No app_state row of this account's own — check whether someone granted this email
         // viewer access before assuming this is a brand-new owner account.
@@ -10831,6 +12549,9 @@
         clearTimeout(cloudPushTimer);
         pushStateToCloud();
       }
+      // Coming back to this tab/app: pick up anything saved on the other device meanwhile
+      // (merged safely — see reconcileWithCloud), so the two don't drift apart.
+      if (document.visibilityState === 'visible') refreshFromCloudIfChanged();
     });
   } else {
     // Supabase script failed to load (e.g. offline on first-ever visit, or the CDN was blocked)
