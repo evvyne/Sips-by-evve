@@ -141,6 +141,42 @@
     .oc-compact .oc-buyer { white-space: normal; }
     .order-card:not(.oc-compact) .oc-next { flex: 1; }
   }
+  .oc-addr { margin-top: 6px; }
+  .oc-addr-btn { border: none; background: #f3f4f6; color: var(--muted); border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; text-align: left; font-family: inherit; max-width: 100%; }
+  .oc-addr.none .oc-addr-btn { background: #fdf3dc; color: #854f0b; }
+  .oc-addr-btn u { color: var(--blue); }
+  .addr-editor { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 8px; background: #fff; }
+  .addr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
+  .pd-list { border-top: 1px solid var(--border); }
+  .pd-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .pd-row-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pd-row-steps { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pd-step { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #f1f3f5; color: #8a93a0; white-space: nowrap; }
+  .pd-step.on { background: #e3f1d8; color: #3b6d11; }
+  .pd-row-actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  #cost-table.cost-list { width: 100%; }
+  #cost-table.cost-list thead th { text-align: left; font-size: 12px; text-transform: none; letter-spacing: 0; }
+  .cost-sort { cursor: pointer; color: var(--blue); margin-left: 6px; }
+  #cost-table .cost-day td { font-size: 12px; color: var(--muted); padding: 10px 4px 4px; border-bottom: none; }
+  #cost-table .cost-row { cursor: pointer; }
+  #cost-table .cost-row td { padding: 9px 4px; vertical-align: top; }
+  #cost-table .cost-desc { font-size: 14px; }
+  #cost-table .cost-meta { font-size: 12px; margin-top: 3px; }
+  .cost-tag { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #f1f3f5; color: #475569; white-space: nowrap; }
+  #cost-table .cost-amt { text-align: right; white-space: nowrap; font-weight: 600; width: 1%; }
+  #cost-table .cost-amt div { white-space: normal; font-weight: 400; max-width: 130px; margin-left: auto; }
+  #cost-table .cost-actions { display: none; margin-top: 6px; gap: 12px; }
+  #cost-table .cost-row.open .cost-actions { display: flex; }
+  #cost-table .cost-row.open { background: #f8fafc; }
+  @media (max-width: 640px) {
+    #cost-breakdown .cost-cards { display: flex; overflow-x: auto; gap: 8px; scroll-snap-type: x mandatory; padding-bottom: 4px; }
+    #cost-breakdown .cost-cards .stat-card { flex: 0 0 160px; scroll-snap-align: start; padding-right: 12px !important; }
+    #cost-breakdown .cost-breakdown-select { position: static !important; max-width: 100% !important; width: 100%; margin-bottom: 6px; }
+  }
+  .ship-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .ship-pills { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .ship-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  @media (max-width: 640px) { .ship-actions .btn { flex: 1; } }
   .pd-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
   .pd-title { font-weight: 600; font-size: 16px; }
   .pd-block { background: var(--bg); border-radius: 10px; padding: 12px 14px; font-size: 15px; line-height: 1.7; white-space: pre-line; margin: 10px 0; }
@@ -617,6 +653,8 @@
             <option value="shipping">shipping</option>
             <option value="ads">ads</option>
             <option value="tiktok_fee">tiktok fee</option>
+            <option value="equipment">equipment &amp; setup</option>
+            <option value="tools">tools &amp; supplies</option>
             <option value="wastage">wastage / loss</option>
             <option value="other">other</option>
           </select>
@@ -773,35 +811,39 @@
         <button class="btn btn-secondary" id="btn-cancel-cost">Cancel</button>
       </div>
     </div>
-    <div class="card" id="cost-filter-bar">
-      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:flex-end;">
-        <button class="btn btn-secondary btn-small" id="btn-costfilter-7d">Last 7 days</button>
-        <button class="btn btn-secondary btn-small" id="btn-costfilter-month">This month</button>
-        <button class="btn btn-secondary btn-small" id="btn-costfilter-clear">Clear dates</button>
-      </div>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
-        <span style="display:inline-flex; gap:4px;">
-          <input type="text" id="cost-filter-search" class="search-input" placeholder="Search description/product" style="width:170px;">
+    <div class="card" id="cost-filter-bar" style="padding:12px 14px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <span style="display:inline-flex; gap:4px; flex:1; min-width:180px;">
+          <input type="text" id="cost-filter-search" class="search-input" placeholder="Search description or product" style="flex:1; min-width:0;">
           <button type="button" class="btn btn-secondary btn-small" id="btn-costfilter-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>
         </span>
-        <select id="cost-filter-category" style="width:170px;">
+        <button type="button" class="of-chip" id="btn-costfilter-month">This month</button>
+        <button type="button" class="of-chip" id="btn-costfilter-7d">Last 7 days</button>
+        <select id="cost-filter-category" style="width:auto; min-width:150px;">
           <option value="">All categories</option>
+          <option value="__materials">Materials</option>
           <option value="restock">restock</option>
           <option value="new_inventory">new inventory</option>
           <option value="packaging">packaging</option>
           <option value="shipping">shipping</option>
           <option value="ads">ads</option>
           <option value="tiktok_fee">tiktok fee</option>
+          <option value="equipment">equipment &amp; setup</option>
+          <option value="tools">tools &amp; supplies</option>
           <option value="wastage">wastage / loss</option>
           <option value="other">other</option>
         </select>
-        <input id="cost-filter-from" type="date" style="width:150px;">
-        <input id="cost-filter-to" type="date" style="width:150px;">
+        <span style="display:inline-flex; gap:6px; align-items:center;">
+          <input id="cost-filter-from" type="date" style="width:140px;" title="From">
+          <span class="muted" style="font-size:13px;">to</span>
+          <input id="cost-filter-to" type="date" style="width:140px;" title="To">
+          <button type="button" class="btn-text" id="btn-costfilter-clear" style="font-size:12px; display:none;">✕ Clear dates</button>
+        </span>
       </div>
     </div>
     <div class="card" style="overflow-x:auto;">
-      <table id="cost-table">
-        <thead><tr><th id="cost-date-header" style="cursor:pointer;">Date ⇅</th><th>Category</th><th>Description</th><th>Product</th><th id="cost-amount-header" style="cursor:pointer;">Amount ⇅</th><th></th></tr></thead>
+      <table id="cost-table" class="cost-list">
+        <thead><tr><th colspan="2"><span class="muted" style="font-weight:400;">Sort by</span> <span id="cost-date-header" class="cost-sort">Date ⇅</span> <span id="cost-amount-header" class="cost-sort">Amount ⇅</span> <span class="muted" style="font-weight:400;">· tap a line to edit or delete</span></th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="cost-empty" style="display:none;">No cost entries yet.</div>
@@ -1434,8 +1476,14 @@
     return 'RM' + v.toFixed(4);
   }
 
+  // Her own calendar day (Malaysia time), not UTC — between midnight and 8am the UTC date is
+  // still "yesterday", which used to put late-night orders and to-dos on the wrong day.
+  function isoLocal(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
   function todayISO() {
-    return new Date().toISOString().slice(0, 10);
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
   function formatDate(d) {
@@ -1485,14 +1533,17 @@
     if (!q) return [];
     var seen = {};
     var results = [];
-    state.orders.forEach(function (o) {
+    state.orders.slice().reverse().forEach(function (o) {
       if (!o.buyerWhatsapp) return;
       var key = normalizeIdentifier(o.buyerWhatsapp);
       if (seen[key]) return;
-      var hay = (o.buyerWhatsapp + ' ' + (o.buyerName || '')).toLowerCase();
+      var hay = (o.buyerWhatsapp + ' ' + (o.buyerName || '') + ' ' + (o.buyerHandle || '')).toLowerCase();
       if (hay.indexOf(q) === -1) return;
       seen[key] = true;
-      results.push({ buyerName: o.buyerName || '', buyerWhatsapp: o.buyerWhatsapp, key: key });
+      // Most recent handle she used, even if that one order left it blank.
+      var handle = o.buyerHandle || '';
+      if (!handle) { for (var hi = state.orders.length - 1; hi >= 0; hi--) { var ho = state.orders[hi]; if (ho.buyerHandle && normalizeIdentifier(ho.buyerWhatsapp) === key) { handle = ho.buyerHandle; break; } } }
+      results.push({ buyerName: o.buyerName || '', buyerHandle: handle, buyerWhatsapp: o.buyerWhatsapp, key: key });
     });
     return results.slice(0, limit || 5);
   }
@@ -2285,6 +2336,57 @@
     });
     return out;
   }
+  // Purchases of a measured material (ml / g) whose quantity is less than one pack — almost
+  // always "1" typed for one 4000 ml bottle. Listed on Inventory so she can fix each in one tap.
+  function suspiciousPurchaseEntries() {
+    var out = [];
+    state.costs.forEach(function (c) {
+      if (!c.productId || !(Number(c.qty) > 0) || c.qtyChecked) return;
+      if (['restock', 'new_inventory', 'packaging'].indexOf(c.category) === -1) return;
+      var p = state.products.find(function (x) { return x.id === c.productId; });
+      if (!p || !MEASURE_UNITS.test(String(p.unit || '').trim())) return;
+      var size = productPackSize(p);
+      if (!(size > 1) || Number(c.qty) >= size) return;
+      var q = Number(c.qty);
+      var suggest = (q <= 5 && Math.round(q) === q) ? q * size : size;
+      out.push({ c: c, p: p, suggest: suggest });
+    });
+    return out;
+  }
+  function fixPurchaseQty(costId, newQty) {
+    var c = state.costs.find(function (x) { return x.id === costId; });
+    if (!c || !(newQty > 0)) return;
+    var p = state.products.find(function (x) { return x.id === c.productId; });
+    var delta = newQty - Number(c.qty);
+    c.qty = newQty;
+    c.qtyChecked = true;
+    if (p) {
+      p.stock = Math.max(0, Number(p.stock) + delta);
+      // Average cost from what she actually paid for every batch of this product.
+      var buys = state.costs.filter(function (x) { return x.productId === p.id && Number(x.qty) > 0 && x.category !== 'testing' && x.category !== 'wastage'; });
+      var tq = buys.reduce(function (s2, x) { return s2 + Number(x.qty); }, 0);
+      var ta = buys.reduce(function (s2, x) { return s2 + Number(x.amount || 0) + Number(x.shippingAmount || 0); }, 0);
+      if (tq > 0) p.cost = ta / tq;
+      if (delta) logStock(p.id, delta, 'correction', 'Fixed a restock quantity (' + fmtQty(newQty - delta) + ' → ' + fmtQty(newQty) + (p.unit || '') + ')', todayISO(), c.id);
+    }
+    save();
+    renderAll();
+  }
+  function suspiciousPurchasesHtml() {
+    var list = suspiciousPurchaseEntries();
+    if (!list.length) return '';
+    return '<div class="card" id="qty-check-banner" style="margin-bottom:14px; border-color:#f0c674; background:#fffaf0;">' +
+      '<div style="font-weight:600; margin-bottom:4px;">⚠️ ' + list.length + ' restock' + (list.length === 1 ? '' : 's') + ' may have the quantity typed wrong</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px;">Each one is less than a single pack. The amount paid stays the same — fixing it corrects the stock and the cost per ' + 'unit.</div>' +
+      list.map(function (x) {
+        var u = x.p.unit || '';
+        return '<div style="padding:8px 0; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
+          '<div style="min-width:0;"><div style="font-weight:500;">' + escapeHtml(x.p.name + (x.p.variant ? ' — ' + x.p.variant : '')) + '</div>' +
+          '<div class="muted" style="font-size:12px;">' + escapeHtml(shortDate(x.c.date)) + ' · ' + money(x.c.amount) + ' for ' + fmtQty(x.c.qty) + u + ' (one pack is ' + fmtQty(productPackSize(x.p)) + u + ')</div></div>' +
+          '<div style="display:flex; gap:8px; align-items:center;"><button type="button" class="btn btn-primary btn-small" data-qty-fix="' + x.c.id + '" data-qty-new="' + x.suggest + '">Fix to ' + fmtQty(x.suggest) + u + '</button>' +
+          '<button type="button" class="btn-text" data-qty-ok="' + x.c.id + '" style="font-size:12px;">It\'s right</button></div></div>';
+      }).join('') + '</div>';
+  }
   var packCleanupOpen = false;
   function packCleanupBannerHtml() {
     if (state.packCleanupDismissed) return '';
@@ -2656,7 +2758,7 @@
     if (stray.length > 0) {
       html += renderInventoryTable('Uncategorized — edit these and pick a Type', stray, false);
     }
-    container.innerHTML = packCleanupBannerHtml() + html;
+    container.innerHTML = suspiciousPurchasesHtml() + packCleanupBannerHtml() + html;
   }
 
   document.getElementById('inventory-content').addEventListener('change', function (e) {
@@ -2693,6 +2795,10 @@
   });
 
   document.getElementById('inventory-content').addEventListener('click', function (e) {
+    var qtyFixId = e.target.getAttribute && e.target.getAttribute('data-qty-fix');
+    if (qtyFixId) { fixPurchaseQty(qtyFixId, Number(e.target.getAttribute('data-qty-new'))); return; }
+    var qtyOkId = e.target.getAttribute && e.target.getAttribute('data-qty-ok');
+    if (qtyOkId) { var qc = state.costs.find(function (x) { return x.id === qtyOkId; }); if (qc) { qc.qtyChecked = true; save(); } renderInventory(); return; }
     if (e.target.id === 'btn-pack-clean-review') { packCleanupOpen = true; renderInventory(); return; }
     if (e.target.id === 'btn-pack-clean-cancel') { packCleanupOpen = false; renderInventory(); return; }
     if (e.target.id === 'btn-pack-clean-dismiss') { state.packCleanupDismissed = true; save(); renderInventory(); return; }
@@ -3466,7 +3572,9 @@
   var COST_BREAKDOWN_CATEGORIES = [
     { key: 'ads', label: 'Ads' },
     { key: 'shipping', label: 'Shipping' },
-    { key: 'packaging', label: 'Packaging' }
+    { key: 'packaging', label: 'Packaging' },
+    { key: 'equipment', label: 'Equipment & setup' },
+    { key: 'tools', label: 'Tools & supplies' }
   ];
   var costBreakdownCategorySelection = COST_BREAKDOWN_CATEGORIES[0].key;
 
@@ -3525,14 +3633,14 @@
     var catOpts = COST_BREAKDOWN_CATEGORIES.map(function (c) {
       return '<option value="' + c.key + '"' + (c.key === selectedCat.key ? ' selected' : '') + '>' + escapeHtml(c.label) + '</option>';
     }).join('');
-    var categoryCardsHtml = '<div class="stat-grid" style="margin-top:-6px;">' +
+    var categoryCardsHtml = '<div class="stat-grid cost-cards" style="margin-top:-6px;">' +
       '<div class="stat-card" style="position:relative; padding-right:14px;">' +
         '<select class="cost-breakdown-select" id="cost-breakdown-category-select" style="position:absolute; top:10px; right:10px; max-width:120px; font-size:11px; padding:2px 4px;">' + catOpts + '</select>' +
         '<div class="stat-label">' + escapeHtml(selectedCat.label) + '</div>' +
         '<div class="stat-value">' + money(costAmountForCategory(selectedCat.key)) + '</div>' +
       '</div>' +
     '</div>';
-    wrap.innerHTML = claimBannerHtml + '<div class="stat-grid">' +
+    wrap.innerHTML = claimBannerHtml + '<div class="stat-grid cost-cards">' +
       PRODUCT_TYPES.map(function (type) {
         var itemsOfType = state.products.filter(function (p) { return p.type === type; });
         var selectedId = costBreakdownSelection[type] || '';
@@ -3544,7 +3652,7 @@
           }).join('');
         return '<div class="stat-card" style="position:relative; padding-right:14px;">' +
           '<select class="cost-breakdown-select" data-cost-breakdown-type="' + escapeHtml(type) + '" style="position:absolute; top:10px; right:10px; max-width:120px; font-size:11px; padding:2px 4px;">' + opts + '</select>' +
-          '<div class="stat-label">' + escapeHtml(type) + '</div>' +
+          '<div class="stat-label">' + escapeHtml(type === 'Others' ? 'Materials' : type) + '</div>' +
           '<div class="stat-value">' + money(amount) + '</div>' +
           '<div class="stat-sub">' + (selectedProduct ? escapeHtml(selectedProduct.name) : (itemsOfType.length + ' item' + (itemsOfType.length === 1 ? '' : 's'))) + '</div>' +
         '</div>';
@@ -3589,9 +3697,27 @@
     if (from) from.value = costFilterFrom;
     if (to) to.value = costFilterTo;
     if (search) search.value = costSearchText;
+    var clr = document.getElementById('btn-costfilter-clear');
+    if (clr) clr.style.display = (costFilterFrom || costFilterTo) ? '' : 'none';
+    var monthStartIso = todayISO().slice(0, 8) + '01';
+    var mBtn = document.getElementById('btn-costfilter-month');
+    if (mBtn) mBtn.classList.toggle('on', costFilterFrom === monthStartIso && costFilterTo === todayISO());
   }
 
+  var costShowReplacementWO = false;
+  var costExpandedId = null;
+  function isReplacementWriteOff(c) { return c.category === 'wastage' && (!!c.orderId || /^Replacement sent/i.test(c.description || '')); }
+  function isMaterialCostEntry(c) {
+    var p = c.productId ? state.products.find(function (x) { return x.id === c.productId; }) : null;
+    return !!p && isMaterialProduct(p) && c.category !== 'wastage' && Number(c.qty) > 0;
+  }
+  var COST_CATEGORY_LABELS = { restock: 'Restock', new_inventory: 'New stock', packaging: 'Packaging', shipping: 'Shipping', ads: 'Ads', tiktok_fee: 'TikTok fee', equipment: 'Equipment & setup', tools: 'Tools & supplies', wastage: 'Wastage', other: 'Other', testing: 'Testing' };
+  function costCategoryTag(c) {
+    if (isMaterialCostEntry(c)) return 'Materials';
+    return COST_CATEGORY_LABELS[c.category] || String(c.category || '').replace('_', ' ');
+  }
   function renderCosts() {
+    var hiddenReplacementWO = 0;
     renderCostBreakdown();
     renderCostFilterBar();
     var tbody = document.querySelector('#cost-table tbody');
@@ -3601,7 +3727,10 @@
       // Testing/R&D entries live on their own page (see renderTesting) — keep them out of
       // the main Costs list so it isn't cluttered with non-resale purchases.
       if (c.category === 'testing') return false;
-      if (costFilterCategory && c.category !== costFilterCategory) return false;
+      if (costFilterCategory === '__materials') { if (!isMaterialCostEntry(c)) return false; }
+      else if (costFilterCategory && c.category !== costFilterCategory) return false;
+      // Free-replacement write-offs are recorded automatically — tucked away unless asked for.
+      if (!costShowReplacementWO && costFilterCategory !== 'wastage' && isReplacementWriteOff(c)) { hiddenReplacementWO++; return false; }
       if (costFilterFrom && c.date < costFilterFrom) return false;
       if (costFilterTo && c.date > costFilterTo) return false;
       if (costSearchText) {
@@ -3645,6 +3774,8 @@
       // so the most recently added entry (including ones logged from Inventory restock/adjust) shows first.
       return (b.id || '').localeCompare(a.id || '');
     });
+    var byDate = costSortByAmount === null;
+    var lastDay = null;
     tbody.innerHTML = sorted.map(function (c) {
       var productCell;
       if (c.items && c.items.length) {
@@ -3652,41 +3783,46 @@
           var p = state.products.find(function (x) { return x.id === it.productId; });
           return escapeHtml(p ? p.name : '?');
         });
-        productCell = (names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) + ' more' : names.join(', ')) +
-          '<div class="muted" style="font-size:11px;">' + names.length + ' products</div>';
+        productCell = (names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) + ' more' : names.join(', ')) + ' (' + names.length + ' products)';
       } else {
         var product = state.products.find(function (p) { return p.id === c.productId; });
         if (product) {
-          productCell = escapeHtml(product.name);
-        } else {
-          var genLine = c.productType ? 'General — ' + escapeHtml(c.productType) : '—';
-          var sellerLine = (c.platform || c.seller) ? '<div class="muted" style="font-size:11px;">' + [c.platform, c.seller].filter(Boolean).map(escapeHtml).join(' · ') + '</div>' : '';
-          productCell = '<span class="muted">' + genLine + '</span>' + sellerLine;
+          var pn = product.name + (product.variant ? ' — ' + product.variant : '');
+          // Don't repeat the product when the description already says it.
+          productCell = (String(c.description || '').toLowerCase().indexOf(String(product.name || '').toLowerCase()) !== -1) ? '' : escapeHtml(pn);
         }
+        else productCell = [c.productType ? 'General — ' + escapeHtml(c.productType) : '', (c.platform || c.seller) ? [c.platform, c.seller].filter(Boolean).map(escapeHtml).join(' · ') : ''].filter(Boolean).join(' · ');
       }
-      return '<tr>' +
-        '<td style="white-space:nowrap;">' + formatDate(c.date) + '</td>' +
-        '<td style="text-transform:capitalize;">' + escapeHtml(c.category.replace('_', ' ')) + '</td>' +
-        '<td class="muted">' + (escapeHtml(c.description) || '—') + '</td>' +
-        '<td class="muted">' + productCell + '</td>' +
-        '<td>' + money(c.amount) +
-          (c.originalAmount ? '<div class="muted" style="font-size:11px;">' + escapeHtml(c.originalCurrency) + ' ' + Number(c.originalAmount).toFixed(2) + ' @ ' + c.exchangeRate + '</div>' : '') +
-          (((c.shippingAmount || c.sstAmount) || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">+ ' + [(c.shippingAmount || c.sstAmount) ? 'shipping ' + money(c.shippingAmount || c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + ' (not in price above)</div>' : '') +
-          (c.paidByOwner ? ('<div style="font-size:11px; margin-top:2px;">' + (c.claimed ? '<span class="muted">✓ Claimed' + (c.claimedDate ? ' ' + formatDate(c.claimedDate) : '') + '</span>' : '<span style="color:#b5680a;">💳 To claim</span>') + '</div>') : '') +
-        '</td>' +
-        '<td style="text-align:right; white-space:nowrap;">' +
-        (c.movedFromTesting ? '<button class="btn-text" data-undo-testing-move="' + c.id + '" title="Move back to Testing">↩ Undo move</button> ' : '') +
-        (c.paidByOwner ? ('<button class="btn-text" data-toggle-claimed="' + c.id + '">' + (c.claimed ? 'Unclaim' : 'Mark claimed') + '</button> ') : '') +
-        '<button class="btn-text" data-edit-cost="' + c.id + '">Edit</button> ' +
-        '<button class="btn-text danger" data-delete-cost="' + c.id + '">Delete</button>' +
-        '</td></tr>';
-    }).join('');
+      var dayHeader = '';
+      if (byDate && c.date !== lastDay) { lastDay = c.date; dayHeader = '<tr class="cost-day"><td colspan="2">' + escapeHtml(shortDate(c.date)) + '</td></tr>'; }
+      var open = costExpandedId === c.id;
+      var extra = (c.originalAmount ? '<div class="muted" style="font-size:11px;">' + escapeHtml(c.originalCurrency) + ' ' + Number(c.originalAmount).toFixed(2) + ' @ ' + c.exchangeRate + '</div>' : '') +
+        (((c.shippingAmount || c.sstAmount) || c.serviceFeeAmount) ? '<div class="muted" style="font-size:11px;">+ ' + [(c.shippingAmount || c.sstAmount) ? 'shipping ' + money(c.shippingAmount || c.sstAmount) : null, c.serviceFeeAmount ? 'service fee ' + money(c.serviceFeeAmount) : null].filter(Boolean).join(', ') + ' (not in price above)</div>' : '') +
+        (c.paidByOwner ? ('<div style="font-size:11px; margin-top:2px;">' + (c.claimed ? '<span class="muted">✓ Claimed' + (c.claimedDate ? ' ' + formatDate(c.claimedDate) : '') + '</span>' : '<span style="color:#b5680a;">💳 To claim</span>') + '</div>') : '');
+      return dayHeader + '<tr class="cost-row' + (open ? ' open' : '') + '" data-cost-row="' + c.id + '"><td>' +
+          '<div class="cost-desc">' + (escapeHtml(c.description) || '—') + '</div>' +
+          '<div class="cost-meta"><span class="cost-tag">' + escapeHtml(costCategoryTag(c)) + '</span>' + (byDate ? '' : ' ' + escapeHtml(shortDate(c.date))) + (productCell ? ' <span class="muted">· ' + productCell + '</span>' : '') + '</div>' +
+          '<div class="cost-actions">' +
+            (c.movedFromTesting ? '<button class="btn-text" data-undo-testing-move="' + c.id + '" title="Move back to Testing">↩ Undo move</button> ' : '') +
+            (c.paidByOwner ? ('<button class="btn-text" data-toggle-claimed="' + c.id + '">' + (c.claimed ? 'Unclaim' : 'Mark claimed') + '</button> ') : '') +
+            '<button class="btn-text" data-edit-cost="' + c.id + '">✏️ Edit</button> ' +
+            '<button class="btn-text danger" data-delete-cost="' + c.id + '">🗑 Delete</button>' +
+          '</div>' +
+        '</td><td class="cost-amt">' + money(c.amount) + extra + '</td></tr>';
+    }).join('') +
+    (hiddenReplacementWO ? '<tr class="cost-day"><td colspan="2" style="text-align:center;"><button type="button" class="btn-text" id="btn-cost-show-repl">Show ' + hiddenReplacementWO + ' replacement write-off' + (hiddenReplacementWO === 1 ? '' : 's') + '</button></td></tr>'
+      : (costShowReplacementWO ? '<tr class="cost-day"><td colspan="2" style="text-align:center;"><button type="button" class="btn-text" id="btn-cost-show-repl">Hide replacement write-offs</button></td></tr>' : ''));
     var total = filtered.reduce(function (s, c) { return s + Number(c.amount); }, 0);
     var isFiltered = filtered.length !== state.costs.length;
     totalEl.textContent = (isFiltered ? 'Total for this filter: ' : 'Total: ') + money(total);
   }
 
   document.querySelector('#cost-table tbody').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-cost-show-repl') { costShowReplacementWO = !costShowReplacementWO; renderCosts(); return; }
+    if (!(e.target.closest && e.target.closest('button, a, input'))) {
+      var rowEl = e.target.closest ? e.target.closest('[data-cost-row]') : null;
+      if (rowEl) { var rid = rowEl.getAttribute('data-cost-row'); costExpandedId = costExpandedId === rid ? null : rid; renderCosts(); return; }
+    }
     var editId = e.target.getAttribute('data-edit-cost');
     var delId = e.target.getAttribute('data-delete-cost');
     var undoId = e.target.getAttribute('data-undo-testing-move');
@@ -3721,13 +3857,13 @@
     }
     if (e.target.id === 'btn-costfilter-7d') {
       var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
-      costFilterFrom = from7.toISOString().slice(0, 10); costFilterTo = todayISO();
+      costFilterFrom = isoLocal(from7); costFilterTo = todayISO();
       renderCosts();
       return;
     }
     if (e.target.id === 'btn-costfilter-month') {
       var nowM = new Date(todayISO() + 'T00:00:00');
-      costFilterFrom = new Date(nowM.getFullYear(), nowM.getMonth(), 1).toISOString().slice(0, 10);
+      costFilterFrom = isoLocal(new Date(nowM.getFullYear(), nowM.getMonth(), 1));
       costFilterTo = todayISO();
       renderCosts();
       return;
@@ -3801,7 +3937,7 @@
     var wrap = document.getElementById('testing-move-actions');
     if (!editingTestingId) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
     wrap.style.display = 'block';
-    var TESTING_MOVE_CATEGORIES = ['packaging', 'shipping', 'ads', 'tiktok_fee', 'wastage', 'other'];
+    var TESTING_MOVE_CATEGORIES = ['packaging', 'shipping', 'ads', 'tiktok_fee', 'equipment', 'tools', 'wastage', 'other'];
     if (testingMoveStage === 'costing') {
       wrap.innerHTML =
         '<div class="muted" style="font-size:12px; margin-bottom:6px;">Move to Costing — which category?</div>' +
@@ -4803,13 +4939,26 @@
       wrap.innerHTML = '<div class="muted" style="font-size:12px; background:var(--bg); border-radius:6px; padding:8px 10px; margin-top:-6px;">Is this ' + escapeHtml(match.buyerName || 'the same customer') + ' (' + escapeHtml(match.buyerWhatsapp) + ')? <button type="button" class="btn-text" id="btn-confirm-repeat-customer" style="font-size:12px;">Yes, that\'s her</button></div>';
       return;
     }
+    var handleEl = document.getElementById('of-buyer-handle');
+    var lastHandle = (findCustomerMatches(match.buyerWhatsapp, 1)[0] || {}).buyerHandle || '';
+    if (handleEl && !handleEl.value.trim() && lastHandle) handleEl.value = lastHandle;
+    var nameEl = document.getElementById('of-buyer-name');
+    if (nameEl && !nameEl.value.trim() && match.buyerName) nameEl.value = match.buyerName;
     var balance = creditBalanceForKey(match.buyerWhatsapp);
+    var parts = '';
     if (balance > 0) {
-      wrap.innerHTML = '<div style="background:var(--bg); border-radius:6px; padding:8px 10px; margin-top:-6px; font-size:12px;">Found a repeat customer — ' + escapeHtml(match.buyerName || 'her') + ' has <strong>' + money(balance) + '</strong> credit from before. ' +
+      parts += '<div>Found a repeat customer — ' + escapeHtml(match.buyerName || 'her') + ' has <strong>' + money(balance) + '</strong> credit from before. ' +
         '<button type="button" class="btn-text" id="btn-apply-credit" data-credit-key="' + escapeHtml(match.buyerWhatsapp) + '" data-credit-amount="' + balance + '" style="font-size:12px;">Apply credit</button></div>';
-    } else {
-      wrap.innerHTML = '';
     }
+    var shipToEl = document.getElementById('of-shipto');
+    var past = (shipToEl && !shipToEl.value.trim()) ? pastAddressesForWhatsapp(match.buyerWhatsapp, editingOrderId) : [];
+    if (past.length) {
+      parts += '<div style="margin-top:' + (parts ? '6px' : '0') + ';">📍 Last address: ' + escapeHtml(addrShortLine({ recipientName: past[0].recipientName, shipTo: past[0].shipTo, postcode: past[0].postcode })) +
+        ' <button type="button" class="btn-text" id="btn-of-use-last-address" data-of-addr-idx="0" style="font-size:12px;">Use last address</button>' +
+        (past.length > 1 ? past.slice(1, 3).map(function (pa, i) { return '<br><span class="muted">or ' + escapeHtml(addrShortLine({ recipientName: pa.recipientName, shipTo: pa.shipTo, postcode: pa.postcode })) + '</span> <button type="button" class="btn-text" id="btn-of-use-addr-' + (i + 1) + '" data-of-addr-idx="' + (i + 1) + '" style="font-size:12px;">Use this one</button>'; }).join('') : '') +
+        '</div>';
+    }
+    wrap.innerHTML = parts ? '<div style="background:var(--bg); border-radius:6px; padding:8px 10px; margin-top:-6px; font-size:12px;">' + parts + '</div>' : '';
   }
 
   document.getElementById('order-filter-bar').addEventListener('change', function (e) {
@@ -4837,13 +4986,13 @@
     }
     if (e.target.id === 'btn-orderfilter-7d') {
       var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
-      orderFilterFrom = from7.toISOString().slice(0, 10); orderFilterTo = todayISO();
+      orderFilterFrom = isoLocal(from7); orderFilterTo = todayISO();
       renderOrders();
       return;
     }
     if (e.target.id === 'btn-orderfilter-month') {
       var nowM = new Date(todayISO() + 'T00:00:00');
-      orderFilterFrom = new Date(nowM.getFullYear(), nowM.getMonth(), 1).toISOString().slice(0, 10);
+      orderFilterFrom = isoLocal(new Date(nowM.getFullYear(), nowM.getMonth(), 1));
       orderFilterTo = todayISO();
       renderOrders();
       return;
@@ -4943,10 +5092,25 @@
     var labelRe = /^\s*(name|nama|recipient|receiver|penerima|phone\s*(?:number|no\.?)?|tel(?:efon)?(?:\s*no\.?)?|hp|h\/p|handphone|fon|no\.?\s*(?:tel(?:efon)?|hp|h\/p|phone|fon|handphone)|nombor\s*(?:telefon|phone|fon)|contact(?:\s*no\.?)?|mobile(?:\s*no\.?)?|address|alamat|postcode|poskod|postal code)\s*[:：\-]\s*/i;
     var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
     var addrParts = [];
+    // Any "Something something:" label is understood by the words in it, so "Full address (with
+    // postcode):", "No. Phone:", "Recipient's name:" all work, not just the exact short labels.
+    var genLabelRe = /^\s*([A-Za-z][A-Za-z .'’\/()#&\-]{0,45}?)\s*[:：]\s*/;
+    function labelKind(t) {
+      var l = String(t || '').toLowerCase();
+      if (/phone|\btel|\bh\/?p\b|handphone|\bfon\b|contact|mobile|nombor|\bno\.?\s*hp/.test(l)) return 'phone';
+      if (/address|alamat/.test(l)) return 'address';
+      if (/postcode|poskod|postal/.test(l)) return 'postcode';
+      if (/name|nama|recipient|receiver|penerima/.test(l)) return 'name';
+      return '';
+    }
     lines.forEach(function (raw) {
-      var labelMatch = raw.match(labelRe);
-      var label = labelMatch ? labelMatch[1].toLowerCase() : '';
-      var line = raw.replace(labelRe, '').trim();
+      var label = '', line = raw;
+      var gm = raw.match(genLabelRe);
+      if (gm && labelKind(gm[1])) { label = labelKind(gm[1]); line = raw.slice(gm[0].length).trim(); }
+      else {
+        var labelMatch = raw.match(labelRe);
+        if (labelMatch) { label = labelKind(labelMatch[1]) || labelMatch[1].toLowerCase(); line = raw.replace(labelRe, '').trim(); }
+      }
       if (!line) return;
       var phoneM = line.match(/(\+?6?0?1\d[\d\s-]{6,11}\d)/);
       // Everything on ONE line ("Nurul 0123456789 Lot 5 Jalan ..."): lift the phone out and keep
@@ -4961,15 +5125,15 @@
         var nm = line.match(/^([A-Za-z@'.\/\s]+?)\s+((?:lot|no\.?|blk|block|unit|jalan|jln|taman|tmn|kg|kampung|lorong|lrg)?\s*[A-Za-z]?-?\d[\s\S]*)$/i);
         if (nm && nm[1].trim().split(/\s+/).length >= 2 && nm[1].length <= 40) { out.name = nm[1].trim(); line = nm[2].trim(); }
       }
-      if (!out.phone && (phoneM && (/^(phone|tel|hp|h\/p|handphone|fon|nombor|contact|mobile|no)/.test(label) || line.replace(/[\s+-]/g, '').length <= 13 && /^\+?[\d\s-]+$/.test(line)))) {
+      if (!out.phone && (phoneM && (label === 'phone' || /^(phone|tel|hp|h\/p|handphone|fon|nombor|contact|mobile|no)/.test(label) || line.replace(/[\s+-]/g, '').length <= 13 && /^\+?[\d\s-]+$/.test(line)))) {
         out.phone = phoneM[1].replace(/\s+/g, ' ').trim();
         return;
       }
-      if (!out.name && (/^(name|nama|recipient|receiver|penerima)/.test(label) || (!label && !/\d/.test(line) && line.length <= 40 && !addrParts.length))) {
+      if (!out.name && (label === 'name' || /^(name|nama|recipient|receiver|penerima)/.test(label) || (!label && !/\d/.test(line) && line.length <= 40 && !addrParts.length))) {
         out.name = line;
         return;
       }
-      if (/^(postcode|poskod|postal)/.test(label)) { out.postcode = (line.match(/\d{5}/) || [line])[0]; return; }
+      if (label === 'postcode' || /^(postcode|poskod|postal)/.test(label)) { out.postcode = (line.match(/\d{5}/) || [line])[0]; return; }
       addrParts.push(line);
     });
     // Lines that already end in a comma ("NO 887, JALAN X,") mustn't turn into ",," when joined.
@@ -5272,10 +5436,25 @@
     if (!document.getElementById('of-buyer-name').value.trim()) {
       document.getElementById('of-buyer-name').value = el.getAttribute('data-wa-suggest-name') || '';
     }
+    if (!document.getElementById('of-buyer-handle').value.trim()) {
+      document.getElementById('of-buyer-handle').value = el.getAttribute('data-wa-suggest-handle') || '';
+    }
     document.getElementById('of-whatsapp-suggest').innerHTML = '';
     renderRepeatCustomerBanner();
   });
   document.getElementById('of-repeat-customer-wrap').addEventListener('click', function (e) {
+    var addrIdxAttr = e.target.getAttribute && e.target.getAttribute('data-of-addr-idx');
+    if (addrIdxAttr !== null && addrIdxAttr !== undefined && addrIdxAttr !== '') {
+      var pa = pastAddressesForWhatsapp(document.getElementById('of-buyer-whatsapp').value.trim(), editingOrderId)[Number(addrIdxAttr)];
+      if (pa) {
+        document.getElementById('of-recipient-name').value = pa.recipientName || '';
+        document.getElementById('of-recipient-phone').value = pa.recipientPhone || '';
+        document.getElementById('of-shipto').value = pa.shipTo || '';
+        document.getElementById('of-postcode').value = pa.postcode || '';
+        e.target.parentNode.innerHTML = '📍 Address filled in: ' + escapeHtml(addrShortLine({ recipientName: pa.recipientName, shipTo: pa.shipTo, postcode: pa.postcode })) + ' <span class="muted">(see More to check or change)</span>';
+      }
+      return;
+    }
     if (e.target.id === 'btn-confirm-repeat-customer') {
       var match = matchCustomerByWhatsapp(document.getElementById('of-buyer-whatsapp').value.trim());
       if (match) document.getElementById('of-buyer-whatsapp').value = match.buyerWhatsapp;
@@ -6074,9 +6253,32 @@
           '<span><strong>' + escapeHtml(c.name || 'Unnamed') + (c.recipientName && c.recipientName !== c.name ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(c.recipientName) + ')</span>' : '') + '</strong><br><span class="muted" style="font-size:12px;">' + escapeHtml(c.whatsapp || '') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
           '<span style="text-align:right;"><strong>' + money(c.totalSpent) + '</strong>' + (c.creditBalance ? '<br><span style="font-size:11px; color:var(--green,#3b6d11);">Credit ' + money(c.creditBalance) + '</span>' : '') + '</span>' +
         '</button>' +
+        '<div style="display:flex; gap:8px; margin-top:10px;">' +
+          '<button type="button" class="btn btn-secondary btn-small" data-cust-new-order="' + escapeHtml(c.whatsapp || '') + '" style="flex:1;">+ New order</button>' +
+          '<button type="button" class="btn btn-secondary btn-small" data-toggle-customer="' + c.key + '">' + (expanded ? 'Hide orders' : 'Past orders') + '</button>' +
+        '</div>' +
         (expanded ? customerDetailHtml(c) : '') +
         '</div>';
     }).join('');
+  }
+  // "+ New order" from a customer card: opens the order form with her name, TikTok handle and
+  // WhatsApp filled in; the usual repeat-customer box then offers her credit and last address.
+  function startOrderForCustomer(whatsapp) {
+    var m = findCustomerMatches(whatsapp, 1)[0];
+    if (!m) return;
+    activatePage('orders');
+    editingOrderId = null;
+    pendingShipGroupId = null;
+    pendingChainBuyer = null;
+    clearOrderForm();
+    document.getElementById('order-form-title').textContent = 'New order';
+    document.getElementById('order-form-wrap').style.display = 'block';
+    document.getElementById('of-buyer-name').value = m.buyerName || '';
+    document.getElementById('of-buyer-handle').value = m.buyerHandle || '';
+    document.getElementById('of-buyer-whatsapp').value = m.buyerWhatsapp || '';
+    renderRepeatCustomerBanner();
+    renderOrders();
+    window.scrollTo && window.scrollTo(0, 0);
   }
 
   document.getElementById('customers-content').addEventListener('click', function (e) {
@@ -6088,6 +6290,8 @@
       renderCustomers();
       return;
     }
+    var custNewOrder = e.target.closest('[data-cust-new-order]');
+    if (custNewOrder) { startOrderForCustomer(custNewOrder.getAttribute('data-cust-new-order')); return; }
     var goOrderBtn = e.target.closest('[data-cust-go-order]');
     if (goOrderBtn) {
       goToOrder(goOrderBtn.getAttribute('data-cust-go-order'));
@@ -6603,7 +6807,13 @@
         rows = '<tr class="order-card">' + chkTd +
           '<td class="oc-date">' + dateHtml + (o.trackingNumber ? ' · ' + escapeHtml(o.trackingNumber) : '') + statusTag + '</td>' +
           '<td class="oc-buyer"><div style="font-weight:600;">' + buyerInner + '</div></td>' +
-          '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (itemLines.length ? itemLines.join('<br>') : 'No items') + '</button></td>' +
+          '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (itemLines.length ? itemLines.join('<br>') : 'No items') + '</button>' +
+            (o.status === 'cancelled' ? '' : (addrEdit.ctx === 'oc' && addrEdit.id === o.id
+              ? addressEditorHtml(o, 'oc')
+              : (o.shipTo
+                ? '<div class="oc-addr"><button type="button" class="oc-addr-btn" data-oc-addr="' + o.id + '" title="' + escapeHtml(o.shipTo + (o.postcode ? ', ' + o.postcode : '')) + '">📍 ' + escapeHtml(addrShortLine(o)) + ' · <u>Change</u></button></div>'
+                : '<div class="oc-addr none"><button type="button" class="oc-addr-btn" data-oc-addr="' + o.id + '">📍 No address yet · <u>Add</u></button></div>'))) +
+          '</td>' +
           '<td class="oc-total">' + totalHtml + '</td>' +
           '<td class="oc-paid">' + paidHtml + '</td>' +
           '<td class="oc-actions">' + madePill + nextStepButtonHtml(o) + menuHtml + '</td>' +
@@ -7174,6 +7384,8 @@
     { key: 'ads', label: 'Marketing & ads' },
     { key: 'fees', label: 'Platform fees' },
     { key: 'materials', label: 'Materials & craft supplies' },
+    { key: 'tools', label: 'Tools & supplies' },
+    { key: 'equipment', label: 'Equipment & setup (one-off)' },
     { key: 'packaging', label: 'Packaging & supplies' },
     { key: 'outbound', label: 'Shipping to customers' },
     { key: 'inbound', label: 'Delivery of supplies' },
@@ -7299,6 +7511,8 @@
       else if (c.category === 'shipping') { if (claimedShippingSources[c.id]) return; line = 'inbound'; }
       else if (c.category === 'ads') line = 'ads';
       else if (c.category === 'tiktok_fee') line = 'fees';
+      else if (c.category === 'equipment') line = 'equipment';
+      else if (c.category === 'tools') line = 'tools';
       else if (c.category === 'packaging') line = 'packaging';
       else line = 'other';
       costRows.push({ ym: invMonthKey(c.date), line: line, amount: amt, c: c });
@@ -7701,9 +7915,9 @@
     var d = new Date(todayISO() + 'T00:00:00');
     d.setDate(1);
     d.setMonth(d.getMonth() + monthOffset);
-    var from = d.toISOString().slice(0, 10);
+    var from = isoLocal(d);
     var end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    var to = end.toISOString().slice(0, 10);
+    var to = isoLocal(end);
     return { from: from, to: to };
   }
   function pctChangeLabel(cur, prev) {
@@ -7711,13 +7925,27 @@
     var pct = Math.round(((cur - prev) / Math.abs(prev)) * 100);
     return (pct > 0 ? '+' : '') + pct + '%';
   }
+  // Profit the same way the Investor Report counts it: revenue − cost of what was sold −
+  // running costs (materials count when bought; unsold cups/stickers are still stock).
+  function reportProfit(from, to) {
+    return investorPnl(investorFacts(from || invEarliestDate(), to || todayISO())).net;
+  }
+  // Money change in words, so a smaller loss never reads like "+63%" next to a negative number.
+  function profitChangeLabel(cur, prev) {
+    var d = Math.round((cur - prev) * 100) / 100;
+    if (Math.abs(d) < 0.005) return 'same as last month';
+    if (cur < 0 && prev < 0) return money(Math.abs(d)) + (d > 0 ? ' less loss' : ' more loss') + ' than last month';
+    return money(Math.abs(d)) + (d > 0 ? ' better' : ' worse') + ' than last month';
+  }
   function monthComparisonHtml() {
     var curR = monthRangeStrings(0);
     var prevR = monthRangeStrings(-1);
     var cur = financialsForRange(curR.from, curR.to);
     var prev = financialsForRange(prevR.from, prevR.to);
+    cur.netProfit = reportProfit(curR.from, curR.to);
+    prev.netProfit = reportProfit(prevR.from, prevR.to);
     var revChange = pctChangeLabel(cur.revenue, prev.revenue);
-    var profitChange = pctChangeLabel(cur.netProfit, prev.netProfit);
+    var profitChange = profitChangeLabel(cur.netProfit, prev.netProfit);
     var revColor = cur.revenue >= prev.revenue ? 'var(--green,#3b6d11)' : 'var(--red,#a32d2d)';
     var profitColor = cur.netProfit >= prev.netProfit ? 'var(--green,#3b6d11)' : 'var(--red,#a32d2d)';
     return '<div class="card" style="margin-bottom:14px;">' +
@@ -7867,7 +8095,7 @@
     var invValue = fin.invValue;
     var periodFin = (dashboardDateFrom || dashboardDateTo) ? financialsForRange(dashboardDateFrom, dashboardDateTo) : null;
     var revenue = periodFin ? periodFin.revenue : fin.revenue;
-    var netProfitPeriod = periodFin ? periodFin.netProfit : fin.netProfit;
+    var netProfitPeriod = periodFin ? reportProfit(dashboardDateFrom, dashboardDateTo) : reportProfit();
     var totalSpentPeriod = periodFin ? periodFin.allCostsSpent : fin.allCostsSpent;
     var testingSpendPeriod = periodFin ? periodFin.testingSpend : fin.testingSpend;
     var orderCountLabel = periodFin ? periodFin.orderCount + ' orders in range (excl. cancelled)' : fin.active.length + ' orders (excl. cancelled)';
@@ -7884,17 +8112,17 @@
       statCard('Expense', money(fin.expense), 'Ads, shipping, packaging, fees etc. + courier paid') +
       statCard('Inventory value', money(invValue), unitsInStock + ' items for sale in stock · materials count as spent') +
       statCard('Revenue', money(revenue), orderCountLabel) +
-      statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense − testing − refunds' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
+      statCard('Net profit', money(netProfitPeriod), 'Same as the Investor Report: sales − cost of items sold − running costs. Unsold stock isn\'t a loss.' + (periodFin ? ' (selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
       totalSpentStatCard(totalSpentPeriod, testingSpendPeriod, !!periodFin) +
       statCard('Testing spent', money(fin.testingSpend), 'Samples/materials for testing — not counted as Expense') +
       '</div>' +
       '<div class="panel-grid">' +
-      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' queueing)</div>' +
+      '<div class="card"><div style="font-weight:500; margin-bottom:10px;">Recent orders (' + pendingCount + ' to make)</div>' +
       (recent.length === 0 ? '<div class="empty">No orders yet.</div>' :
         recent.map(function (o) {
           var cls = o.status === 'cancelled' ? 'pill-red' : (o.status === 'delivered' ? 'pill-green' : (o.status === 'ready to ship' ? 'pill-amber' : (o.status === 'order shipment' ? 'pill-purple' : (o.status === 'uv curing' ? 'pill-blue' : 'pill-gray'))));
-          return '<div class="row-line"><span>' + formatDate(o.date) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + '</span>' +
-            '<span style="display:flex; align-items:center; gap:8px;"><span class="pill ' + cls + '">' + o.status + '</span><span style="font-weight:500;">' + money(orderTotal(o)) + '</span></span></div>';
+          return '<div class="row-line"><span>' + escapeHtml(shortDate(o.date)) + ' — ' + (escapeHtml(o.buyerName) || 'Unknown buyer') + '</span>' +
+            '<span style="display:flex; align-items:center; gap:8px;"><span class="pill ' + cls + '">' + escapeHtml(orderStatusLabel(o.status)) + '</span><span style="font-weight:500;">' + money(orderTotal(o)) + '</span></span></div>';
         }).join('')) +
       '</div>' +
       storageUsedCardHtml() +
@@ -7943,13 +8171,13 @@
     }
     if (e.target.id === 'btn-dash-preset-7d') {
       var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
-      dashboardDateFrom = from7.toISOString().slice(0, 10); dashboardDateTo = todayISO();
+      dashboardDateFrom = isoLocal(from7); dashboardDateTo = todayISO();
       renderDashboard();
       return;
     }
     if (e.target.id === 'btn-dash-preset-month') {
       var nowM = new Date(todayISO() + 'T00:00:00');
-      dashboardDateFrom = new Date(nowM.getFullYear(), nowM.getMonth(), 1).toISOString().slice(0, 10);
+      dashboardDateFrom = isoLocal(new Date(nowM.getFullYear(), nowM.getMonth(), 1));
       dashboardDateTo = todayISO();
       renderDashboard();
       return;
@@ -8301,14 +8529,14 @@
   document.getElementById('schedule-content').addEventListener('click', function (e) {
     if (e.target.id === 'btn-schedfilter-7d') {
       var to7 = new Date(todayISO() + 'T00:00:00'); var toEnd = new Date(to7); toEnd.setDate(toEnd.getDate() + 7);
-      scheduleFilterFrom = todayISO(); scheduleFilterTo = toEnd.toISOString().slice(0, 10);
+      scheduleFilterFrom = todayISO(); scheduleFilterTo = isoLocal(toEnd);
       renderSchedule();
       return;
     }
     if (e.target.id === 'btn-schedfilter-month') {
       var nowM = new Date(todayISO() + 'T00:00:00');
       scheduleFilterFrom = todayISO();
-      scheduleFilterTo = new Date(nowM.getFullYear(), nowM.getMonth() + 1, 0).toISOString().slice(0, 10);
+      scheduleFilterTo = isoLocal(new Date(nowM.getFullYear(), nowM.getMonth() + 1, 0));
       renderSchedule();
       return;
     }
@@ -8507,7 +8735,8 @@
   // Suggestion cards are only shown the first time (o.shipTo still empty) — once an address is
   // already on file, "Edit address" is presumably a small correction, not a "which of her past
   // addresses is this" decision, so we don't re-surface the picker there.
-  function pastAddressSuggestionsHtml(o) {
+  function pastAddressSuggestionsHtml(o, key) {
+    key = key || o.id;
     if (o.shipTo || !o.buyerWhatsapp) return '';
     var matches = pastAddressesForWhatsapp(o.buyerWhatsapp, o.id);
     if (matches.length === 0) return '';
@@ -8517,40 +8746,82 @@
         return '<div style="background:var(--card-bg,#fff); border-radius:6px; padding:8px 10px; margin-bottom:6px;">' +
           '<div class="muted" style="font-size:11px; margin-bottom:2px;">Used ' + escapeHtml(formatDate(m.date)) + '</div>' +
           '<div style="font-size:13px; white-space:pre-wrap;">' + escapeHtml(m.recipientName) + (m.recipientPhone ? ' — ' + escapeHtml(m.recipientPhone) : '') + '<br>' + escapeHtml(m.shipTo) + (m.postcode ? ', ' + escapeHtml(m.postcode) : '') + '</div>' +
-          '<button type="button" class="btn-text" data-use-address="' + o.id + '" data-address-idx="' + idx + '" style="font-size:12px; margin-top:4px;">Use this address</button>' +
+          '<button type="button" class="btn-text" data-use-address="' + o.id + '" data-address-idx="' + idx + '" data-ae-key="' + key + '" style="font-size:12px; margin-top:4px;">Use this address</button>' +
         '</div>';
       }).join('') +
     '</div>';
   }
-  // Same smart paste as the Quick order form, for when the address only arrives later.
-  document.getElementById('shipping-content').addEventListener('input', function (e) {
+  // ONE address box, used everywhere an address can be added: the order card (ctx 'oc'), the
+  // Pack day list (ctx 'pd') and the Shipping queue (ctx 'ship'). Paste what the customer sent
+  // and it's split into name / phone / address / postcode; past addresses are offered on top.
+  var addrEdit = { ctx: null, id: null };
+  function addrKey(ctx, id) { return ctx === 'ship' ? id : ctx + '_' + id; }
+  function addressEditorHtml(o, ctx) {
+    var k = addrKey(ctx, o.id);
+    var saveAttr = ctx === 'ship' ? 'data-save-shipaddr="' + o.id + '"' : 'data-ae-save="' + o.id + '" data-ae-ctx="' + ctx + '"';
+    var cancelAttr = ctx === 'ship' ? 'data-cancel-shipaddr="' + o.id + '"' : 'data-ae-cancel="' + o.id + '"';
+    return '<div class="addr-editor">' +
+      pastAddressSuggestionsHtml(o, k) +
+      '<div class="field-block"><label class="field-label">Paste what the customer sent <span class="muted">(name, phone and address in any order — fills the boxes below)</span></label><textarea class="sa-paste" data-order-id="' + o.id + '" data-ae-key="' + k + '" rows="3" style="width:100%;"></textarea></div>' +
+      '<div class="addr-grid">' +
+        '<div class="field-block"><label class="field-label">Recipient name</label><input id="sa-recipientName-' + k + '" value="' + escapeHtml(o.recipientName || '') + '" placeholder="Name on the parcel"></div>' +
+        '<div class="field-block"><label class="field-label">Recipient phone <span class="muted">(blank = WhatsApp)</span></label><input id="sa-recipientPhone-' + k + '" value="' + escapeHtml(o.recipientPhone || '') + '" placeholder="0123456789"></div>' +
+        '<div class="field-block"><label class="field-label">Postcode</label><input id="sa-postcode-' + k + '" value="' + escapeHtml(o.postcode || '') + '" placeholder="43000"></div>' +
+      '</div>' +
+      '<div class="field-block" style="margin-top:6px;"><label class="field-label">Address</label><textarea id="sa-shipTo-' + k + '" rows="2" style="resize:vertical; width:100%;" placeholder="12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
+      '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" ' + saveAttr + '>Save address</button> ' +
+      '<button type="button" class="btn btn-secondary btn-small" ' + cancelAttr + '>Cancel</button></div>' +
+    '</div>';
+  }
+  // "Nurul · 82000 Pontian, Johor" — the short line shown once an address is on file.
+  function addrShortLine(o) {
+    var addr = String(o.shipTo || '');
+    var pc = o.postcode || (addr.match(/\b\d{5}\b/) || [''])[0];
+    var place = '';
+    if (pc && addr.indexOf(pc) !== -1) place = pc + ' ' + addr.slice(addr.indexOf(pc) + pc.length).replace(/^[\s,]+/, '').trim();
+    else { var parts = addr.split(',').map(function (x) { return x.trim(); }).filter(Boolean); place = (pc ? pc + ' ' : '') + parts.slice(-2).join(', '); }
+    if (place.length > 42) place = place.slice(0, 42) + '…';
+    return [o.recipientName || o.buyerName || '', place].filter(Boolean).join(' · ');
+  }
+  document.addEventListener('input', function (e) {
     if (!e.target.classList || !e.target.classList.contains('sa-paste')) return;
-    var sid = e.target.getAttribute('data-order-id');
+    var k = e.target.getAttribute('data-ae-key') || e.target.getAttribute('data-order-id');
     var parsed = parseShippingPaste(e.target.value);
-    var set = function (field, v) { var el = document.getElementById('sa-' + field + '-' + sid); if (el && v) el.value = v; };
+    var set = function (field, v) { var el = document.getElementById('sa-' + field + '-' + k); if (el && v) el.value = v; };
     set('recipientName', parsed.name);
     set('recipientPhone', parsed.phone);
     set('shipTo', parsed.address);
     set('postcode', parsed.postcode);
   });
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t.getAttribute) return;
+    var useAddrId = t.getAttribute('data-use-address');
+    if (useAddrId) {
+      var k = t.getAttribute('data-ae-key') || useAddrId;
+      var useAddrOrder = state.orders.find(function (o) { return o.id === useAddrId; });
+      var picked = useAddrOrder ? pastAddressesForWhatsapp(useAddrOrder.buyerWhatsapp, useAddrOrder.id)[Number(t.getAttribute('data-address-idx'))] : null;
+      if (picked) {
+        ['recipientName', 'recipientPhone', 'shipTo', 'postcode'].forEach(function (f) { var el = document.getElementById('sa-' + f + '-' + k); if (el) el.value = picked[f] || ''; });
+      }
+      return;
+    }
+    var openOc = t.closest ? t.closest('[data-oc-addr]') : null;
+    if (openOc) { addrEdit = { ctx: 'oc', id: openOc.getAttribute('data-oc-addr') }; renderOrders(); return; }
+    var openPd = t.getAttribute('data-pd-addr');
+    if (openPd) { addrEdit = { ctx: 'pd', id: openPd }; renderShipping(); return; }
+    var aeSave = t.getAttribute('data-ae-save');
+    if (aeSave) { saveShippingAddress(aeSave, addrKey(t.getAttribute('data-ae-ctx'), aeSave)); return; }
+    if (t.getAttribute('data-ae-cancel')) { addrEdit = { ctx: null, id: null }; renderAll(); return; }
+  });
   function shippingAddressBlockHtml(o) {
     if (editingShippingAddressOrderId === o.id) {
-      return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' +
-        pastAddressSuggestionsHtml(o) +
-        '<div class="field-block"><label class="field-label">Paste what the customer sent <span class="muted">(name, phone and address in any order — fills the boxes below)</span></label><textarea class="sa-paste" data-order-id="' + o.id + '" rows="3" style="width:100%;"></textarea></div>' +
-        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Recipient name</label><input id="sa-recipientName-' + o.id + '" value="' + escapeHtml(o.recipientName || '') + '" placeholder="e.g. name on the parcel/courier label"></div>' +
-        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Recipient phone <span class="muted">(blank = use WhatsApp number)</span></label><input id="sa-recipientPhone-' + o.id + '" value="' + escapeHtml(o.recipientPhone || '') + '" placeholder="+60123456789"></div>' +
-        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Ship to (address)</label><textarea id="sa-shipTo-' + o.id + '" rows="2" style="resize:vertical; width:100%;" placeholder="e.g. 12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
-        '<div class="field-block" style="margin-top:6px;"><label class="field-label">Postcode</label><input id="sa-postcode-' + o.id + '" value="' + escapeHtml(o.postcode || '') + '" placeholder="e.g. 43000"></div>' +
-        '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" data-save-shipaddr="' + o.id + '">Save</button> ' +
-        '<button type="button" class="btn btn-secondary btn-small" data-cancel-shipaddr="' + o.id + '">Cancel</button></div>' +
-      '</div>';
+      return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' + addressEditorHtml(o, 'ship') + '</div>';
     }
     if (!o.shipTo) {
-      return '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" data-add-shipaddr="' + o.id + '">+ Add shipping address</button></div>';
+      return '<div class="oc-addr none" style="margin-top:8px;"><button type="button" class="oc-addr-btn" data-add-shipaddr="' + o.id + '">📍 No address yet · <u>Add</u></button></div>';
     }
-    return '<div style="margin-top:6px; white-space:pre-wrap;">' + escapeHtml(o.shipTo) + (o.postcode ? '<br>' + escapeHtml(o.postcode) : '') + '</div>' +
-      '<button type="button" class="btn-text" data-edit-shipaddr="' + o.id + '" style="font-size:12px;">✏️ Edit address</button>';
+    return '<div class="oc-addr" style="margin-top:8px;"><button type="button" class="oc-addr-btn" data-edit-shipaddr="' + o.id + '" title="' + escapeHtml(o.shipTo + (o.postcode ? ', ' + o.postcode : '')) + '">📍 ' + escapeHtml(addrShortLine(o)) + ' · <u>Change</u></button></div>';
   }
 
   // Orders she linked together (see startLinkedOrderFrom / "Save + add another order") so they
@@ -8588,13 +8859,15 @@
     return '<div style="margin:4px 0;"><span class="pill pill-blue" style="font-size:11px;">🔗 Linked with ' + siblings.length + ' other order' + (siblings.length !== 1 ? 's' : '') + ' — ships together</span></div>';
   }
 
-  function saveShippingAddress(id) {
+  function saveShippingAddress(id, key) {
     var order = state.orders.find(function (o) { return o.id === id; });
     if (!order) return;
-    order.recipientName = document.getElementById('sa-recipientName-' + id).value.trim();
-    order.recipientPhone = document.getElementById('sa-recipientPhone-' + id).value.trim();
-    order.shipTo = document.getElementById('sa-shipTo-' + id).value.trim();
-    order.postcode = document.getElementById('sa-postcode-' + id).value.trim();
+    key = key || id;
+    order.recipientName = document.getElementById('sa-recipientName-' + key).value.trim();
+    order.recipientPhone = document.getElementById('sa-recipientPhone-' + key).value.trim();
+    order.shipTo = document.getElementById('sa-shipTo-' + key).value.trim();
+    order.postcode = document.getElementById('sa-postcode-' + key).value.trim();
+    if (!order.postcode) { var pcm = order.shipTo.match(/\b\d{5}\b/); if (pcm) order.postcode = pcm[0]; }
     // Broadcast the address to any linked orders too — she only fills this in once per parcel,
     // not once per order sharing that parcel.
     shipGroupSiblings(order).forEach(function (sib) {
@@ -8605,7 +8878,8 @@
     });
     save();
     editingShippingAddressOrderId = null;
-    renderShipping();
+    addrEdit = { ctx: null, id: null };
+    renderAll();
   }
 
   // She wanted what's in each order to be obvious at a glance while she's physically packing —
@@ -8635,13 +8909,13 @@
     var product = state.products.find(function (p) { return p.id === item.productId; });
     var style = SHIPPING_TYPE_STYLE[product ? product.type : 'Others'] || SHIPPING_TYPE_STYLE['Others'];
     return '<span style="display:inline-flex; align-items:center; gap:5px; background:' + style.bg + '; color:' + style.color + '; border-radius:8px; padding:6px 12px; font-size:13px; font-weight:600;">' +
-      shippingItemIconHtml(product && product.image, style.icon) + ' ' + escapeHtml(item.productName) + ' ×' + qty + (item.isGift ? ' 🎁' : '') +
+      shippingItemIconHtml(product && product.image, style.icon) + ' ' + qty + ' × ' + escapeHtml(cleanItemName(item.productName)) + (item.isGift ? ' 🎁' : '') +
     '</span>';
   }
   function addOnBoxHtml(a) {
     var addOnProduct = state.products.find(function (p) { return p.id === a.productId; });
     return '<span style="display:inline-flex; align-items:center; gap:5px; background:var(--amber-bg); color:var(--amber); border-radius:8px; padding:6px 12px; font-size:13px; font-weight:600;">' +
-      shippingItemIconHtml(addOnProduct && addOnProduct.image, '✨') + ' ' + escapeHtml(a.productName) + ' ×' + a.qty + ' <span style="font-weight:400;">(add-on)</span>' +
+      shippingItemIconHtml(addOnProduct && addOnProduct.image, '✨') + ' ' + a.qty + ' × ' + escapeHtml(cleanItemName(a.productName)) + ' <span style="font-weight:400;">(add-on)</span>' +
     '</span>';
   }
   function shippingItemBoxesHtml(o) {
@@ -9299,18 +9573,24 @@
     var rows = parcels.map(function (o, idx) {
       var booked = o.status === 'order shipment';
       var hasTracking = !!o.trackingNumber || (o.parcels || []).some(function (p) { return p.trackingNumber; });
-      return '<tr>' +
-        '<td>' + (idx + 1) + '</td>' +
-        '<td><div style="font-weight:500;">' + escapeHtml(o.buyerName || 'Unknown') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') + (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
-          (o.shipTo ? '<div class="muted" style="font-size:12px;">' + escapeHtml(shortPlace(o)) + '</div>' : '') + '</td>' +
-        '<td style="text-align:center;">' + (orderFullyPaid(o) ? tick : '<span style="color:var(--red); font-weight:600;">✘</span>') + '</td>' +
-        '<td style="text-align:center;">' + (o.shipTo ? tick : '<button type="button" class="btn btn-secondary btn-small" data-pd-ask-address="' + o.id + '" style="font-size:11px; padding:3px 8px;">Ask for address</button>') + '</td>' +
-        '<td style="text-align:center;">' + (booked ? tick : dash) + '</td>' +
-        '<td style="text-align:center;">' + (hasTracking ? tick : dash) + '</td>' +
-      '</tr>';
+      var paid = orderFullyPaid(o);
+      var step = function (on, label) { return '<span class="pd-step' + (on ? ' on' : '') + '">' + (on ? '✔ ' : '') + label + '</span>'; };
+      var editing = addrEdit.ctx === 'pd' && addrEdit.id === o.id;
+      return '<div class="pd-row">' +
+        '<div class="pd-row-top">' +
+          '<div style="min-width:0;"><div style="font-weight:600;">' + (idx + 1) + '. ' + escapeHtml(o.buyerName || 'Unknown') +
+            (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') +
+            (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
+            '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Unpaid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + '</div></div>' +
+          '<div class="pd-row-steps">' + step(!!o.shipTo, 'Address') + step(booked || hasTracking, 'Booked') + step(hasTracking, 'Tracking') + '</div>' +
+        '</div>' +
+        (!o.shipTo && !editing ? '<div class="pd-row-actions"><button type="button" class="btn btn-secondary btn-small" data-pd-addr="' + o.id + '">📍 Add address</button>' +
+          '<button type="button" class="btn-text" data-pd-ask-address="' + o.id + '" style="font-size:12px;">📋 Ask for address</button></div>' : '') +
+        (editing ? addressEditorHtml(o, 'pd') : '') +
+      '</div>';
     }).join('');
     var table = parcels.length
-      ? '<div style="overflow-x:auto;"><table style="width:100%; font-size:14px;"><thead><tr><th>#</th><th>Buyer</th><th style="text-align:center;">Paid</th><th style="text-align:center;">Address</th><th style="text-align:center;">Booked</th><th style="text-align:center;">Tracking</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+      ? '<div class="pd-list">' + rows + '</div>'
       : '<div class="muted" style="font-size:13px;">No parcels waiting to go out.</div>';
 
     // Sender (her own details, saved once)
@@ -9518,66 +9798,55 @@
         actionBtn = '<button type="button" class="btn btn-primary btn-small btn-mark-order-shipment" data-order-id="' + o.id + '">📦 Mark order shipment</button>' +
           '<button type="button" class="btn btn-secondary btn-small btn-mark-shipped" data-order-id="' + o.id + '">Mark as shipped</button>';
       }
-      return '<div class="card" style="margin-bottom:8px; padding:12px 14px;">' +
-        '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
-          '<div>' +
-            '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
-            (o.recipientName && o.recipientName !== o.buyerName ? '<div class="muted" style="font-size:12px;">Buyer: ' + escapeHtml(o.buyerName) + '</div>' : '') +
+      var splitBtnHtml = (!(o.parcels && o.parcels.length) && splittingOrderId !== o.id) ? '<button type="button" data-start-split="' + o.id + '">✂️ Split into parcels</button>' : '';
+      var menuHtml = '<div class="oc-more">' +
+        '<button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button>' +
+        '<div class="oc-menu">' +
+          '<button type="button" class="btn-copy-ship-address" data-order-id="' + o.id + '">📋 Copy address</button>' +
+          splitBtnHtml +
+          (editingReplacementOrderId === o.id ? '' : '<button type="button" data-toggle-replacement="' + o.id + '">🔁 Send replacement</button>') +
+        '</div></div>';
+      return '<div class="card ship-card" style="margin-bottom:10px; padding:12px 14px;">' +
+        '<div class="ship-top">' +
+          '<div style="min-width:0;">' +
+            '<div style="font-weight:600; font-size:16px;">' + (escapeHtml(o.buyerName) || escapeHtml(o.recipientName) || 'Unknown') +
+              (o.buyerHandle ? ' <span class="muted" style="font-weight:400; font-size:13px;">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') + '</div>' +
             (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
             shipGroupBadgeHtml(o) +
-            shippingAddressBlockHtml(o) +
-            '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
-            shippingCostInlineHtml(o) +
-            (o.parcels && o.parcels.length
-              ? addOnsOnlyBoxesHtml(o) +
-                '<div style="margin-top:6px;"><button type="button" class="btn-text danger" data-remove-split="' + o.id + '" style="font-size:12px;">↩️ Remove split</button></div>' +
-                o.parcels.map(function (parcel, pIdx) { return parcelTrackingHtml(o, parcel, pIdx, o.parcels.length, isOrderShipment || isShipped); }).join('')
-              : (splittingOrderId === o.id
-                ? splitEditorHtml(o)
-                : shippingItemBoxesHtml(o) + '<div style="margin-top:6px;"><button type="button" class="btn-text" data-start-split="' + o.id + '" style="font-size:12px;">✂️ Split into parcels</button></div>')) +
           '</div>' +
-          '<div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">' +
-            paidPill +
-            statusPill +
-            '<button type="button" class="btn btn-secondary btn-small btn-copy-ship-address" data-order-id="' + o.id + '">Copy address</button>' +
-            actionBtn +
-          '</div>' +
+          '<div class="ship-pills">' + paidPill + statusPill + '</div>' +
         '</div>' +
+        (o.parcels && o.parcels.length
+          ? addOnsOnlyBoxesHtml(o) +
+            '<div style="margin-top:6px;"><button type="button" class="btn-text danger" data-remove-split="' + o.id + '" style="font-size:12px;">↩️ Remove split</button></div>' +
+            o.parcels.map(function (parcel, pIdx) { return parcelTrackingHtml(o, parcel, pIdx, o.parcels.length, isOrderShipment || isShipped); }).join('')
+          : (splittingOrderId === o.id ? splitEditorHtml(o) : shippingItemBoxesHtml(o))) +
+        shippingAddressBlockHtml(o) +
+        '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
+        shippingCostInlineHtml(o) +
+        '<div class="ship-actions">' + actionBtn + menuHtml + '</div>' +
         shippingBarcodeControl(o) +
         ((isOrderShipment || isShipped) ? trackingSectionControl(o) : '') +
         orderReplacementsHtml(o) +
-        (editingReplacementOrderId === o.id
-          ? replacementFormHtml(o)
-          : '<div style="margin-top:8px;"><button type="button" class="btn-text" data-toggle-replacement="' + o.id + '" style="font-size:12px;">🔁 Send replacement</button></div>') +
+        (editingReplacementOrderId === o.id ? replacementFormHtml(o) : '') +
       '</div>';
     }).join('') + deliveredSection + glassStrawSection;
   }
 
   document.getElementById('shipping-content').addEventListener('click', function (e) {
-    var addAddrId = e.target.getAttribute && e.target.getAttribute('data-add-shipaddr');
+    var shipMore = e.target.closest ? e.target.closest('[data-order-more]') : null;
+    if (shipMore) { var smw = shipMore.parentNode; closeOrderMenus(smw); smw.classList.toggle('open'); return; }
+    if (e.target.closest && e.target.closest('.oc-menu') && e.target.tagName === 'BUTTON') closeOrderMenus();
+    var addAddrEl = e.target.closest ? e.target.closest('[data-add-shipaddr]') : null;
+    var addAddrId = addAddrEl ? addAddrEl.getAttribute('data-add-shipaddr') : null;
     if (addAddrId) { editingShippingAddressOrderId = addAddrId; renderShipping(); return; }
-    var editAddrId = e.target.getAttribute && e.target.getAttribute('data-edit-shipaddr');
+    var editAddrEl = e.target.closest ? e.target.closest('[data-edit-shipaddr]') : null;
+    var editAddrId = editAddrEl ? editAddrEl.getAttribute('data-edit-shipaddr') : null;
     if (editAddrId) { editingShippingAddressOrderId = editAddrId; renderShipping(); return; }
     var saveAddrId = e.target.getAttribute && e.target.getAttribute('data-save-shipaddr');
     if (saveAddrId) { saveShippingAddress(saveAddrId); return; }
     var cancelAddrId = e.target.getAttribute && e.target.getAttribute('data-cancel-shipaddr');
     if (cancelAddrId) { editingShippingAddressOrderId = null; renderShipping(); return; }
-    var useAddrId = e.target.getAttribute && e.target.getAttribute('data-use-address');
-    if (useAddrId) {
-      var useAddrOrder = state.orders.find(function (o) { return o.id === useAddrId; });
-      var useAddrIdx = Number(e.target.getAttribute('data-address-idx'));
-      if (useAddrOrder) {
-        var pastMatches = pastAddressesForWhatsapp(useAddrOrder.buyerWhatsapp, useAddrOrder.id);
-        var picked = pastMatches[useAddrIdx];
-        if (picked) {
-          document.getElementById('sa-recipientName-' + useAddrId).value = picked.recipientName;
-          document.getElementById('sa-recipientPhone-' + useAddrId).value = picked.recipientPhone;
-          document.getElementById('sa-shipTo-' + useAddrId).value = picked.shipTo;
-          document.getElementById('sa-postcode-' + useAddrId).value = picked.postcode;
-        }
-      }
-      return;
-    }
     var startSplitId = e.target.getAttribute && e.target.getAttribute('data-start-split');
     if (startSplitId) { splittingOrderId = startSplitId; splitDraftParcelCount = 2; renderShipping(); return; }
     var addSplitParcelId = e.target.getAttribute && e.target.getAttribute('data-add-split-parcel');
@@ -9822,7 +10091,7 @@
     if (!matches.length) return '';
     return '<div style="position:absolute; z-index:5; background:var(--card-bg,#fff); border:1px solid var(--border); border-radius:6px; margin-top:2px; width:100%; max-width:260px; box-shadow:0 2px 6px rgba(0,0,0,0.08);">' +
       matches.map(function (m) {
-        return '<div data-' + prefix + '-suggest="' + escapeHtml(m.buyerWhatsapp) + '" data-' + prefix + '-suggest-name="' + escapeHtml(m.buyerName) + '" style="padding:6px 10px; cursor:pointer; border-bottom:1px solid var(--border); font-size:12px;">' +
+        return '<div data-' + prefix + '-suggest="' + escapeHtml(m.buyerWhatsapp) + '" data-' + prefix + '-suggest-name="' + escapeHtml(m.buyerName) + '" data-' + prefix + '-suggest-handle="' + escapeHtml(m.buyerHandle || '') + '" style=""padding:6px 10px; cursor:pointer; border-bottom:1px solid var(--border); font-size:12px;">' +
           '<div>' + (escapeHtml(m.buyerName) || 'Unknown') + '</div>' +
           '<div class="muted" style="font-size:11px;">' + escapeHtml(m.buyerWhatsapp) + '</div>' +
         '</div>';
@@ -10299,6 +10568,10 @@
     { category: 'packaging', words: ['packaging', 'mailer', 'poly mailer', '包装', '包材', '纸箱'] },
     { category: 'ads', words: ['ads', 'advert', 'boost post', 'facebook ads', 'fb ads', '广告'] },
     { category: 'tiktok_fee', words: ['tiktok fee', 'platform fee', 'commission', '手续费', '平台费'] },
+    // Long-lasting machines/equipment (a one-off purchase, not stock) and small tools that wear
+    // out but aren't worth counting in Inventory — both are simply recorded as spending.
+    { category: 'equipment', words: ['equipment', 'uv lamp', 'uv light', 'curing lamp', 'heat gun', 'weighing scale', 'digital scale', 'drill', 'machine', 'shelf', 'rack', 'ring light', 'tripod', 'printer', 'uv灯', '紫外线灯', '热风枪', '电子秤', '电钻', '机器', '架子', '补光灯', '三脚架', '打印机'] },
+    { category: 'tools', words: ['tools', 'scissors', 'gloves', 'tweezers', 'spatula', 'mixing cup', 'silicone mat', 'cutter', 'brush', 'masking tape', '剪刀', '手套', '镊子', '刮刀', '工具', '硅胶垫', '刷子', '美纹纸'] },
     { category: 'wastage', words: ['wastage', 'broken', 'damaged', 'spoiled', '报废', '损坏'] },
     // Loose fill materials (powder/liquid/clay) that go directly into making the tumbler —
     // these are real stock, so autoInventory automatically creates a new Inventory product
@@ -10311,22 +10584,22 @@
     // every purchase of the same material lands under one Inventory entry/filter option
     // instead of splintering into a differently-named product each time she phrases it
     // differently. 颜料/染料 deliberately left out — she doesn't use those words.
-    { category: 'other', canonicalName: 'Glitter', words: ['glitter', '闪粉', '亮粉', '金葱粉', '闪光粉', '细闪', '粗闪', 'glitter powder'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Sequin', words: ['sequin', 'sequins', '亮片'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Mica Powder', words: ['mica powder', 'mica', '珠光粉', '云母粉'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Food Colouring', words: ['food colouring', 'food coloring', 'edible colouring', 'edible color', '食用色素', '色素'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Candle Dye', words: ['candle dye'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Dye', words: ['dye'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Glycerin', words: ['glycerin', 'glycerine', '甘油'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'UV Glue', words: ['uv glue', 'uv胶', 'uv 胶'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Mineral Oil', words: ['mineral oil', '矿物油'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Resin', words: ['resin', 'epoxy resin', 'epoxy', '树脂'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: '软陶', words: ['软陶', 'polymer clay'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Slime Activator', words: ['slime activator', 'activator', '活化剂'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
-    { category: 'other', canonicalName: 'Alcohol', words: ['isopropyl alcohol', 'rubbing alcohol', 'alcohol', '酒精'], productType: 'Tumbler', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Glitter', words: ['glitter', '闪粉', '亮粉', '金葱粉', '闪光粉', '细闪', '粗闪', 'glitter powder'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Sequin', words: ['sequin', 'sequins', '亮片'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Mica Powder', words: ['mica powder', 'mica', '珠光粉', '云母粉'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Food Colouring', words: ['food colouring', 'food coloring', 'edible colouring', 'edible color', '食用色素', '色素'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Candle Dye', words: ['candle dye'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Dye', words: ['dye'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Glycerin', words: ['glycerin', 'glycerine', '甘油'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'UV Glue', words: ['uv glue', 'uv胶', 'uv 胶'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Mineral Oil', words: ['mineral oil', '矿物油'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Resin', words: ['resin', 'epoxy resin', 'epoxy', '树脂'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: '软陶', words: ['软陶', 'polymer clay'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Slime Activator', words: ['slime activator', 'activator', '活化剂'], productType: 'Others', autoInventory: true, unitTracked: true },
+    { category: 'other', canonicalName: 'Alcohol', words: ['isopropyl alcohol', 'rubbing alcohol', 'alcohol', '酒精'], productType: 'Others', autoInventory: true, unitTracked: true },
     // Tools/containers used to make the tumbler — also real stock, but counted in pieces like
     // any normal product (not ml/g).
-    { category: 'other', words: ['syringe', 'squeeze bottle', 'oil bottle'], productType: 'Tumbler', autoInventory: true },
+    { category: 'other', words: ['syringe', 'squeeze bottle', 'oil bottle'], productType: 'Others', autoInventory: true },
     // Consumable packaging supplies — also real stock (something physical gets used up every
     // time an order goes out), so these auto-create/restock an Inventory item just like the
     // materials above. Tracked by count rather than ml/g: bubble wrap by the roll, bags by the
@@ -10895,7 +11168,7 @@
     if (!nd) return null;
     var cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - QUICKADD_DUP_DAYS);
-    var cutoffISO = cutoff.toISOString().slice(0, 10);
+    var cutoffISO = isoLocal(cutoff);
     return state.costs.find(function (c) {
       if (Number(c.amount) !== amount) return false;
       if ((c.date || '') < cutoffISO) return false;
@@ -11154,11 +11427,15 @@
           // quantity here is exactly what produced a 96%-of-Inventory-value glitch once (see
           // confirmCostSanity). If she cancels, nothing gets saved at all — this whole line is
           // dropped so she can retype it with the right quantity instead of leaving bad data behind.
-          if (!confirmCostSanity(linkedP, perUnitExact)) {
-            pushChatMsg('bot', '✋ Skipped: "' + item.description + '" — the price per unit looked off for that quantity. Please retype this line with the correct amount/quantity.');
-            quickAddPending.shift();
-            processNextQuickAdd();
-            renderAll();
+          // A price per unit 5× higher (or lower) than usual almost always means the quantity was
+          // read wrong (1 ml instead of one 4000 ml bottle). Ask right here in the chat, with the
+          // likely fix as a button, before anything is saved.
+          var usualUnit = Number(linkedP.cost) || 0;
+          var unitRatio = usualUnit > 0 ? perUnitExact / usualUnit : 1;
+          if (!item.unitChecked && usualUnit > 0 && (unitRatio >= 5 || unitRatio <= 0.2)) {
+            quickAddStage = { type: 'unitcheck', item: item, category: category, productId: productId, platform: platform, seller: seller,
+              shippingFeeAmount: shippingFeeAmount, productType: productType, perUnit: perUnitExact, usualUnit: usualUnit, packSize: productPackSize(linkedP) };
+            renderQuickAdd();
             return;
           }
           linkedP.cost = blendedUnitCost(linkedP, item.parsedQty, perUnitExact);
@@ -11366,6 +11643,28 @@
   // Answers the "how many packs/bottles?" question (see parsePackSizeFromVariant /
   // finalizeQuickAddCost) — multiplies out the total ml/g herself instead of leaving it to a
   // free-text quantity that's easy to get wrong for a packaged material.
+  function answerQuickAddUnitCheck(choice) {
+    var st = quickAddStage;
+    if (!st || st.type !== 'unitcheck') return;
+    var item = st.item;
+    if (choice === 'cancel') {
+      pushChatMsg('bot', '✋ Skipped: "' + item.description + '" — nothing was saved. Retype it with the right quantity.');
+      quickAddStage = null;
+      quickAddPending.shift();
+      processNextQuickAdd();
+      renderAll();
+      return;
+    }
+    if (choice === 'packs' && st.packSize) item.parsedQty = item.parsedQty * st.packSize;
+    if (choice === 'custom') {
+      var v = Number((document.getElementById('qa-unitcheck-qty') || {}).value) || 0;
+      if (v <= 0) { alert('Type how much you bought in total.'); return; }
+      item.parsedQty = v;
+    }
+    item.unitChecked = true;
+    finalizeQuickAddCost(item, st.category, st.productId, st.platform, st.seller, st.shippingFeeAmount, st.productType);
+  }
+
   function saveQuickAddPacksAnswer() {
     var stage = quickAddStage;
     var packs = Number(document.getElementById('qa-packs-amount').value) || 0;
@@ -11672,7 +11971,7 @@
         '<div>已付 Mei</div>' +
       '</div>' +
       '<div class="muted" style="margin-top:10px; font-size:12px;"><b>Words I understand:</b> ' +
-        'shipping / 运费 / 快递 · packaging / 包装 · ads / 广告 · tiktok fee / 手续费 · broken / 报废 · ' +
+        'shipping / 运费 / 快递 · packaging / 包装 · ads / 广告 · tiktok fee / 手续费 · broken / 报废 · equipment / 机器 / uv灯 · tools / 工具 / 剪刀 / 手套 · ' +
         'glitter / 闪粉 / 亮粉 · sequin / 亮片 · mica / 珠光粉 · glycerin / 甘油 · UV glue / UV胶 · mineral oil / 矿物油 · resin / 树脂 · ' +
         'bubble wrap / 泡泡纸 · parcel bag / 快递袋 · restock / 补货 · self paid / 自己垫. Small spelling slips in material names (e.g. "gliter") are fine.</div>' +
     '</div>';
@@ -11755,8 +12054,8 @@
       '</div>';
     } else if (quickAddStage && quickAddStage.type === 'category') {
       var itC = quickAddStage.item;
-      var catBtns = ['restock', 'packaging', 'shipping', 'ads', 'tiktok_fee', 'wastage', 'other'].map(function (c) {
-        return '<button class="btn btn-secondary btn-small" style="margin:2px;" data-qa-cat="' + c + '">' + c + '</button>';
+      var catBtns = ['restock', 'packaging', 'shipping', 'ads', 'tiktok_fee', 'equipment', 'tools', 'wastage', 'other'].map(function (c) {
+        return '<button class="btn btn-secondary btn-small" style="margin:2px;" data-qa-cat="' + c + '">' + ({ equipment: 'equipment & setup', tools: 'tools & supplies', tiktok_fee: 'tiktok fee' }[c] || c) + '</button>';
       }).join('');
       stageHtml = '<div class="card qa-stage">' +
         '<div style="font-size:13px; margin-bottom:8px;">Not sure what "' + escapeHtml(itC.description) + '" — ' + money(itC.amount) + ' is. Is it a cost, or a brand new Inventory item (Tumbler/Stickers/Others)?</div>' +
@@ -11810,6 +12109,20 @@
           '<div><label class="field-label">Qty (optional)</label><input id="qa-restock-qty" type="number" step="1" min="0"></div>' +
         '</div>' +
         '<button class="btn btn-primary btn-small" id="btn-qa-restock-amount-save">Continue</button> ' + QUICKADD_CANCEL_BTN +
+      '</div>';
+    } else if (quickAddStage && quickAddStage.type === 'unitcheck') {
+      var stU = quickAddStage;
+      var prodU = state.products.find(function (p) { return p.id === stU.productId; });
+      var uU = (prodU && prodU.unit) ? prodU.unit : '';
+      var q = stU.item.parsedQty;
+      var nameU = prodU ? (prodU.name + (prodU.variant ? ' — ' + prodU.variant : '')) : stU.item.description;
+      stageHtml = '<div class="card qa-stage" style="border-color:#f0c674;">' +
+        '<div style="font-size:14px; margin-bottom:6px;">' + escapeHtml(nameU) + ', ' + money(stU.item.amount) + ' for <b>' + q + (uU || (q === 1 ? ' pc' : ' pcs')) + '</b>?</div>' +
+        '<div class="muted" style="font-size:12px; margin-bottom:10px;">That\'s ' + moneyPrecise(stU.perUnit) + ' per ' + (uU || 'piece') + '. It\'s usually about ' + moneyPrecise(stU.usualUnit) + '.</div>' +
+        (stU.packSize && stU.packSize > 1 ? '<button class="btn btn-primary btn-small" data-qa-unitcheck="packs" style="margin:2px;">It\'s ' + q + ' pack' + (q === 1 ? '' : 's') + ' = ' + fmtQty(q * stU.packSize) + uU + '</button> ' : '') +
+        '<span style="display:inline-flex; gap:4px; align-items:center; margin:2px;"><input id="qa-unitcheck-qty" type="number" min="0" step="any" placeholder="Total ' + (uU || 'qty') + '" style="width:110px;"><button class="btn btn-secondary btn-small" data-qa-unitcheck="custom">Use this</button></span> ' +
+        '<button class="btn btn-secondary btn-small" data-qa-unitcheck="keep" style="margin:2px;">Keep ' + q + (uU || '') + '</button> ' +
+        '<button class="btn btn-secondary btn-small" data-qa-unitcheck="cancel" style="margin:2px;">Skip this line</button>' +
       '</div>';
     } else if (quickAddStage && quickAddStage.type === 'packsask') {
       var stPA = quickAddStage;
@@ -12199,6 +12512,8 @@
     if (e.target.id === 'btn-qa-product-confirm') { confirmQuickAddProductPicker(); return; }
     if (e.target.id === 'btn-qa-restock-amount-save') { saveQuickAddRestockAmount(); return; }
     if (e.target.id === 'btn-qa-packs-save') { saveQuickAddPacksAnswer(); return; }
+    var ucChoice = e.target.getAttribute && e.target.getAttribute('data-qa-unitcheck');
+    if (ucChoice) { answerQuickAddUnitCheck(ucChoice); return; }
     if (e.target.id === 'btn-qa-material-qty-save') { saveQuickAddMaterialQty(); return; }
     if (e.target.id === 'btn-qa-sellingprice-save') { saveQuickAddSellingPrice(); return; }
     if (e.target.id === 'btn-qa-sellingprice-skip') { skipQuickAddSellingPrice(); return; }
