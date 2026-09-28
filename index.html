@@ -78,37 +78,68 @@
   #order-table { border-collapse: separate; border-spacing: 0; }
   #order-table thead { display: none; }
   #order-table tbody tr.order-card {
-    display: grid; grid-template-columns: 26px minmax(0, auto) minmax(0, 1fr) auto auto;
-    grid-template-areas: "chk buyer wa total paid" ". items items items items" ". date date status actions";
-    align-items: center; column-gap: 10px; row-gap: 6px; background: #fff; border: 1px solid var(--border);
-    border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+    display: grid; grid-template-columns: 0 minmax(0, 1fr) auto 120px 96px;
+    grid-template-areas: "chk buyer buyer total paid" "chk items items items items" "chk date actions actions actions";
+    align-items: center; column-gap: 10px; row-gap: 8px; background: #fff; border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 14px 12px 4px; margin-bottom: 10px;
   }
-  #order-table tbody tr.order-card > td { border: none; padding: 0; }
+  #order-table.select-mode tbody tr.order-card { grid-template-columns: 22px minmax(0, 1fr) auto 120px 96px; padding-left: 12px; }
+  #order-table tbody tr.order-card.oc-compact { grid-template-columns: 0 minmax(0, 1fr) auto 120px 46px; grid-template-areas: "chk buyer date total actions"; padding-top: 8px; padding-bottom: 8px; }
+  #order-table.select-mode tbody tr.order-card.oc-compact { grid-template-columns: 22px minmax(0, 1fr) auto 120px 46px; }
+  #order-table tbody tr.order-card > td { border: none; padding: 0; min-width: 0; }
   #order-table tbody tr:not(.order-card) { display: block; }
   #order-table tbody tr:not(.order-card) > td { display: block; }
+  #order-table:not(.select-mode) .oc-chk { visibility: hidden; overflow: hidden; }
+  #order-table:not(.select-mode) ~ .oc-selectall, #order-filter-bar .oc-selectall { display: none; }
   .order-card .oc-chk { grid-area: chk; }
-  .order-card .oc-buyer { grid-area: buyer; font-size: 16px; }
-  .order-card .oc-wa { grid-area: wa; font-size: 13px; }
-  .order-card .oc-total { grid-area: total; font-weight: 600; font-size: 14px; }
+  .order-card .oc-buyer { grid-area: buyer; font-size: 16px; min-width: 0; }
+  .order-card .oc-buyer .oc-sub { font-size: 13px; font-weight: 400; color: var(--muted); }
+  .order-card .oc-total { grid-area: total; font-weight: 600; font-size: 15px; text-align: right; white-space: nowrap; }
+  .order-card .oc-total .oc-extra { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
   .order-card .oc-paid { grid-area: paid; text-align: right; }
   .order-card .oc-items { grid-area: items; font-size: 15px; }
-  .order-card .oc-date { grid-area: date; font-size: 13px; }
-  .order-card .oc-make { font-weight: 600; }
-  .order-card .oc-status { grid-area: status; }
-  .order-card .oc-actions { grid-area: actions; text-align: right; }
+  .order-card .oc-date { grid-area: date; font-size: 13px; color: var(--muted); }
+  .order-card .oc-make { font-weight: 600; color: var(--text); }
+  .order-card .oc-actions { grid-area: actions; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }
+  .order-card .oc-madepill { white-space: nowrap; }
+  .oc-compact .oc-buyer { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .oc-compact .oc-total { font-size: 14px; }
+  .oc-compact .oc-date { white-space: nowrap; }
+  .oc-madepill { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: #f1f3f5; color: #4b5563; white-space: nowrap; }
+  .oc-madepill.done { background: #e3f1d8; color: #3b6d11; }
+  .oc-status-tag { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #eef2f7; color: #475569; margin-left: 6px; white-space: nowrap; }
   .oc-next { font-size: 14px; padding: 7px 14px; border-radius: 10px; }
-  .oc-links { margin-top: 4px; font-size: 12px; white-space: nowrap; }
-  .oc-links .btn-text { font-size: 12px; }
+  .oc-more { position: relative; display: inline-block; }
+  .oc-more-btn { font-size: 18px; line-height: 1; padding: 5px 12px; border-radius: 10px; border: 1px solid var(--border); background: #fff; cursor: pointer; color: var(--text); }
+  .oc-menu { display: none; position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.12); min-width: 220px; padding: 4px; text-align: left; }
+  .oc-more.open .oc-menu { display: block; }
+  .oc-menu > button, .oc-menu > .oc-menu-row { display: flex; width: 100%; align-items: center; gap: 8px; text-align: left; background: none; border: none; padding: 9px 12px; font-size: 14px; border-radius: 8px; cursor: pointer; color: var(--text); font-family: inherit; }
+  .oc-menu > button:hover { background: var(--bg); }
+  .oc-menu > .oc-menu-row { cursor: default; font-size: 13px; color: var(--muted); }
+  .oc-menu > .oc-menu-row select { flex: 1; padding: 4px 6px; font-size: 13px; }
+  .oc-menu > button.danger { color: var(--red); border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; }
   .oc-paid-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
   .oc-paid-chip.is-paid { background: #e3f1d8; color: #3b6d11; }
   .oc-paid-chip.is-unpaid { background: #fcebeb; color: #a32d2d; }
   .oc-paid-chip input { margin: 0; }
+  .od-sec { border-top: 1px solid var(--border); padding: 10px 0 6px; }
+  .od-sec:first-child { border-top: none; padding-top: 0; }
+  .od-sec-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .od-sec > div[style*="border-top"] { border-top: none !important; margin-top: 0 !important; padding-top: 0 !important; }
+  .of-kind { display: flex; gap: 6px; flex-wrap: wrap; }
+  .of-kind button { border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 14px; cursor: pointer; font-family: inherit; color: var(--text); }
+  .of-kind button.on { background: #e6f1fb; border-color: #85b7eb; color: #185fa5; font-weight: 600; }
+  .of-chip { border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; font-family: inherit; color: var(--text); white-space: nowrap; }
+  .of-chip.on { background: #e6f1fb; border-color: #85b7eb; color: #185fa5; }
   @media (max-width: 640px) {
-    #order-table tbody tr.order-card { grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-areas: "chk buyer paid" ". wa wa" ". total total" ". items items" ". date date" ". actions actions" ". status status"; }
-    .order-card .oc-status select { min-width: 120px; }
-    .order-card .oc-actions { text-align: left; }
-    .oc-next { width: 100%; }
-    .oc-links { white-space: normal; }
+    #order-table tbody tr.order-card { grid-template-columns: 0 minmax(0, 1fr) auto; grid-template-areas: "chk buyer total" "chk buyer paid" "chk items items" "chk date date" "chk actions actions"; }
+    #order-table.select-mode tbody tr.order-card { grid-template-columns: 22px minmax(0, 1fr) auto; }
+    #order-table tbody tr.order-card.oc-compact, #order-table.select-mode tbody tr.order-card.oc-compact { grid-template-areas: "chk buyer total" "chk date actions"; grid-template-columns: 0 minmax(0, 1fr) auto; }
+    #order-table.select-mode tbody tr.order-card.oc-compact { grid-template-columns: 22px minmax(0, 1fr) auto; }
+    .order-card .oc-actions { justify-content: flex-start; flex-wrap: wrap; }
+    .oc-compact .oc-actions { justify-content: flex-end; }
+    .oc-compact .oc-buyer { white-space: normal; }
+    .order-card:not(.oc-compact) .oc-next { flex: 1; }
   }
   .pd-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
   .pd-title { font-weight: 600; font-size: 16px; }
@@ -277,6 +308,8 @@
   .cal-chip-row { display: flex; flex-wrap: wrap; gap: 3px; }
   .cal-order-chip { font-size: 10px; background: #eaf1fd; color: var(--blue); border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .cal-order-chip-immediate { font-size: 10px; background: #fdf0e0; color: #b5680a; border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .cal-chip-made { background: #eef0f3 !important; color: #8a93a0 !important; }
+  .cal-showmade { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
   .cal-order-chip-lg { font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer; white-space: normal; overflow: visible; text-overflow: unset; }
   .cal-order-chip-lg:hover { background: #d9e8fc; }
   .cal-note-input { font-size: 10px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; width: 100%; }
@@ -462,6 +495,10 @@
         <div>
           <label class="field-label">Variant (color / size)</label>
           <input id="pf-variant" placeholder="e.g. 700ml">
+        </div>
+        <div>
+          <label class="field-label">Pack size <span class="muted">(how many come in one pack you buy)</span></label>
+          <input id="pf-pack-size" type="number" min="0" step="any" placeholder="e.g. 30">
         </div>
         <div>
           <label class="field-label">SKU / code</label>
@@ -924,6 +961,58 @@
       <div id="order-items"></div>
       <button class="btn btn-secondary btn-small" id="btn-add-item" style="margin-bottom:14px;">+ Add item</button>
 
+      <div class="of-kind-row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:4px 0 12px;">
+        <span class="field-label" style="margin:0;">This order is</span>
+        <div class="of-kind" id="of-kind">
+          <button type="button" data-of-kind="make" class="on">To make</button>
+          <button type="button" data-of-kind="made">Already made</button>
+          <button type="button" data-of-kind="replacement">🔁 Replacement</button>
+        </div>
+      </div>
+      <div class="muted" id="of-kind-rep-hint" style="display:none; font-size:12px; margin:-6px 0 10px;">Items at RM 0 go out free (counted as wastage). Put a price on anything the customer pays for, e.g. an extra sticker.</div>
+      <div class="form-grid" style="margin-bottom:10px;">
+        <div>
+          <label class="field-label">Ordered on</label>
+          <input id="of-date" type="date">
+        </div>
+        <div id="of-kind-make">
+          <label class="field-label">Make on</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input id="of-estimated-date" type="date" style="flex:1;">
+            <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
+          </div>
+          <div class="muted" style="font-size:12px; margin-top:4px;">Leave blank and the next free day is picked for you.</div>
+        </div>
+        <div id="of-kind-made" style="display:none;">
+          <label class="field-label">Made on</label>
+          <input id="of-made-date" type="date">
+        </div>
+        <div id="of-kind-made-stage" style="display:none;">
+          <label class="field-label">Where is it now?</label>
+          <select id="of-made-stage">
+            <option value="uv curing">UV curing</option>
+            <option value="ready to ship">Ready to ship</option>
+            <option value="order shipment">Booked with courier</option>
+            <option value="shipped">Shipped</option>
+            <option value="delivered">Delivered</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <!-- Status + "ready right away" are now set by the choice above; kept for older flows. -->
+      <div style="display:none;">
+        <select id="of-status">
+          <option value="queueing">queueing</option>
+          <option value="uv curing">uv curing</option>
+          <option value="ready to ship">ready to ship</option>
+          <option value="order shipment">order shipment</option>
+          <option value="shipped">shipped</option>
+          <option value="delivered">delivered</option>
+          <option value="cancelled">cancelled</option>
+        </select>
+        <input type="checkbox" id="of-immediate">
+      </div>
+
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--border);">
         <label style="display:flex; align-items:center; gap:8px; font-size:15px; font-weight:500; cursor:pointer;">
           <input type="checkbox" id="of-paid" style="width:18px; height:18px;"> Paid
@@ -933,35 +1022,9 @@
       <div class="muted" id="of-production-hint" style="font-size:12px; margin-top:6px;"></div>
 
       <details id="of-more-options" style="margin:12px 0;">
-        <summary style="cursor:pointer; font-size:14px; color:var(--blue); font-weight:500;">More options (dates, status, discount, shipping, address, notes)</summary>
+        <summary style="cursor:pointer; font-size:14px; color:var(--blue); font-weight:500;">More: address, discount, shipping, notes</summary>
         <div style="padding-top:12px;">
           <div class="form-grid">
-            <div>
-              <label class="field-label">Order date</label>
-              <input id="of-date" type="date">
-            </div>
-            <div>
-              <label class="field-label">Status</label>
-              <select id="of-status">
-                <option value="queueing">queueing</option>
-                <option value="uv curing">uv curing</option>
-                <option value="ready to ship">ready to ship</option>
-                <option value="order shipment">order shipment</option>
-                <option value="shipped">shipped</option>
-                <option value="delivered">delivered</option>
-                <option value="cancelled">cancelled</option>
-              </select>
-            </div>
-            <div>
-              <label class="field-label">Production date <span class="muted">(auto-suggested if left blank, shown on Calendar)</span></label>
-              <div style="display:flex; gap:6px; align-items:center;">
-                <input id="of-estimated-date" type="date" style="flex:1;">
-                <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
-              </div>
-              <label style="display:flex; align-items:center; gap:6px; font-size:13px; margin-top:8px;">
-                <input type="checkbox" id="of-immediate"> Ready right away — skip scheduling, don't show it in the queue
-              </label>
-            </div>
             <div>
               <label class="field-label">Discount</label>
               <input id="of-discount" type="number" step="0.01" min="0" value="0">
@@ -1016,19 +1079,27 @@
       </div>
     </div>
     <div id="order-stage-bar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
-    <div class="card" id="order-filter-bar">
-      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; justify-content:space-between; align-items:center;">
-        <span style="display:inline-flex; gap:4px;">
-          <input type="text" id="order-search" class="search-input" placeholder="Search buyer name or WhatsApp…" style="width:200px;">
+    <div class="card" id="order-filter-bar" style="padding:12px 14px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <span style="display:inline-flex; gap:4px; flex:1; min-width:200px;">
+          <input type="text" id="order-search" class="search-input" placeholder="Search name or WhatsApp…" style="flex:1; min-width:0;">
           <button type="button" class="btn btn-secondary btn-small" id="btn-order-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>
         </span>
-        <button class="btn btn-secondary btn-small" id="btn-order-sort-toggle"></button>
+        <span style="display:inline-flex; gap:6px; align-items:center;">
+          <input id="order-filter-from" type="date" style="width:140px;" title="From">
+          <span class="muted" style="font-size:13px;">to</span>
+          <input id="order-filter-to" type="date" style="width:140px;" title="To">
+          <button type="button" class="btn-text" id="btn-orderfilter-clear" style="font-size:12px; display:none;">✕ Clear dates</button>
+        </span>
+        <button type="button" class="of-chip" id="btn-order-sort-toggle"></button>
+        <button type="button" class="of-chip" id="btn-order-replacements">🔁 Replacements</button>
+        <button type="button" class="of-chip" id="btn-order-select-mode">Select</button>
+      </div>
+      <!-- Older controls kept (hidden) so saved filters and shortcuts keep working. -->
+      <div style="display:none;">
         <button class="btn btn-secondary btn-small" id="btn-orderfilter-7d">Last 7 days</button>
         <button class="btn btn-secondary btn-small" id="btn-orderfilter-month">This month</button>
-        <button class="btn btn-secondary btn-small" id="btn-orderfilter-clear">Clear dates</button>
-      </div>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
-        <select id="order-filter-status" style="width:170px;">
+        <select id="order-filter-status">
           <option value="">All statuses</option>
           <option value="queueing">queueing</option>
           <option value="uv curing">uv curing</option>
@@ -1038,16 +1109,14 @@
           <option value="delivered">delivered</option>
           <option value="cancelled">cancelled</option>
         </select>
-        <select id="order-filter-type" style="width:170px;">
+        <select id="order-filter-type">
           <option value="">All orders</option>
           <option value="replacement">🔁 Replacement only</option>
         </select>
-        <input id="order-filter-from" type="date" style="width:150px;">
-        <input id="order-filter-to" type="date" style="width:150px;">
       </div>
     </div>
     <div id="order-bulk-bar" style="margin-bottom:10px;"></div>
-    <div class="card" style="overflow-x:auto;">
+    <div class="card" style="overflow:visible; background:transparent; border:none; box-shadow:none; padding:0;">
       <table id="order-table">
         <thead><tr><th><input type="checkbox" id="order-select-all"></th><th>Date</th><th>Buyer</th><th>WhatsApp</th><th>Items</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr></thead>
         <tbody></tbody>
@@ -1075,7 +1144,7 @@
   <!-- CALENDAR (the old Schedule page now lives underneath the calendar grid) -->
   <section class="page" id="page-calendar">
     <div class="page-header"><h1>Calendar</h1></div>
-    <p class="muted" style="margin-top:-8px;">Every order with a production date shows on its day. Tap a day to see just that day's orders below, or to mark it as a personal day.</p>
+    <p class="muted" style="margin-top:-8px;">Orders still to make show on their making day (made ones hide unless you tick “Show made orders”). Tap a day to see just that day's orders below, or to mark it as a personal day.</p>
     <div id="calendar-content"></div>
     <h2 id="schedule-list-title" style="font-size:18px; margin:24px 0 10px;">Orders to make</h2>
     <div id="schedule-content"></div>
@@ -1808,6 +1877,7 @@
     resetProductSaveGuard();
     document.getElementById('pf-name').value = '';
     document.getElementById('pf-variant').value = '';
+    document.getElementById('pf-pack-size').value = '';
     document.getElementById('pf-sku').value = '';
     document.getElementById('pf-type').value = 'Tumbler';
     document.getElementById('pf-theme-wrap').style.display = 'none';
@@ -1873,6 +1943,7 @@
     var data = {
       name: name,
       variant: document.getElementById('pf-variant').value.trim(),
+      packSize: Number(document.getElementById('pf-pack-size').value) || 0,
       sku: document.getElementById('pf-sku').value.trim(),
       type: type,
       theme: theme,
@@ -1997,6 +2068,7 @@
     editingProductId = id;
     document.getElementById('pf-name').value = p.name;
     document.getElementById('pf-variant').value = p.variant || '';
+    document.getElementById('pf-pack-size').value = Number(p.packSize) > 0 ? p.packSize : '';
     document.getElementById('pf-sku').value = p.sku || '';
     document.getElementById('pf-type').value = p.type || 'Tumbler';
     document.getElementById('pf-theme-wrap').style.display = (p.type === 'Stickers') ? 'block' : 'none';
@@ -2085,6 +2157,10 @@
         (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '')
       : '<div style="font-weight:500;">' + escapeHtml(p.name) + '</div>' +
         (p.variant ? '<div class="muted">' + escapeHtml(p.variant) + '</div>' : '');
+    var rowPack = Number(p.packSize) > 0 ? Number(p.packSize) : 0;
+    if (rowPack || isMaterialProduct(p)) {
+      nameBlockHtml += '<div class="muted" style="font-size:11px;">' + [rowPack ? 'pack of ' + fmtQty(rowPack) + (p.unit || '') : '', isMaterialProduct(p) ? 'material · counted as spent when bought' : ''].filter(Boolean).join(' · ') + '</div>';
+    }
     // No selling price set (Others / raw materials & supplies like glitter, mica powder, 软陶
     // that she doesn't sell directly) — a per-unit Cost/Price/Margin breakdown is meaningless
     // here (Price would show RM0 and Margin a confusing negative). Just show what she actually
@@ -2098,7 +2174,8 @@
       '<td><div style="display:flex; align-items:center; gap:8px;">' + thumb +
       '<div>' + nameBlockHtml + sourceLineHtml(p) + '</div></div></td>' +
       '<td style="white-space:nowrap;">' + pricingHtml + '</td>' +
-      '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see stock history">' + p.stock + (p.unit ? p.unit : '') + (low ? ' ⚠ low' : '') + '</span></td>' +
+      '<td><span class="pill ' + (low ? 'pill-red' : 'pill-green') + '" data-view-stock-log="' + p.id + '" style="cursor:pointer;" title="Click to see bought / sold / stock history">' + p.stock + (p.unit ? p.unit : '') + (low ? ' ⚠ low' : '') + '</span>' +
+        (function () { var b = productStockStory(p).bought; return b ? '<div class="muted" style="font-size:11px; margin-top:3px; cursor:pointer;" data-view-stock-log="' + p.id + '">of ' + fmtQty(b) + (p.unit || '') + ' bought</div>' : ''; })() + '</td>' +
       '<td style="text-align:right; white-space:nowrap;">' +
       (pendingDeleteProductId === p.id
         ? '<span style="color:var(--red); font-size:12px; margin-right:6px;">' + deleteProductConfirmText(p) + '</span>' +
@@ -2130,7 +2207,8 @@
       .filter(function (l) { return l.productId === p.id; })
       .slice()
       .sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || 0; });
-    var titleRow = '<tr style="background:#fafbfd;"><td colspan="4" style="font-weight:600; font-size:13px;">Stock history — ' + escapeHtml(p.name) + ' <span class="muted" style="font-weight:400;">(current: ' + p.stock + ')</span></td></tr>';
+    var titleRow = '<tr style="background:#fafbfd;"><td colspan="4">' + productStoryHtml(p) + '</td></tr>' +
+      '<tr style="background:#fafbfd;"><td colspan="4" style="font-weight:600; font-size:13px;">Stock history — ' + escapeHtml(p.name) + ' <span class="muted" style="font-weight:400;">(current: ' + p.stock + ')</span></td></tr>';
     var rowsHtml = entries.length
       ? entries.map(function (l) {
           var label = STOCK_LOG_LABELS[l.type] || l.type;
@@ -2174,16 +2252,148 @@
     return (totalPerPack && isFinite(totalPerPack)) ? totalPerPack : null;
   }
 
+  // ---- Pack size kept apart from the name ----
+  // How many stock units come in ONE pack she buys (30 cups, 200 parcel bags, 4000 ml of
+  // glycerin). Set on the product itself; older products still fall back to a size written in
+  // the variant ("4000ml x1").
+  function productPackSize(p) {
+    if (!p) return null;
+    var n = Number(p.packSize);
+    if (n > 0) return n;
+    return parsePackSizeFromVariant(p.variant);
+  }
+  var MEASURE_UNITS = /^(ml|l|g|kg)$/i;
+  // Products whose name or variant still ends with the supplier pack count ("x30", "x1").
+  function packCleanupCandidates() {
+    var out = [];
+    state.products.forEach(function (p) {
+      if (Number(p.packSize) > 0) return;
+      var re = /\s*[x×]\s?(\d+)\s*$/i;
+      var field = null, m = null;
+      if (p.variant && (m = String(p.variant).match(re))) field = 'variant';
+      else if ((m = String(p.name || '').match(re))) field = 'name';
+      if (!field) return;
+      var n = parseInt(m[1], 10);
+      var source = field === 'variant' ? p.variant : p.name;
+      var measured = MEASURE_UNITS.test(String(p.unit || '').trim()) ? parsePackSizeFromVariant(source) : null;
+      var size = measured || n;
+      if (!(size > 0)) return;
+      var newName = field === 'name' ? String(p.name).replace(re, '').trim() : p.name;
+      var newVariant = field === 'variant' ? String(p.variant).replace(re, '').trim() : (p.variant || '');
+      if (!newName) return;
+      out.push({ p: p, newName: newName, newVariant: newVariant, packSize: size });
+    });
+    return out;
+  }
+  var packCleanupOpen = false;
+  function packCleanupBannerHtml() {
+    if (state.packCleanupDismissed) return '';
+    var list = packCleanupCandidates();
+    if (!list.length) return '';
+    if (!packCleanupOpen) {
+      return '<div class="card" id="pack-cleanup-banner" style="margin-bottom:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#f6f9ff;">' +
+        '<span style="flex:1; min-width:220px;">🧹 ' + list.length + ' product name' + (list.length === 1 ? '' : 's') + ' still include the pack size (like "x30"). Move it into its own Pack size box so names stay clean?</span>' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-pack-clean-review">Review</button>' +
+        '<button type="button" class="btn-text" id="btn-pack-clean-dismiss">Not now</button></div>';
+    }
+    function nm(name, variant) { return escapeHtml(name + (variant ? ' — ' + variant : '')); }
+    return '<div class="card" id="pack-cleanup-banner" style="margin-bottom:14px;">' +
+      '<div style="font-weight:600; margin-bottom:4px;">Tidy product names</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:10px;">Nothing changes until you press Apply. Untick any name whose number should stay.</div>' +
+      '<div style="overflow-x:auto;"><table style="font-size:13px;"><thead><tr><th>Now</th><th>After</th><th>Pack size</th><th style="text-align:right;">Change?</th></tr></thead><tbody>' +
+      list.map(function (c) {
+        return '<tr><td>' + nm(c.p.name, c.p.variant) + '</td><td><strong>' + nm(c.newName, c.newVariant) + '</strong></td><td>' + c.packSize + (c.p.unit && MEASURE_UNITS.test(c.p.unit) ? c.p.unit : '') + '</td>' +
+          '<td style="text-align:right;"><input type="checkbox" class="pack-clean-chk" data-pack-clean-id="' + c.p.id + '" checked></td></tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+      '<div class="form-actions" style="margin-top:10px;"><button type="button" class="btn btn-primary btn-small" id="btn-pack-clean-apply">Apply selected</button> ' +
+      '<button type="button" class="btn btn-secondary btn-small" id="btn-pack-clean-cancel">Cancel</button></div></div>';
+  }
+  function applyPackCleanup(ids) {
+    var n = 0;
+    packCleanupCandidates().forEach(function (c) {
+      if (ids.indexOf(c.p.id) === -1) return;
+      c.p.name = c.newName;
+      c.p.variant = c.newVariant;
+      c.p.packSize = c.packSize;
+      n++;
+    });
+    packCleanupOpen = false;
+    if (n) { save(); }
+    renderAll();
+    return n;
+  }
+
+  // What she's bought, sold and used of one product — for the Inventory details panel.
+  function productStockStory(p) {
+    var purchases = state.costs.filter(function (c) {
+      return c.productId === p.id && Number(c.qty) > 0 && c.category !== 'testing' && c.category !== 'wastage';
+    }).slice().sort(function (a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    var bought = purchases.reduce(function (s, c) { return s + Number(c.qty); }, 0);
+    var sold = 0, replaced = 0;
+    state.orders.forEach(function (o) {
+      if (o.status === 'cancelled') return;
+      (o.items || []).forEach(function (i) { if (i.productId === p.id) { if (o.isReplacement && !(Number(i.unitPrice) > 0)) replaced += Number(i.qty) || 0; else sold += Number(i.qty) || 0; } });
+      (o.addOns || []).forEach(function (a) { if (a.productId === p.id) sold += Number(a.qty) || 0; });
+    });
+    var wasted = 0, tested = 0;
+    state.costs.forEach(function (c) {
+      if (c.productId !== p.id || !(Number(c.qty) < 0)) return;
+      if (c.category === 'wastage') wasted += -Number(c.qty);
+      else if (c.category === 'testing') tested += -Number(c.qty);
+    });
+    // Free replacements are also logged as wastage — don't count those twice.
+    wasted = Math.max(0, wasted - replaced);
+    var used = bought > 0 ? Math.round((bought - Number(p.stock)) * 1000) / 1000 : null;
+    return { purchases: purchases, bought: bought, sold: sold, replaced: replaced, wasted: wasted, tested: tested, used: used };
+  }
+  function fmtQty(n) { return String(Math.round(Number(n) * 1000) / 1000); }
+  function productStoryHtml(p) {
+    var st = productStockStory(p);
+    var size = productPackSize(p);
+    var u = p.unit || '';
+    function tile(label, big, sub) {
+      return '<div style="flex:1; min-width:120px; background:#f5f7fa; border-radius:10px; padding:8px 10px;"><div class="muted" style="font-size:12px;">' + label + '</div><div style="font-size:20px; font-weight:600;">' + big + '</div>' + (sub ? '<div class="muted" style="font-size:12px;">' + sub + '</div>' : '') + '</div>';
+    }
+    var packsText = (size && st.bought && Math.abs(st.bought / size - Math.round(st.bought / size)) < 1e-9) ? (Math.round(st.bought / size) + ' pack' + (Math.round(st.bought / size) === 1 ? '' : 's') + ' × ' + fmtQty(size) + u) : '';
+    var parts = [];
+    if (st.sold) parts.push(fmtQty(st.sold) + ' sold');
+    if (st.replaced) parts.push(fmtQty(st.replaced) + (st.replaced === 1 ? ' replacement' : ' replacements'));
+    if (st.wasted) parts.push(fmtQty(st.wasted) + ' wastage');
+    if (st.tested) parts.push(fmtQty(st.tested) + ' testing');
+    if (st.used != null) {
+      var other = Math.round((st.used - st.sold - st.replaced - st.wasted - st.tested) * 1000) / 1000;
+      if (other > 0) parts.push(fmtQty(other) + (isMaterialProduct(p) ? ' used in making' : ' unaccounted for'));
+    }
+    var tiles = '<div style="display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 10px;">' +
+      tile('In stock now', fmtQty(p.stock) + u) +
+      (st.bought ? tile('Bought in total', fmtQty(st.bought) + u, packsText) : '') +
+      (st.used != null ? tile('Sold / used', fmtQty(st.used) + u, parts.join(' · ')) : '') +
+      '</div>';
+    var hist = st.purchases.length
+      ? '<div class="muted" style="font-size:12px; margin-bottom:4px;">Restock history</div><table style="font-size:13px; width:100%;"><tbody>' +
+        st.purchases.map(function (c, idx) {
+          var q = Number(c.qty);
+          var packs = (size && Math.abs(q / size - Math.round(q / size)) < 1e-9 && Math.round(q / size) > 0) ? Math.round(q / size) + ' pack' + (Math.round(q / size) === 1 ? '' : 's') + ' × ' + fmtQty(size) + u : '';
+          var label = c.category === 'new_inventory' && idx === 0 ? 'Starting stock' : (packs || 'Restock');
+          return '<tr><td style="white-space:nowrap;">' + escapeHtml(formatDateCompact(c.date)) + '</td><td>' + escapeHtml(label) + (c.category === 'new_inventory' && idx === 0 && packs ? ' <span class="muted">(' + packs + ')</span>' : '') + '</td><td style="text-align:right;">' + fmtQty(q) + u + '</td><td style="text-align:right;">' + money(c.amount) + '</td></tr>';
+        }).join('') +
+        '<tr><td><strong>Total</strong></td><td></td><td style="text-align:right;"><strong>' + fmtQty(st.bought) + u + '</strong></td><td style="text-align:right;"><strong>' + money(st.purchases.reduce(function (s, c) { return s + Number(c.amount || 0); }, 0)) + '</strong></td></tr>' +
+        '</tbody></table>'
+      : '<div class="muted" style="font-size:12px;">No purchases recorded in Costs for this product yet.</div>';
+    return '<div class="inv-story">' + tiles + hist + '</div>';
+  }
+
   function restockHintText(p, packs) {
-    var packSize = parsePackSizeFromVariant(p.variant);
+    var packSize = productPackSize(p);
     if (!packSize) return '';
     var total = packSize * (Number(packs) || 0);
     return '= ' + total + (p.unit || '') + ' total';
   }
 
   function renderRestockPanel(p) {
-    var packSize = parsePackSizeFromVariant(p.variant);
-    var qtyLabel = packSize ? 'How many packs/bottles did you buy?' : 'How many did you buy?';
+    var packSize = productPackSize(p);
+    var qtyLabel = packSize ? 'How many packs did you buy? (1 pack = ' + fmtQty(packSize) + (p.unit || '') + ')' : 'How many did you buy?';
     return '<div class="order-edit-grid" style="border-top:none; padding-top:2px; margin-top:0;">' +
         '<div class="field-block"><div class="field-label" style="margin-bottom:2px;">Current stock</div><div style="font-size:13px;">' + p.stock + (p.unit || '') + '</div></div>' +
         '<div class="field-block"><label class="field-label">' + qtyLabel + '</label><input type="number" min="1" step="1" id="rf-packs-' + p.id + '" data-product-id="' + p.id + '" class="rf-packs-input" value="1"></div>' +
@@ -2211,7 +2421,7 @@
     var amount = Number(document.getElementById('rf-amount-' + id).value);
     if (!packs || packs <= 0) { alert('Enter how many you bought.'); return; }
     if (!amount || amount <= 0) { alert('Enter the total amount paid.'); return; }
-    var packSize = parsePackSizeFromVariant(p.variant);
+    var packSize = productPackSize(p);
     var qty = packSize ? packs * packSize : packs;
     var newUnitCost = amount / qty;
     if (!confirmCostSanity(p, newUnitCost)) return;
@@ -2446,7 +2656,7 @@
     if (stray.length > 0) {
       html += renderInventoryTable('Uncategorized — edit these and pick a Type', stray, false);
     }
-    container.innerHTML = html;
+    container.innerHTML = packCleanupBannerHtml() + html;
   }
 
   document.getElementById('inventory-content').addEventListener('change', function (e) {
@@ -2483,6 +2693,14 @@
   });
 
   document.getElementById('inventory-content').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-pack-clean-review') { packCleanupOpen = true; renderInventory(); return; }
+    if (e.target.id === 'btn-pack-clean-cancel') { packCleanupOpen = false; renderInventory(); return; }
+    if (e.target.id === 'btn-pack-clean-dismiss') { state.packCleanupDismissed = true; save(); renderInventory(); return; }
+    if (e.target.id === 'btn-pack-clean-apply') {
+      var ids = Array.from(document.querySelectorAll('.pack-clean-chk')).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-pack-clean-id'); });
+      applyPackCleanup(ids);
+      return;
+    }
     if (e.target.classList.contains('thumb')) {
       openLightbox(e.target.getAttribute('src'));
       return;
@@ -4606,6 +4824,17 @@
       renderOrders();
       return;
     }
+    if (e.target.id === 'btn-order-replacements') {
+      orderFilterType = orderFilterType === 'replacement' ? '' : 'replacement';
+      renderOrders();
+      return;
+    }
+    if (e.target.id === 'btn-order-select-mode') {
+      orderSelectMode = !orderSelectMode;
+      if (!orderSelectMode) selectedOrderIds = [];
+      renderOrders();
+      return;
+    }
     if (e.target.id === 'btn-orderfilter-7d') {
       var to7 = new Date(todayISO() + 'T00:00:00'); var from7 = new Date(to7); from7.setDate(from7.getDate() - 7);
       orderFilterFrom = from7.toISOString().slice(0, 10); orderFilterTo = todayISO();
@@ -4637,6 +4866,44 @@
       orderSearchText = e.target.value.trim();
       renderOrders();
     }
+  });
+
+  // "This order is": To make (gets a making date), Already made (logged late — pick where it is
+  // now and the day it was made, no production slot used), or Replacement (items at RM 0 are free).
+  var ofKind = 'make';
+  function setOrderKind(kind) {
+    ofKind = kind;
+    Array.from(document.querySelectorAll('#of-kind [data-of-kind]')).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-of-kind') === kind); });
+    var made = kind === 'made';
+    document.getElementById('of-kind-make').style.display = made ? 'none' : '';
+    document.getElementById('of-kind-made').style.display = made ? '' : 'none';
+    document.getElementById('of-kind-made-stage').style.display = made ? '' : 'none';
+    document.getElementById('of-kind-rep-hint').style.display = kind === 'replacement' ? '' : 'none';
+    var statusSel = document.getElementById('of-status');
+    if (made) { statusSel.value = document.getElementById('of-made-stage').value; }
+    else if (statusSel.value !== 'queueing') { statusSel.value = 'queueing'; }
+  }
+  document.getElementById('of-kind').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-of-kind]') : null;
+    if (!b) return;
+    var k = b.getAttribute('data-of-kind');
+    if (k === 'replacement' && ofKind !== 'replacement' && !editingOrderId) {
+      // Replacement items default to free; she prices only what the customer pays for.
+      draftItems.forEach(function (l) { l.unitPrice = 0; });
+      renderDraftItems();
+    }
+    document.getElementById('of-immediate').checked = false;
+    document.getElementById('of-estimated-date').disabled = false;
+    if (k === 'made' && !document.getElementById('of-made-date').value) document.getElementById('of-made-date').value = document.getElementById('of-date').value || todayISO();
+    setOrderKind(k);
+  });
+  document.getElementById('of-made-stage').addEventListener('change', function () {
+    if (ofKind === 'made') document.getElementById('of-status').value = this.value;
+  });
+  // Older code paths (and tests) may still set the hidden status box directly — keep the chips in step.
+  document.getElementById('of-status').addEventListener('change', function () {
+    if (this.value === 'queueing') { if (ofKind === 'made') setOrderKind('make'); }
+    else { document.getElementById('of-made-stage').value = this.value; if (ofKind !== 'made') setOrderKind('made'); }
   });
 
   document.getElementById('btn-add-order').addEventListener('click', function () {
@@ -4722,7 +4989,7 @@
     document.getElementById('of-paid').checked = false;
     ['of-ship-paste', 'of-recipient-name', 'of-recipient-phone', 'of-shipto', 'of-postcode'].forEach(function (id) { document.getElementById(id).value = ''; });
     document.getElementById('of-more-options').open = false;
-    document.getElementById('of-production-hint').textContent = 'Production date is picked for you (5 cups a day). Change it under More options.';
+    document.getElementById('of-production-hint').textContent = '';
     document.getElementById('of-buyer-name').value = '';
     document.getElementById('of-buyer-handle').value = '';
     document.getElementById('of-buyer-whatsapp').value = '';
@@ -4732,6 +4999,10 @@
     document.getElementById('of-estimated-date').disabled = false;
     document.getElementById('of-estimated-date-clear').disabled = false;
     document.getElementById('of-immediate').checked = false;
+    document.getElementById('of-made-date').value = '';
+    document.getElementById('of-made-stage').value = 'uv curing';
+    setOrderKind('make');
+    editingOrderWasReplacement = false;
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
     document.getElementById('of-shipping-weight').value = '';
     document.getElementById('of-shipping').value = '';
@@ -4838,7 +5109,7 @@
     } else if (e.target.classList.contains('di-product')) {
       draftItems[idx].productId = e.target.value;
       var p = state.products.find(function (x) { return x.id === e.target.value; });
-      if (p && !draftItems[idx].unitPrice) draftItems[idx].unitPrice = p.price;
+      if (p && !draftItems[idx].unitPrice && ofKind !== 'replacement') draftItems[idx].unitPrice = p.price;
       renderDraftItems();
     } else if (e.target.classList.contains('di-qty')) {
       draftItems[idx].qty = e.target.value;
@@ -5033,6 +5304,7 @@
   // Carried across a "Save + add another order" chain so the next form opens pre-filled with the
   // same buyer instead of her retyping it — cleared once a plain "Save order" ends the chain.
   var pendingChainBuyer = null;
+  var editingOrderWasReplacement = false;
 
   // Does everything the old inline btn-save-order handler used to do, EXCEPT closing the form —
   // returns the saved order object (so callers can attach a shipGroupId / decide whether to keep
@@ -5042,6 +5314,9 @@
     if (validLines.length === 0) { alert('Add at least one line item.'); return null; }
 
     var status = document.getElementById('of-status').value;
+    if (ofKind === 'made') status = document.getElementById('of-made-stage').value;
+    var madeOn = ofKind === 'made' ? (document.getElementById('of-made-date').value || '') : '';
+    var isReplacementOrder = ofKind === 'replacement' || (!!editingOrderId && editingOrderWasReplacement);
     var buyerName = document.getElementById('of-buyer-name').value.trim();
     var buyerHandle = document.getElementById('of-buyer-handle').value.trim();
     var buyerWhatsapp = document.getElementById('of-buyer-whatsapp').value.trim();
@@ -5138,6 +5413,7 @@
         order.buyerHandle = buyerHandle;
         order.buyerWhatsapp = buyerWhatsapp;
         order.date = date;
+        if (status === 'delivered' && order.status !== 'delivered') order.deliveredOn = todayISO();
         order.status = status;
         // Shipping details: only ever filled in or updated from here, never wiped — an empty box
         // leaves whatever she already added (e.g. from the Shipping tab) untouched.
@@ -5159,6 +5435,8 @@
         if (order.scheduledDate !== productionDate) order.customerNotified = false; // date moved — you'll need to notify again
         order.scheduledDate = productionDate;
         order.immediate = immediate;
+        if (ofKind === 'made') order.madeOn = madeOn;
+        if (isReplacementOrder) order.isReplacement = true;
         if (status !== 'cancelled') deductStock(order);
       }
       editingOrderId = null;
@@ -5203,6 +5481,19 @@
         addOns: [],
         parcels: []
       };
+      if (madeOn) newOrder.madeOn = madeOn;
+      if (isReplacementOrder) {
+        newOrder.isReplacement = true;
+        // Free replacement pieces cost her the item, same as the Shipping-tab replacement flow.
+        newItems.forEach(function (it) {
+          if ((Number(it.unitPrice) || 0) > 0 || status === 'cancelled') return;
+          var rp = state.products.find(function (x) { return x.id === it.productId; });
+          var amt = Math.round(it.qty * (Number(it.unitCost) || 0) * 100) / 100;
+          if (!rp || amt <= 0) return;
+          state.costs.push({ id: uid(), category: 'wastage', date: date, amount: amt, productId: rp.id, qty: -it.qty, orderId: newOrder.id,
+            description: 'Replacement sent — ' + (buyerName || 'customer') + ' — ' + it.productName + ' (' + it.qty + ' units)' });
+        });
+      }
       if (status !== 'cancelled') deductStock(newOrder);
       state.orders.push(newOrder);
       savedOrder = newOrder;
@@ -5365,6 +5656,7 @@
     } else if (willBeCancelled && pendingPackagingChoiceOrderId === order.id) {
       pendingPackagingChoiceOrderId = null;
     }
+    if (newStatus === 'delivered' && order.status !== 'delivered') order.deliveredOn = todayISO();
     order.status = newStatus;
   }
 
@@ -5468,7 +5760,10 @@
 
   function orderAllItemsMade(order) {
     var items = order.items || [];
-    return items.length > 0 && items.every(function (i) { return (Number(i.madeQty) || 0) >= (Number(i.qty) || 0); });
+    // Only the bottles need making; if there are none, fall back to every item.
+    var bottles = items.filter(isBottleItem);
+    var check = bottles.length ? bottles : items;
+    return check.length > 0 && check.every(function (i) { return (Number(i.madeQty) || 0) >= (Number(i.qty) || 0); });
   }
   var PRE_SHIP_STATUSES = ['queueing', 'uv curing', 'ready to ship', 'order shipment'];
 
@@ -5553,10 +5848,17 @@
   // How many of each line item have actually been made so far vs how many were ordered —
   // she wanted this per-item ("order 5 bottles, only 3 done so far") rather than one blended
   // number for the whole order, since orders can mix multiple different products.
+  // "Made" is about bottles (Tumblers) only — stickers and add-ons ride along with a bottle and
+  // aren't something she makes one by one.
+  function isBottleItem(i) {
+    var p = state.products.find(function (x) { return x.id === i.productId; });
+    return !!(p && p.type === 'Tumbler');
+  }
   function orderMadeSummary(o) {
     var made = 0, ordered = 0;
-    o.items.forEach(function (i) {
-      made += Number(i.madeQty) || 0;
+    (o.items || []).forEach(function (i) {
+      if (!isBottleItem(i)) return;
+      made += Math.min(Number(i.madeQty) || 0, Number(i.qty) || 0);
       ordered += Number(i.qty) || 0;
     });
     return { made: made, ordered: ordered };
@@ -5892,7 +6194,7 @@
     }
 
     return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' +
-      '<div style="font-weight:600; font-size:13px; margin-bottom:4px;">Add-ons <span class="muted" style="font-weight:400;">(decided after the order was placed — paid separately)</span></div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:4px;">Decided after the order was placed — paid separately.</div>' +
       (addOns.length === 0 ? '<div class="muted" style="font-size:13px;">None yet.</div>' : rowsHtml) +
       '<div style="margin-top:6px;">' + formOrButton + '</div>' +
       '</div>';
@@ -5971,7 +6273,7 @@
       : '';
 
     return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">' +
-      '<div style="font-weight:600; font-size:13px; margin-bottom:6px;">Scheduling</div>' +
+
       '<div class="order-edit-grid" style="border-top:none; padding-top:0; margin-top:0;">' +
         '<div class="field-block"><label class="field-label">Production date <span class="muted">(shown on Calendar)</span></label>' +
           '<div style="display:flex; gap:6px; align-items:center;">' +
@@ -5995,7 +6297,7 @@
   function renderOrderDetailsBlock(o) {
     var isCancelled = o.status === 'cancelled';
     if (editingDetailsOrderId === o.id) {
-      return '<div class="order-edit-grid">' +
+      return '<div class="od-sec"><div class="od-sec-title">Payment and shipping</div><div class="order-edit-grid" style="border-top:none; margin-top:0; padding-top:0;">' +
           '<div class="field-block checkbox-row" style="padding-top:0;">' +
             (isCancelled
               ? '<span title="Cancelled — payment not applicable">⛔</span><label style="color:var(--muted);">Payment not applicable (order cancelled)</label>'
@@ -6013,19 +6315,23 @@
         '<div class="form-actions" style="margin-top:10px;">' +
           '<button class="btn btn-primary btn-small" data-save-details="' + o.id + '">Save</button> ' +
           '<button class="btn btn-secondary btn-small" data-cancel-details="' + o.id + '">Cancel</button>' +
-        '</div>';
+        '</div></div>';
     }
-    return '<div class="order-edit-grid">' +
+    var secGrid = '<div class="order-edit-grid" style="border-top:none; margin-top:0; padding-top:0;">';
+    return '<div class="od-sec"><div class="od-sec-title">Payment</div>' + secGrid +
         detailRow('Paid', isCancelled ? '⛔ Not applicable (cancelled)' : (o.paid ? 'Yes' : 'No')) +
+        detailRow('Amount', money(orderTotal(o))) +
         detailRow('Payment date', o.paymentDate || '—') +
         detailRow('Reference no.', o.paymentRef || '—') +
         detailRow('Payer account name', o.paymentBankName || '—') +
+      '</div></div>' +
+      '<div class="od-sec"><div class="od-sec-title">Shipping</div>' + secGrid +
         detailRow('Recipient name', o.recipientName || '—') +
         detailRow('Recipient phone', o.recipientPhone || o.buyerWhatsapp || '—') +
         detailRow('Ship to', (o.shipTo || '—') + (o.postcode ? ', ' + o.postcode : '')) +
         detailRow('Shipping cost paid', isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual) ? money(o.shippingCostActual || 0) : '⚠️ Not entered yet') +
       '</div>' +
-      '<div style="margin-top:10px;"><button class="btn btn-secondary btn-small" data-edit-details="' + o.id + '">Edit details</button></div>';
+      '<div style="margin-top:8px;"><button class="btn btn-secondary btn-small" data-edit-details="' + o.id + '">Edit payment / shipping</button></div></div>';
   }
 
   function saveOrderDetails(id) {
@@ -6079,7 +6385,10 @@
   function renderOrderBulkBar() {
     var bar = document.getElementById('order-bulk-bar');
     if (!bar) return;
-    if (selectedOrderIds.length === 0) { bar.innerHTML = ''; return; }
+    if (selectedOrderIds.length === 0) {
+      bar.innerHTML = orderSelectMode ? '<div class="card" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px;"><span class="muted">Tick the orders you want to change together.</span><button type="button" class="btn-text" id="btn-order-bulk-selectall">Select all shown</button></div>' : '';
+      return;
+    }
     var statuses = ['queueing', 'uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered', 'cancelled'];
     bar.innerHTML = '<div class="card" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
       '<span style="font-weight:500;">' + selectedOrderIds.length + ' selected</span>' +
@@ -6104,7 +6413,13 @@
     var searchInp = document.getElementById('order-search');
     if (searchInp) searchInp.value = orderSearchText;
     var sortBtn = document.getElementById('btn-order-sort-toggle');
-    if (sortBtn) sortBtn.textContent = orderSortAscending ? '↑ Oldest added first' : '↓ Newest added first';
+    if (sortBtn) sortBtn.textContent = orderSortAscending ? '↑ Oldest first' : '↓ Newest first';
+    var repBtn = document.getElementById('btn-order-replacements');
+    if (repBtn) repBtn.classList.toggle('on', orderFilterType === 'replacement');
+    var selBtn = document.getElementById('btn-order-select-mode');
+    if (selBtn) { selBtn.classList.toggle('on', orderSelectMode); selBtn.textContent = orderSelectMode ? 'Done selecting' : 'Select'; }
+    var clrBtn = document.getElementById('btn-orderfilter-clear');
+    if (clrBtn) clrBtn.style.display = (orderFilterFrom || orderFilterTo) ? '' : 'none';
   }
 
   // Orders split by where they are in her real workflow. "All" keeps the old everything-at-once
@@ -6148,6 +6463,29 @@
     if (o.status === 'shipped') return '<button class="btn btn-secondary oc-next" data-next-step="' + o.id + '" title="Customer received it">Mark delivered →</button>';
     return '';
   }
+
+  // Order-card display helpers. The supplier's pack size ("x30") belongs to how she buys stock,
+  // not to what the customer ordered, so it's dropped from item names on orders.
+  function cleanItemName(n) {
+    var t = String(n || '').replace(/\s*[x×]\s?\d+\s*$/i, '').trim();
+    return t || String(n || '');
+  }
+  var SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // "Sun 4 Oct" — one short date style across the order cards.
+  function shortDate(d) {
+    if (!d) return '';
+    var dt = new Date(d + 'T00:00:00');
+    if (isNaN(dt.getTime())) return String(d);
+    var s = SHORT_DAYS[dt.getDay()] + ' ' + dt.getDate() + ' ' + SHORT_MONTHS[dt.getMonth()];
+    if (dt.getFullYear() !== new Date().getFullYear()) s += ' ' + dt.getFullYear();
+    return s;
+  }
+  function orderStatusLabel(st) {
+    return ({ 'queueing': 'To make', 'uv curing': 'UV curing', 'ready to ship': 'Ready to ship', 'order shipment': 'Booked', 'shipped': 'Shipped', 'delivered': 'Delivered', 'cancelled': 'Cancelled' })[st] || st;
+  }
+  // "Select" on the filter bar shows the tick boxes for changing several orders at once.
+  var orderSelectMode = false;
 
   function renderOrders() {
     renderOrderFilterBar();
@@ -6197,40 +6535,80 @@
     // the add-sequence (oldest first). So ascending needs no sort at all; descending just reverses it.
     var sorted = orderSortAscending ? filteredOrders.slice() : filteredOrders.slice().reverse();
     var statuses = ['queueing', 'uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered', 'cancelled'];
+    var tableEl = document.getElementById('order-table');
+    if (tableEl) tableEl.classList.toggle('select-mode', orderSelectMode || selectedOrderIds.length > 0);
     tbody.innerHTML = sorted.map(function (o) {
       var statusOptions = statuses.map(function (s) {
         return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
       }).join('');
-      // Each order is drawn as a card (see the .order-card CSS): name + WhatsApp and Paid on top,
-      // the items underneath, then the date, total and the one "next step" button.
-      var rows = '<tr class="order-card">' +
-        '<td class="oc-chk"><input type="checkbox" class="order-row-checkbox" data-order-id="' + o.id + '"' + (selectedOrderIds.indexOf(o.id) !== -1 ? ' checked' : '') + '></td>' +
-        '<td class="oc-date">' + (o.status === 'queueing' && o.scheduledDate ? '<span class="oc-make">Make ' + escapeHtml(formatDateLong(o.scheduledDate)) + '</span> · <span class="muted">ordered ' + formatDate(o.date) + '</span>' : '<span class="muted">Ordered ' + formatDate(o.date) + '</span>') + (o.trackingNumber ? ' <span class="muted">· ' + escapeHtml(o.trackingNumber) + '</span>' : '') + '</td>' +
-        '<td class="oc-buyer"><div style="font-weight:600;">' + (escapeHtml(o.buyerName) || '—') + (o.buyerHandle ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 replacement</span>' : '') + '</div></td>' +
-        '<td class="oc-wa muted">' + (escapeHtml(o.buyerWhatsapp) || '') + '</td>' +
-        '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (o.items.length ? o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty + (i.pattern ? ' · ' + escapeHtml(i.pattern) : '') + (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : ''); }).join('<br>') : 'No items') + '</button>' +
-          (function () {
-            if (o.status === 'cancelled') return '';
-            var ms = orderMadeSummary(o);
-            if (ms.ordered === 0) return '';
-            return '<div><span class="pill ' + (ms.made >= ms.ordered ? 'pill-green' : 'pill-gray') + '" style="font-size:10px;">' + ms.made + '/' + ms.ordered + ' made</span></div>';
-          })() + '</td>' +
-        '<td class="oc-total">' + money(orderTotal(o)) + '</td>' +
-        '<td class="oc-paid">' + (o.status === 'cancelled'
-          ? '<span class="pill pill-gray" title="Cancelled — payment not applicable">⛔ Cancelled</span>'
-          : '<label class="oc-paid-chip ' + (o.paid ? 'is-paid' : 'is-unpaid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? 'Paid' : 'Unpaid') + '</label>' +
-            (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : '')) + '</td>' +
-        '<td class="oc-status"><select class="order-status-select" data-order-id="' + o.id + '" style="padding:4px 8px; font-size:12px;">' + statusOptions + '</select></td>' +
-        '<td class="oc-actions">' +
-        nextStepButtonHtml(o) + '<div class="oc-links">' +
-        ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button class="btn-text" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button> ' : '') +
-        '<button class="btn-text" data-edit-order="' + o.id + '">Edit</button> ' +
-        (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
-          ? '<button class="btn-text" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">+ Add another order</button> '
-          : '') +
-        '<button class="btn-text danger" data-delete-order="' + o.id + '">Delete</button>' +
-        '</div></td>' +
-        '</tr>';
+      var isDone = o.status === 'delivered' || o.status === 'cancelled';
+      var total = orderTotal(o);
+      var chkTd = '<td class="oc-chk"><input type="checkbox" class="order-row-checkbox" data-order-id="' + o.id + '"' + (selectedOrderIds.indexOf(o.id) !== -1 ? ' checked' : '') + '></td>';
+      // Everything that isn't the one next step lives behind "⋯": ask address, edit, change
+      // status, add another order for the same buyer, and Delete (last, in red).
+      var menuHtml = '<div class="oc-more" data-oc-more-wrap="' + o.id + '">' +
+        '<button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button>' +
+        '<div class="oc-menu">' +
+          ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button type="button" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button>' : '') +
+          '<button type="button" data-edit-order="' + o.id + '">✏️ Edit</button>' +
+          '<div class="oc-menu-row">Status <select class="order-status-select" data-order-id="' + o.id + '">' + statusOptions + '</select></div>' +
+          (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
+            ? '<button type="button" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">➕ Add another order</button>'
+            : '') +
+          '<button type="button" class="danger" data-delete-order="' + o.id + '">🗑 Delete</button>' +
+        '</div></div>';
+      var buyerInner = (escapeHtml(o.buyerName) || '—') +
+        (o.buyerHandle ? ' <span class="oc-sub">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') +
+        (o.buyerWhatsapp ? ' <span class="oc-sub">· ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') +
+        (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 Replacement</span>' : '');
+      var totalHtml;
+      if (o.isReplacement && total <= 0) totalHtml = '<span style="font-weight:500; color:var(--muted);">Free replacement</span>';
+      else if (o.isReplacement) {
+        var extras = (o.items || []).filter(function (i) { return (Number(i.unitPrice) || 0) > 0; }).map(function (i) { return i.qty + ' × ' + cleanItemName(i.productName); });
+        totalHtml = money(total) + (extras.length ? '<span class="oc-extra">extra: ' + escapeHtml(extras.join(', ')) + '</span>' : '');
+      } else totalHtml = money(total);
+      var paidHtml = o.status === 'cancelled'
+        ? '<span class="pill pill-gray" title="Cancelled — payment not applicable">⛔ Cancelled</span>'
+        : ((o.isReplacement && total <= 0) ? '' :
+          '<label class="oc-paid-chip ' + (o.paid ? 'is-paid' : 'is-unpaid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? 'Paid' : 'Unpaid') + '</label>' +
+            (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : ''));
+      var statusTag = orderStage === 'all' ? '<span class="oc-status-tag">' + escapeHtml(orderStatusLabel(o.status)) + '</span>' : '';
+      var itemLines = (o.items || []).map(function (i) {
+        return i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + (i.pattern ? ' · ' + escapeHtml(i.pattern) : '') +
+          (o.isReplacement ? ' <span class="muted" style="font-size:12px;">' + ((Number(i.unitPrice) || 0) > 0 ? '(' + money(i.qty * i.unitPrice) + ')' : '(free)') + '</span>' : '') +
+          (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : '');
+      });
+      var rows;
+      if (isDone) {
+        // Delivered / cancelled: one quiet line — name, what they bought, when, how much.
+        var doneWhen = o.status === 'cancelled' ? 'Cancelled' : (o.deliveredOn ? 'Delivered ' + shortDate(o.deliveredOn) : 'Delivered · ordered ' + shortDate(o.date));
+        rows = '<tr class="order-card oc-compact">' + chkTd +
+          '<td class="oc-buyer"><span style="font-weight:600;">' + (escapeHtml(o.buyerName) || '—') + '</span>' + (o.isReplacement ? ' <span class="oc-sub">🔁</span>' : '') +
+            ' <button class="btn-text oc-sub" data-toggle-order="' + o.id + '" style="font-weight:400; padding:0;">· ' + (itemLines.length ? itemLines.join(' · ') : 'No items') + '</button></td>' +
+          '<td class="oc-date">' + doneWhen + '</td>' +
+          '<td class="oc-total">' + ((o.isReplacement && total <= 0) ? '<span style="font-weight:400; color:var(--muted);">Free</span>' : money(total)) + '</td>' +
+          '<td class="oc-actions">' + menuHtml + '</td>' +
+          '</tr>';
+      } else {
+        var ms = orderMadeSummary(o);
+        var madePill = '';
+        if (o.status !== 'cancelled' && ms.ordered > 0) {
+          madePill = o.status === 'queueing'
+            ? '<span class="oc-madepill' + (ms.made >= ms.ordered ? ' done' : '') + '">' + ms.made + ' / ' + ms.ordered + ' bottle' + (ms.ordered === 1 ? '' : 's') + ' made</span>'
+            : '<span class="oc-madepill done">✔ Made</span>';
+        }
+        var dateHtml = o.status === 'queueing' && o.scheduledDate
+          ? '<span class="oc-make">📅 Make ' + escapeHtml(shortDate(o.scheduledDate)) + '</span> · ordered ' + shortDate(o.date)
+          : 'Ordered ' + shortDate(o.date);
+        rows = '<tr class="order-card">' + chkTd +
+          '<td class="oc-date">' + dateHtml + (o.trackingNumber ? ' · ' + escapeHtml(o.trackingNumber) : '') + statusTag + '</td>' +
+          '<td class="oc-buyer"><div style="font-weight:600;">' + buyerInner + '</div></td>' +
+          '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (itemLines.length ? itemLines.join('<br>') : 'No items') + '</button></td>' +
+          '<td class="oc-total">' + totalHtml + '</td>' +
+          '<td class="oc-paid">' + paidHtml + '</td>' +
+          '<td class="oc-actions">' + madePill + nextStepButtonHtml(o) + menuHtml + '</td>' +
+          '</tr>';
+      }
       if (pendingPackagingChoiceOrderId === o.id) {
         rows += '<tr><td colspan="9" style="background:#fffaf0; padding:8px 12px;">' +
           '<span style="font-size:13px;">📦 Which packaging did you use for this order?</span> ' +
@@ -6240,10 +6618,10 @@
         '</td></tr>';
       }
       if (expandedOrderId === o.id) {
-        rows += '<tr class="order-items-row"><td colspan="9">' +
+        rows += '<tr class="order-items-row"><td colspan="9"><div class="od-sec"><div class="od-sec-title">Items</div>' +
           o.items.map(function (i, idx) {
             var madeQty = Number(i.madeQty) || 0;
-            var madeControl = o.status === 'cancelled' ? '' :
+            var madeControl = (o.status === 'cancelled' || !isBottleItem(i)) ? '' :
               '<span style="display:flex; align-items:center; gap:6px; margin-left:12px;">' +
                 '<span class="muted" style="font-size:11px; white-space:nowrap;">Made:</span>' +
                 '<input type="number" class="order-item-made-input" data-order-id="' + o.id + '" data-item-index="' + idx + '" min="0" max="' + i.qty + '" value="' + madeQty + '" style="width:52px; padding:3px 5px; font-size:12px;">' +
@@ -6304,13 +6682,15 @@
             var catalogThumb = (catalogProduct && catalogProduct.image)
               ? '<img src="' + catalogProduct.image + '" class="thumb order-item-catalog-thumb" style="width:26px; height:26px; margin-right:8px; vertical-align:middle;" title="Click to view">'
               : '';
-            return '<div class="row-line" style="align-items:center;"><span>' + catalogThumb + escapeHtml(i.productName) + ' × ' + i.qty + defectTag + patternTag + '</span>' +
-              '<span style="display:flex; align-items:center;">' + money(i.qty * i.unitPrice) + madeControl + patternControl + photoControl + defectControl + '</span></div>';
+            return '<div class="row-line" style="align-items:center;"><span>' + catalogThumb + i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + defectTag + patternTag + '</span>' +
+              '<span style="display:flex; align-items:center;">' + ((o.isReplacement && !(Number(i.unitPrice) > 0)) ? '<span class="muted">free</span>' : money(i.qty * i.unitPrice)) + madeControl + patternControl + photoControl + defectControl + '</span></div>';
           }).join('') +
           (o.notes ? '<div class="muted" style="padding-top:6px;">Note: ' + escapeHtml(o.notes) + '</div>' : '') +
+          '</div>' +
           renderOrderDetailsBlock(o) +
-          renderSchedulingSection(o) +
-          renderAddOnsSection(o) +
+          '<div class="od-sec"><div class="od-sec-title">Add-ons</div>' + renderAddOnsSection(o) + '</div>' +
+          // The making date only matters while it's still to be made.
+          (o.status === 'queueing' ? '<div class="od-sec"><div class="od-sec-title">Making date</div>' + renderSchedulingSection(o) + '</div>' : '') +
           '</td></tr>';
       }
       return rows;
@@ -6346,7 +6726,12 @@
     document.getElementById('of-recipient-phone').value = order.recipientPhone || '';
     document.getElementById('of-shipto').value = order.shipTo || '';
     document.getElementById('of-postcode').value = order.postcode || '';
-    document.getElementById('of-production-hint').textContent = order.scheduledDate ? 'Production date: ' + formatDate(order.scheduledDate) + ' (change under More options)' : '';
+    document.getElementById('of-production-hint').textContent = '';
+    document.getElementById('of-made-date').value = order.madeOn || '';
+    if (order.status !== 'queueing') document.getElementById('of-made-stage').value = order.status;
+    setOrderKind(order.isReplacement && order.status === 'queueing' ? 'replacement' : (order.status === 'queueing' ? 'make' : 'made'));
+    if (order.isReplacement && order.status !== 'queueing') ofKind = 'made';
+    editingOrderWasReplacement = !!order.isReplacement;
     draftItems = order.items.map(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
       if (!p) return null;
@@ -6362,7 +6747,21 @@
     }
   }
 
+  function closeOrderMenus(except) {
+    Array.from(document.querySelectorAll('.oc-more.open')).forEach(function (m) { if (m !== except) m.classList.remove('open'); });
+  }
+  document.addEventListener('click', function (e) {
+    if (!(e.target.closest && e.target.closest('.oc-more'))) closeOrderMenus();
+  });
   document.querySelector('#order-table tbody').addEventListener('click', function (e) {
+    var moreBtn = e.target.closest ? e.target.closest('[data-order-more]') : null;
+    if (moreBtn) {
+      var moreWrap = moreBtn.parentNode;
+      closeOrderMenus(moreWrap);
+      moreWrap.classList.toggle('open');
+      return;
+    }
+    if (e.target.closest && e.target.closest('.oc-menu') && e.target.tagName === 'BUTTON') closeOrderMenus();
     var nextStepId = e.target.getAttribute('data-next-step');
     if (nextStepId) { advanceOrderOneStep(nextStepId); return; }
     var goShipId = e.target.getAttribute('data-go-shipping');
@@ -6648,6 +7047,14 @@
       if (!newStatus) { alert('Please choose a status first.'); return; }
       bulkChangeOrderStatus(selectedOrderIds.slice(), newStatus);
     }
+    if (e.target.id === 'btn-order-bulk-selectall') {
+      Array.from(document.querySelectorAll('#order-table tbody .order-row-checkbox')).forEach(function (cb) {
+        var id = cb.getAttribute('data-order-id');
+        if (selectedOrderIds.indexOf(id) === -1) selectedOrderIds.push(id);
+      });
+      renderOrders();
+      return;
+    }
     if (e.target.id === 'btn-order-bulk-clear') {
       selectedOrderIds = [];
       renderOrders();
@@ -6678,6 +7085,12 @@
     });
     return { defectLoss: loss, defectCount: count };
   }
+
+  // Materials & craft supplies (everything under type "Others": glitter, resin, glycerin, dyes,
+  // parcel bags…) are counted as spent the day they're bought. They're still tracked in Inventory
+  // so she knows what's left, but they don't count toward stock value / assets — only the things
+  // she sells (Tumblers, Stickers, Add ons) do.
+  function isMaterialProduct(p) { return !!p && (p.type || 'Others') === 'Others'; }
 
   function financials() {
     var active = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
@@ -6731,14 +7144,15 @@
     var refundsGiven = active.reduce(function (s, o) { return s + Number(o.refundAmount || 0); }, 0);
     var cash = Number(state.startingCash || 0) - (allCostsSpent - unclaimedOwed) - shippingCostsPaid + cashCollected - refundsGiven;
     var unclaimedOwedTotal = unclaimedOwnerAmount();
-    var invValue = state.products.reduce(function (s, p) { return s + p.stock * p.cost; }, 0);
+    var invValue = state.products.reduce(function (s, p) { return isMaterialProduct(p) ? s : s + p.stock * p.cost; }, 0);
+    var materialsLeftValue = state.products.reduce(function (s, p) { return isMaterialProduct(p) ? s + p.stock * p.cost : s; }, 0);
     var netProfit = revenue - inventorySpend - expense - testingSpend - wastageLoss - refundsGiven;
     var totalAccountValue = cash + invValue;
     var defectStats = defectLossFor(active);
     return {
       active: active, revenue: revenue, shippingCostsPaid: shippingCostsPaid,
       inventorySpend: inventorySpend, expenseFromCosts: expenseFromCosts, testingSpend: testingSpend, wastageLoss: wastageLoss, allCostsSpent: allCostsSpent,
-      expense: expense, cash: cash, invValue: invValue,
+      expense: expense, cash: cash, invValue: invValue, materialsLeftValue: materialsLeftValue,
       netProfit: netProfit, totalAccountValue: totalAccountValue,
       defectLoss: defectStats.defectLoss, defectCount: defectStats.defectCount,
       unclaimedOwed: unclaimedOwedTotal, refundsGiven: refundsGiven
@@ -6759,6 +7173,7 @@
   var INV_OPEX_LINES = [
     { key: 'ads', label: 'Marketing & ads' },
     { key: 'fees', label: 'Platform fees' },
+    { key: 'materials', label: 'Materials & craft supplies' },
     { key: 'packaging', label: 'Packaging & supplies' },
     { key: 'outbound', label: 'Shipping to customers' },
     { key: 'inbound', label: 'Delivery of supplies' },
@@ -6868,6 +7283,16 @@
       if (!inRange(c.date)) return;
       var amt = Number(c.amount) || 0;
       var line;
+      var matP = c.productId ? productById[c.productId] : null;
+      if (isMaterialProduct(matP)) {
+        // Materials were already counted in full when bought, so using some up for testing or
+        // throwing some away isn't a second cost.
+        if ((c.category === 'testing' || c.category === 'wastage') && !(Number(c.qty) > 0)) return;
+        if (c.category === 'restock' || c.category === 'new_inventory' || Number(c.qty) > 0) {
+          costRows.push({ ym: invMonthKey(c.date), line: c.category === 'packaging' ? 'packaging' : 'materials', amount: amt, c: c });
+          return;
+        }
+      }
       if (c.category === 'testing') line = 'testing';
       else if (c.category === 'wastage') line = 'wastage';
       else if (c.category === 'restock' || c.category === 'new_inventory' || (c.productId && Number(c.qty) > 0)) line = 'stock';
@@ -6996,12 +7421,13 @@
     var owedToOwner = unclaimedOwnerAmountExcludingWastage();
     var netAssets = fin.cash + fin.invValue + receivables - owedToOwner;
     addRow(s, [C('Cash in the business', null, 'label'), C(fin.cash, INV_MONEY, 'value'), C('Starting capital − spending + payments in', null, 'note')]);
-    addRow(s, [C('Stock on hand (at cost)', null, 'label'), C(fin.invValue, INV_MONEY, 'value'), C('Inventory valued at average purchase cost', null, 'note')]);
+    addRow(s, [C('Stock on hand (at cost)', null, 'label'), C(fin.invValue, INV_MONEY, 'value'), C('Tumblers, stickers and add-ons, at average purchase cost', null, 'note')]);
     addRow(s, [C('Owed by customers', null, 'label'), C(receivables, INV_MONEY, 'value'), C('Orders not fully paid yet', null, 'note')]);
     addRow(s, [C('Owed to the owner', null, 'label'), C(owedToOwner, INV_MONEY, 'value'), C('Paid personally, not yet reimbursed', null, 'note')]);
     addRow(s, [C('Net assets', null, 'totalLabel'), C(netAssets, INV_MONEY, 'total'), C('Cash + stock + owed to us − owed to owner', null, 'totalNote')], 22);
     addRow(s, [C('Starting capital', null, 'label'), C(Number(state.startingCash || 0), INV_MONEY, 'value'), C('Money originally put into the business', null, 'note')]);
-    addRow(s, [C('Stock bought in the period', null, 'label'), C(pnl.stockPurchases, INV_MONEY, 'value'), C('Becomes a cost only once the stock is sold', null, 'note')]);
+    addRow(s, [C('Stock bought in the period', null, 'label'), C(pnl.stockPurchases, INV_MONEY, 'value'), C('Items for sale — becomes a cost only once sold', null, 'note')]);
+    addRow(s, [C('Materials bought in the period', null, 'label'), C(pnl.opex.materials, INV_MONEY, 'value'), C('Glitter, resin, dyes, etc. — counted as a cost when bought', null, 'note')]);
     sheets.push(s);
 
     // ---------- Monthly Trend ----------
@@ -7227,6 +7653,7 @@
   // Test-only hooks: let the regression suite inspect the report data and build the workbook with
   // the npm copy of the Excel library (the CDN one never loads in the offline test sandbox).
   window.__buildInvestorReportData = buildInvestorReportData;
+  window.__financials = financials;
   window.__buildInvestorWorkbook = buildInvestorWorkbook;
 
   // Ephemeral UI state for the Dashboard date-range filter — not persisted, resets on reload,
@@ -7444,7 +7871,7 @@
     var totalSpentPeriod = periodFin ? periodFin.allCostsSpent : fin.allCostsSpent;
     var testingSpendPeriod = periodFin ? periodFin.testingSpend : fin.testingSpend;
     var orderCountLabel = periodFin ? periodFin.orderCount + ' orders in range (excl. cancelled)' : fin.active.length + ' orders (excl. cancelled)';
-    var unitsInStock = state.products.reduce(function (s, p) { return s + p.stock; }, 0);
+    var unitsInStock = state.products.reduce(function (s, p) { return isMaterialProduct(p) ? s : s + p.stock; }, 0);
     var pendingCount = state.orders.filter(function (o) { return o.status === 'queueing'; }).length;
     var recent = state.orders.slice().sort(function (a, b) { return b.date.localeCompare(a.date); }).slice(0, 6);
 
@@ -7455,7 +7882,7 @@
       statCard('Total account value', money(fin.totalAccountValue), 'Cash + inventory value') +
       cashStatCard(fin.cash, state.startingCash) +
       statCard('Expense', money(fin.expense), 'Ads, shipping, packaging, fees etc. + courier paid') +
-      statCard('Inventory value', money(invValue), unitsInStock + ' units in stock') +
+      statCard('Inventory value', money(invValue), unitsInStock + ' items for sale in stock · materials count as spent') +
       statCard('Revenue', money(revenue), orderCountLabel) +
       statCard('Net profit', money(netProfitPeriod), 'Revenue − inventory spend − expense − testing − refunds' + (periodFin ? ' (for the selected range)' : ''), netProfitPeriod >= 0 ? 'var(--green)' : 'var(--red)') +
       totalSpentStatCard(totalSpentPeriod, testingSpendPeriod, !!periodFin) +
@@ -9569,6 +9996,8 @@
   // into a new month without reloading; hit "Today" any time to snap back to now.
   var calYear = (new Date()).getFullYear();
   var calMonth = (new Date()).getMonth();
+  var calShowMade = function () { try { return localStorage.getItem('sipsCalShowMade') === '1'; } catch (e) { return false; } };
+  var calOrderToMake = function (o) { return o.status === 'queueing' && !o.productionDone && !o.immediate; };
   var calEditingDate = null; // day currently open in the edit panel — nothing is saved until "Save"
 
   function renderCalendar() {
@@ -9586,13 +10015,18 @@
     // order, with their own chip colour, so she can cross-check a day's scheduled work against
     // same-day-ready work at a glance without having to also pick a Confirmed date for them.
     var immediateByDate = {};
+    // Only orders still waiting to be made (queueing) belong on the Calendar. Anything already
+    // made (UV curing onward, or "ready right away") is hidden unless "Show made orders" is on,
+    // and then drawn faded with a ✔ so it never reads as work still to do.
+    var showMade = calShowMade();
     state.orders.forEach(function (o) {
       if (o.status === 'cancelled') return;
-      if (o.scheduledDate) {
+      var toMake = o.status === 'queueing' && !o.productionDone && !o.immediate;
+      if (o.scheduledDate && (toMake || (showMade && !o.immediate))) {
         if (!ordersByDate[o.scheduledDate]) ordersByDate[o.scheduledDate] = [];
         ordersByDate[o.scheduledDate].push(o);
       }
-      if (o.immediate && o.date) {
+      if (showMade && o.immediate && o.date) {
         if (!immediateByDate[o.date]) immediateByDate[o.date] = [];
         immediateByDate[o.date].push(o);
       }
@@ -9609,7 +10043,7 @@
       var isBlocked = state.blockedDates.hasOwnProperty(dateStr);
       var dayOrders = ordersByDate[dateStr] || [];
       var dayImmediateOrders = immediateByDate[dateStr] || [];
-      var isConflict = isBlocked && dayOrders.length > 0;
+      var isConflict = isBlocked && dayOrders.some(calOrderToMake);
       var isToday = dateStr === todayStr;
       var isEditing = dateStr === calEditingDate;
       var classes = 'cal-day' + (isBlocked ? ' cal-blocked' : '') + (isConflict ? ' cal-conflict' : '') + (isToday ? ' cal-today' : '') + (isEditing ? ' cal-editing' : '');
@@ -9617,7 +10051,8 @@
       var chipsHtml = dayOrders.length
         ? '<div class="cal-chip-row">' +
             dayOrders.slice(0, CAL_CHIP_CAP).map(function (o) {
-              return '<div class="cal-order-chip" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + '">' + escapeHtml(o.buyerName || 'Order') + '</div>';
+              var made = !calOrderToMake(o);
+              return '<div class="cal-order-chip' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + (made ? ' (made)' : '') + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + '</div>';
             }).join('') +
             (dayOrders.length > CAL_CHIP_CAP ? '<div class="muted" style="font-size:10px;">+' + (dayOrders.length - CAL_CHIP_CAP) + ' more</div>' : '') +
           '</div>'
@@ -9643,7 +10078,7 @@
 
     var conflictCount = 0;
     Object.keys(state.blockedDates).forEach(function (k) {
-      if (ordersByDate[k] && ordersByDate[k].length > 0) conflictCount++;
+      if (ordersByDate[k] && ordersByDate[k].some(calOrderToMake)) conflictCount++;
     });
 
     var editPanelHtml = '';
@@ -9653,10 +10088,11 @@
       var editDayOrders = ordersByDate[calEditingDate] || [];
       var editDayImmediateOrders = immediateByDate[calEditingDate] || [];
       var ordersListHtml = editDayOrders.length
-        ? '<div style="grid-column: 1 / -1;"><label class="field-label">Scheduled orders (' + editDayOrders.length + ')</label>' +
+        ? '<div style="grid-column: 1 / -1;"><label class="field-label">Orders to make (' + editDayOrders.filter(calOrderToMake).length + ')' + (editDayOrders.some(function (o) { return !calOrderToMake(o); }) ? ' · ✔ already made (' + editDayOrders.filter(function (o) { return !calOrderToMake(o); }).length + ')' : '') + '</label>' +
             '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
               editDayOrders.map(function (o) {
-                return '<div class="cal-order-chip cal-order-chip-lg" data-cal-order="' + o.id + '">' + escapeHtml(o.buyerName || 'Order') + '</div>';
+                var made = !calOrderToMake(o);
+                return '<div class="cal-order-chip cal-order-chip-lg' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + '</div>';
               }).join('') +
             '</div></div>'
         : '';
@@ -9717,10 +10153,11 @@
           '</div>' +
         '</div>' +
         '<div class="cal-legend">' +
-          '<span><span class="cal-dot" style="background:var(--blue);"></span> Scheduled order</span>' +
-          '<span><span class="cal-dot" style="background:#b5680a;"></span> ⚡ Ready now (placed this day)</span>' +
+          '<span><span class="cal-dot" style="background:var(--blue);"></span> Order to make</span>' +
+          (showMade ? '<span><span class="cal-dot" style="background:#cfd6e0;"></span> ✔ Already made</span><span><span class="cal-dot" style="background:#b5680a;"></span> ⚡ Ready now (placed this day)</span>' : '') +
           '<span><span class="cal-dot" style="background:#c9c2dd;"></span> Personal day (click a day to edit)</span>' +
           '<span><span class="cal-dot" style="background:var(--red);"></span> Conflict — order scheduled on a personal day</span>' +
+          '<label class="cal-showmade"><input type="checkbox" id="cal-show-made"' + (showMade ? ' checked' : '') + '> Show made orders</label>' +
         '</div>' +
         (conflictCount > 0 ? '<div style="color:var(--red); font-size:13px; margin-bottom:10px;">⚠ ' + conflictCount + ' day' + (conflictCount !== 1 ? 's' : '') + ' with a scheduling conflict — reschedule the order or unblock the day.</div>' : '') +
         '<div class="cal-grid">' + cellsHtml + '</div>' +
@@ -9765,6 +10202,12 @@
     renderCalendar();
   }
 
+  document.getElementById('calendar-content').addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'cal-show-made') {
+      try { localStorage.setItem('sipsCalShowMade', e.target.checked ? '1' : '0'); } catch (err) {}
+      renderCalendar();
+    }
+  });
   document.getElementById('calendar-content').addEventListener('click', function (e) {
     if (e.target.getAttribute('data-cal-prev')) {
       calMonth--;
@@ -10648,7 +11091,7 @@
     // treat that first batch as "1 pack of itself"). `item.packsAsked` guards against asking twice.
     if (productId && category === 'restock' && !item.packsAsked) {
       var productForPacks = state.products.find(function (p) { return p.id === productId; });
-      var packSizeForPacks = productForPacks ? parsePackSizeFromVariant(productForPacks.variant) : null;
+      var packSizeForPacks = productForPacks ? productPackSize(productForPacks) : null;
       if (packSizeForPacks) {
         quickAddStage = {
           type: 'packsask', item: item, category: category, productId: productId,
