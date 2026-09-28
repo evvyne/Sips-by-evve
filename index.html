@@ -74,6 +74,46 @@
   .todo-tag + .todo-delete { margin-left: 6px; }
   body.simple-mode .todo-row { font-size: 17px; padding: 12px 0; }
   body.simple-mode .todo-row input[type=checkbox] { width: 24px; height: 24px; }
+  /* Orders drawn as cards (the table cells are kept so every control still works the same). */
+  #order-table { border-collapse: separate; border-spacing: 0; }
+  #order-table thead { display: none; }
+  #order-table tbody tr.order-card {
+    display: grid; grid-template-columns: 26px minmax(0, auto) minmax(0, 1fr) auto auto;
+    grid-template-areas: "chk buyer wa total paid" ". items items items items" ". date date status actions";
+    align-items: center; column-gap: 10px; row-gap: 6px; background: #fff; border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+  }
+  #order-table tbody tr.order-card > td { border: none; padding: 0; }
+  #order-table tbody tr:not(.order-card) { display: block; }
+  #order-table tbody tr:not(.order-card) > td { display: block; }
+  .order-card .oc-chk { grid-area: chk; }
+  .order-card .oc-buyer { grid-area: buyer; font-size: 16px; }
+  .order-card .oc-wa { grid-area: wa; font-size: 13px; }
+  .order-card .oc-total { grid-area: total; font-weight: 600; font-size: 14px; }
+  .order-card .oc-paid { grid-area: paid; text-align: right; }
+  .order-card .oc-items { grid-area: items; font-size: 15px; }
+  .order-card .oc-date { grid-area: date; font-size: 13px; }
+  .order-card .oc-make { font-weight: 600; }
+  .order-card .oc-status { grid-area: status; }
+  .order-card .oc-actions { grid-area: actions; text-align: right; }
+  .oc-next { font-size: 14px; padding: 7px 14px; border-radius: 10px; }
+  .oc-links { margin-top: 4px; font-size: 12px; white-space: nowrap; }
+  .oc-links .btn-text { font-size: 12px; }
+  .oc-paid-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+  .oc-paid-chip.is-paid { background: #e3f1d8; color: #3b6d11; }
+  .oc-paid-chip.is-unpaid { background: #fcebeb; color: #a32d2d; }
+  .oc-paid-chip input { margin: 0; }
+  @media (max-width: 640px) {
+    #order-table tbody tr.order-card { grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-areas: "chk buyer paid" ". wa wa" ". total total" ". items items" ". date date" ". actions actions" ". status status"; }
+    .order-card .oc-status select { min-width: 120px; }
+    .order-card .oc-actions { text-align: left; }
+    .oc-next { width: 100%; }
+    .oc-links { white-space: normal; }
+  }
+  .pd-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+  .pd-title { font-weight: 600; font-size: 16px; }
+  .pd-block { background: var(--bg); border-radius: 10px; padding: 12px 14px; font-size: 15px; line-height: 1.7; white-space: pre-line; margin: 10px 0; }
+  .pd-wide { width: 100%; font-size: 14px; padding: 10px 14px; border-radius: 10px; }
   .nav-groups { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }
   .nav-groups button {
     background: #fff; border: 1px solid var(--border); padding: 8px 16px; border-radius: 999px;
@@ -4460,7 +4500,7 @@
     var el = document.getElementById('simple-content');
     if (!el) return;
     var today = todayISO();
-    var todays = state.orders.filter(function (o) { return o.status !== 'cancelled' && !o.productionDone && o.scheduledDate === today; });
+    var todays = state.orders.filter(function (o) { return o.status === 'queueing' && !o.productionDone && o.scheduledDate === today; });
     var tumblersToday = todays.reduce(function (s, o) { return s + orderTumblerQty(o); }, 0);
     var readyToShip = state.orders.filter(function (o) { return o.status === 'ready to ship'; }).length;
     var d = new Date(today + 'T00:00:00');
@@ -5011,6 +5051,9 @@
     // sets (or leaves for the auto-suggestion below to fill in) is saved straight to
     // scheduledDate and shows on the Calendar immediately.
     var productionDate = immediate ? '' : document.getElementById('of-estimated-date').value;
+    // Logged late and already past making (e.g. saved straight as "uv curing")? Then it's made —
+    // don't hand it a production slot it doesn't need.
+    var alreadyMade = ['uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered'].indexOf(status) !== -1;
     // She shouldn't have to work out a production date herself — if this order has any
     // Tumbler in it and she left the date blank, pick the next day that isn't one of her weekly
     // days off, isn't a one-off blocked day, and still has room under her daily Tumbler cap. She
@@ -5021,7 +5064,7 @@
     // than it really is, since this order should have been counted against its actual date.
     // Backdating Date to the real day it happened lets the search look there first, same as if
     // she'd logged it on time.
-    if (!productionDate && !immediate) {
+    if (!productionDate && !immediate && !alreadyMade) {
       var autoTumblerQty = validLines.reduce(function (sum, l) {
         var lp = state.products.find(function (pp) { return pp.id === l.productId; });
         return (lp && lp.type === 'Tumbler') ? sum + Number(l.qty) : sum;
@@ -5030,7 +5073,7 @@
         productionDate = nextAvailableProductionDate(autoTumblerQty, date);
       }
     }
-    if (!editingOrderId && !productionDate && !immediate) {
+    if (!editingOrderId && !productionDate && !immediate && !alreadyMade) {
       if (!confirm("You haven't set a production date for this order — it helps you keep track of scheduling later. Save without one anyway?")) {
         return null;
       }
@@ -5075,7 +5118,7 @@
         qty: qty,
         unitPrice: Number(l.unitPrice) || 0,
         unitCost: p ? p.cost : 0,
-        madeQty: Math.min(prevMade, qty),
+        madeQty: (alreadyMade && !editingOrderId) ? qty : Math.min(prevMade, qty),
         photo: prevPhoto,
         pattern: prevPattern,
         patternSurcharge: prevPatternSurcharge,
@@ -5538,7 +5581,9 @@
   }
   function tumblerQtyScheduledOn(dateStr) {
     return state.orders
-      .filter(function (o) { return o.status !== 'cancelled' && o.scheduledDate === dateStr; })
+      // Only orders still waiting to be made take up a day's slots — once an order has moved on
+      // (UV curing, ready, shipped…) or is marked done, its cups are already made.
+      .filter(function (o) { return o.status === 'queueing' && !o.productionDone && o.scheduledDate === dateStr; })
       .reduce(function (sum, o) { return sum + orderTumblerQty(o); }, 0);
   }
   function isProductionDay(dateStr) {
@@ -6097,10 +6142,10 @@
 
   // The one obvious next thing to do with an order, as a single button on its row.
   function nextStepButtonHtml(o) {
-    if (o.status === 'queueing') return '<button class="btn btn-secondary btn-small" data-next-step="' + o.id + '" title="All items made — move to UV curing">✔ Made</button> ';
-    if (o.status === 'uv curing') return '<button class="btn btn-secondary btn-small" data-next-step="' + o.id + '" title="UV curing finished — ready to ship">✔ Cured</button> ';
-    if (o.status === 'ready to ship' || o.status === 'order shipment') return '<button class="btn btn-secondary btn-small" data-go-shipping="' + o.id + '">Shipping →</button> ';
-    if (o.status === 'shipped') return '<button class="btn btn-secondary btn-small" data-next-step="' + o.id + '" title="Customer received it">✔ Delivered</button> ';
+    if (o.status === 'queueing') return '<button class="btn btn-secondary oc-next" data-next-step="' + o.id + '" title="All items made — move to UV curing">Mark as made →</button>';
+    if (o.status === 'uv curing') return '<button class="btn btn-secondary oc-next" data-next-step="' + o.id + '" title="UV curing finished — ready to ship">Curing done →</button>';
+    if (o.status === 'ready to ship' || o.status === 'order shipment') return '<button class="btn btn-secondary oc-next" data-go-shipping="' + o.id + '">Go to Shipping →</button>';
+    if (o.status === 'shipped') return '<button class="btn btn-secondary oc-next" data-next-step="' + o.id + '" title="Customer received it">Mark delivered →</button>';
     return '';
   }
 
@@ -6156,33 +6201,35 @@
       var statusOptions = statuses.map(function (s) {
         return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
       }).join('');
-      var rows = '<tr>' +
-        '<td><input type="checkbox" class="order-row-checkbox" data-order-id="' + o.id + '"' + (selectedOrderIds.indexOf(o.id) !== -1 ? ' checked' : '') + '></td>' +
-        '<td style="white-space:nowrap;">' + formatDate(o.date) + '</td>' +
-        '<td><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || '—') + (o.buyerHandle ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 replacement</span>' : '') + '</div></td>' +
-        '<td class="muted">' + (escapeHtml(o.buyerWhatsapp) || '—') + '</td>' +
-        '<td><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (o.items.length ? o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty + (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : ''); }).join('<br>') : 'No items') + '</button>' +
+      // Each order is drawn as a card (see the .order-card CSS): name + WhatsApp and Paid on top,
+      // the items underneath, then the date, total and the one "next step" button.
+      var rows = '<tr class="order-card">' +
+        '<td class="oc-chk"><input type="checkbox" class="order-row-checkbox" data-order-id="' + o.id + '"' + (selectedOrderIds.indexOf(o.id) !== -1 ? ' checked' : '') + '></td>' +
+        '<td class="oc-date">' + (o.status === 'queueing' && o.scheduledDate ? '<span class="oc-make">Make ' + escapeHtml(formatDateLong(o.scheduledDate)) + '</span> · <span class="muted">ordered ' + formatDate(o.date) + '</span>' : '<span class="muted">Ordered ' + formatDate(o.date) + '</span>') + (o.trackingNumber ? ' <span class="muted">· ' + escapeHtml(o.trackingNumber) + '</span>' : '') + '</td>' +
+        '<td class="oc-buyer"><div style="font-weight:600;">' + (escapeHtml(o.buyerName) || '—') + (o.buyerHandle ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') + (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 replacement</span>' : '') + '</div></td>' +
+        '<td class="oc-wa muted">' + (escapeHtml(o.buyerWhatsapp) || '') + '</td>' +
+        '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (o.items.length ? o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty + (i.pattern ? ' · ' + escapeHtml(i.pattern) : '') + (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : ''); }).join('<br>') : 'No items') + '</button>' +
           (function () {
             if (o.status === 'cancelled') return '';
             var ms = orderMadeSummary(o);
             if (ms.ordered === 0) return '';
             return '<div><span class="pill ' + (ms.made >= ms.ordered ? 'pill-green' : 'pill-gray') + '" style="font-size:10px;">' + ms.made + '/' + ms.ordered + ' made</span></div>';
           })() + '</td>' +
-        '<td style="font-weight:500;">' + money(orderTotal(o)) + '</td>' +
-        '<td style="text-align:center;">' + (o.status === 'cancelled'
-          ? '<span title="Cancelled — payment not applicable">⛔</span>'
-          : '<input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '>' +
+        '<td class="oc-total">' + money(orderTotal(o)) + '</td>' +
+        '<td class="oc-paid">' + (o.status === 'cancelled'
+          ? '<span class="pill pill-gray" title="Cancelled — payment not applicable">⛔ Cancelled</span>'
+          : '<label class="oc-paid-chip ' + (o.paid ? 'is-paid' : 'is-unpaid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? 'Paid' : 'Unpaid') + '</label>' +
             (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : '')) + '</td>' +
-        '<td><select class="order-status-select" data-order-id="' + o.id + '" style="padding:5px 8px; font-size:13px;">' + statusOptions + '</select></td>' +
-        '<td style="text-align:right; white-space:nowrap;">' +
-        nextStepButtonHtml(o) +
+        '<td class="oc-status"><select class="order-status-select" data-order-id="' + o.id + '" style="padding:4px 8px; font-size:12px;">' + statusOptions + '</select></td>' +
+        '<td class="oc-actions">' +
+        nextStepButtonHtml(o) + '<div class="oc-links">' +
         ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button class="btn-text" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button> ' : '') +
         '<button class="btn-text" data-edit-order="' + o.id + '">Edit</button> ' +
         (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
           ? '<button class="btn-text" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">+ Add another order</button> '
           : '') +
         '<button class="btn-text danger" data-delete-order="' + o.id + '">Delete</button>' +
-        '</td>' +
+        '</div></td>' +
         '</tr>';
       if (pendingPackagingChoiceOrderId === o.id) {
         rows += '<tr><td colspan="9" style="background:#fffaf0; padding:8px 12px;">' +
@@ -7737,8 +7784,11 @@
 
   function renderSchedule() {
     var notCancelled = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
-    var active = notCancelled.filter(function (o) { return !o.productionDone; });
-    var done = notCancelled.filter(function (o) { return o.productionDone; });
+    // "To make" = still queueing (plus "ready right away" orders). Anything that has already moved
+    // on to UV curing / ready / shipped is made, so it sits under Completed instead.
+    var stillToMake = function (o) { return !o.productionDone && (o.immediate || o.status === 'queueing'); };
+    var active = notCancelled.filter(stillToMake);
+    var done = notCancelled.filter(function (o) { return !stillToMake(o); });
     // Orders marked "Ready right away" (see the order form) are things she can make immediately
     // — they were cluttering this queue and being numbered like they're waiting in line, when
     // really there's nothing to wait for. Pull them into their own section instead.
@@ -8844,9 +8894,9 @@
         '<input id="pd-sender-phone" placeholder="Your phone" value="' + escapeHtml(s.phone || '') + '" style="margin-bottom:6px;">' +
         '<textarea id="pd-sender-address" rows="2" placeholder="Your pick-up / return address" style="width:100%;">' + escapeHtml(s.address || '') + '</textarea>' +
         '<button type="button" class="btn btn-primary btn-small" id="btn-pd-save-sender" style="margin-top:6px;">Save my details</button>'
-      : '<div style="display:flex; justify-content:space-between; align-items:center;"><div class="field-label" style="margin:0;">Your details (sender)</div><button type="button" class="btn-text" id="btn-pd-edit-sender" style="font-size:12px;">Edit</button></div>' +
-        '<div style="background:var(--bg); border-radius:8px; padding:8px 10px; font-size:13px; line-height:1.6; white-space:pre-line; margin:6px 0;">' + escapeHtml(senderBlock()) + '</div>' +
-        '<button type="button" class="btn btn-secondary btn-small" id="btn-pd-copy-sender" style="width:100%;">Copy sender</button>';
+      : '<div style="display:flex; justify-content:space-between; align-items:center;"><div class="pd-title">Your details (sender)</div><button type="button" class="btn-text" id="btn-pd-edit-sender" style="font-size:13px;">Edit</button></div>' +
+        '<div class="pd-block">' + escapeHtml(senderBlock()) + '</div>' +
+        '<button type="button" class="btn btn-secondary pd-wide" id="btn-pd-copy-sender">Copy sender</button>';
 
     // Receiver (next parcel to book)
     var bookQ = packDayBookingQueue();
@@ -8854,14 +8904,14 @@
     var waitingAddr = packDayParcels().filter(function (o) { return !o.shipTo && o.status !== 'order shipment'; }).length;
     var cur = bookQ[0];
     var receiverHtml = cur
-      ? '<div style="display:flex; justify-content:space-between; align-items:center;"><div class="field-label" style="margin:0;">Receiver · ' + (totalToBook - bookQ.length + 1) + ' of ' + totalToBook + '</div><span class="muted" style="font-size:12px;">' + escapeHtml(cur.buyerName || '') + '</span></div>' +
-        '<div style="background:var(--bg); border-radius:8px; padding:8px 10px; font-size:13px; line-height:1.6; white-space:pre-line; margin:6px 0;">' + escapeHtml(receiverBlock(cur)) + '</div>' +
-        '<button type="button" class="btn btn-secondary btn-small" data-pd-copy-receiver="' + cur.id + '" style="width:100%;">Copy receiver (name + phone + address)</button>' +
-        '<div style="display:flex; gap:6px; margin-top:6px;">' +
-          '<button type="button" class="btn btn-primary btn-small" data-pd-booked="' + cur.id + '" style="flex:1;">✔ Booked, next</button>' +
-          '<button type="button" class="btn btn-secondary btn-small" data-pd-skip="' + cur.id + '">Skip</button>' +
+      ? '<div style="display:flex; justify-content:space-between; align-items:center;"><div class="pd-title">Receiver · ' + (totalToBook - bookQ.length + 1) + ' of ' + totalToBook + '</div><span class="muted" style="font-size:13px;">' + escapeHtml(cur.buyerName || '') + '</span></div>' +
+        '<div class="pd-block">' + escapeHtml(receiverBlock(cur)) + '</div>' +
+        '<button type="button" class="btn btn-secondary pd-wide" data-pd-copy-receiver="' + cur.id + '">Copy receiver (name + phone + address)</button>' +
+        '<div style="display:flex; gap:8px; margin-top:8px;">' +
+          '<button type="button" class="btn btn-primary pd-wide" data-pd-booked="' + cur.id + '" style="flex:1; margin:0;">✔ Booked, next</button>' +
+          '<button type="button" class="btn btn-secondary" data-pd-skip="' + cur.id + '">Skip</button>' +
         '</div>'
-      : '<div class="field-label">Receiver</div><div class="muted" style="font-size:13px;">' + (totalToBook ? 'All done for now 🎉' : 'Nothing ready to book yet.') + '</div>';
+      : '<div class="pd-title">Receiver</div><div class="muted" style="font-size:14px; margin-top:6px;">' + (totalToBook ? 'All done for now 🎉' : 'Nothing ready to book yet.') + '</div>';
     if (waitingAddr) receiverHtml += '<div class="muted" style="font-size:12px; margin-top:6px;">' + waitingAddr + ' parcel' + (waitingAddr === 1 ? '' : 's') + ' still waiting for an address.</div>';
 
     var askTplHtml = editingAskTemplate
@@ -8876,8 +8926,9 @@
         (editingAskTemplate ? '' : '<button type="button" class="btn-text" id="btn-pd-edit-ask-template" style="font-size:12px;">✏️ Edit ask-for-address message</button>') +
       '</div>' + askTplHtml + table +
       '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:12px;">' +
-        '<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px;"><div style="font-weight:600; margin-bottom:6px;">Book on J&amp;T</div>' + senderHtml + '<div style="height:10px;"></div>' + receiverHtml + '</div>' +
-        '<div style="border:1px solid var(--border); border-radius:10px; padding:10px 12px;"><div style="font-weight:600; margin-bottom:6px;">Enter tracking numbers</div>' +
+        '<div class="pd-card">' + senderHtml + '</div>' +
+        '<div class="pd-card">' + receiverHtml + '</div>' +
+        '<div class="pd-card"><div class="pd-title" style="margin-bottom:8px;">Enter tracking numbers</div>' +
           '<input type="text" id="pd-track-search" placeholder="Type postcode or part of the address…" value="' + escapeHtml(packDayTrackQuery) + '">' +
           '<div id="pd-track-results" style="margin-top:6px;">' + packDayTrackResultsHtml() + '</div>' +
         '</div>' +
