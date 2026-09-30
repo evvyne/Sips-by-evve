@@ -9279,10 +9279,12 @@
       return '<div id="glass-straw-list" class="card" style="margin-top:10px;"><div class="empty" style="padding:6px 0;">No orders in the current queue have a glass straw add-on.</div></div>';
     }
     return '<div id="glass-straw-list" style="margin-top:10px;">' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">🥤 Parcels in the queue that need a glass straw packed in</div>' +
       withStraw.map(function (o) {
         var qty = orderAddOnQty(o, 'glass straw');
+        var who = escapeHtml(o.buyerName || o.recipientName || 'Unknown') + (o.recipientName && o.recipientName !== o.buyerName ? ' <span class="muted" style="font-size:12px;">(ship to ' + escapeHtml(o.recipientName) + ')</span>' : '');
         return '<div class="card" style="margin-bottom:6px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:10px;">' +
-          '<span>' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown') + '</span>' +
+          '<span>' + who + ' <span class="oc-status-tag">' + escapeHtml(orderStatusLabel(o.status)) + '</span></span>' +
           '<span class="muted" style="font-size:13px;">' + qty + '× 🥤 Glass straw</span>' +
         '</div>';
       }).join('') +
@@ -9716,17 +9718,20 @@
     return '<div style="margin-top:14px;">' +
       '<div class="muted" style="font-size:12px; margin-bottom:6px;">✅ Delivered</div>' +
       delivered.map(function (o) {
-        var itemsSummary = o.items.map(function (i) { return escapeHtml(i.productName) + ' ×' + i.qty; }).join(', ');
+        var itemsSummary = o.items.map(function (i) { return i.qty + ' × ' + cleanItemName(i.productName); }).join(', ');
         var courierLabel = o.courier && COURIER_TRACKING_URLS[o.courier] ? COURIER_TRACKING_URLS[o.courier].label + ' · ' : '';
         return '<div class="card" style="margin-bottom:8px; padding:10px 14px; opacity:0.85;">' +
           '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">' +
             '<div>' +
               '<div style="font-weight:600;">' + (escapeHtml(o.recipientName) || escapeHtml(o.buyerName) || 'Unknown recipient') + '</div>' +
               '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' +
-              (o.trackingNumber ? '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(courierLabel) + escapeHtml(o.trackingNumber) + '</div>' : '') +
+              (o.pickup ? '<div style="font-size:12px; margin-top:2px; color:#3b6d11;">🤝 Customer picked up</div>' : (o.trackingNumber ? '<div class="muted" style="font-size:12px; margin-top:2px;">' + escapeHtml(courierLabel) + escapeHtml(o.trackingNumber) + '</div>' : '')) +
               shippingCostInlineHtml(o) +
             '</div>' +
-            '<span class="pill pill-green">Delivered</span>' +
+            '<div style="display:flex; align-items:center; gap:8px;"><span class="pill pill-green">' + (o.pickup ? 'Picked up' : 'Delivered') + '</span>' +
+              '<div class="oc-more"><button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button><div class="oc-menu">' +
+                '<button type="button" data-toggle-pickup="' + o.id + '">' + (o.pickup ? '📦 It was shipped, not picked up' : '🤝 It was a pick-up') + '</button>' +
+              '</div></div></div>' +
           '</div>' +
           orderReplacementsHtml(o) +
           (editingReplacementOrderId === o.id
@@ -13066,7 +13071,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30l';
+  var APP_VERSION = '2026-09-30m';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
