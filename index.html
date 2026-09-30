@@ -148,6 +148,7 @@
   .oc-style:not(.set) select { color: #6d4fc2; font-weight: 600; }
   .oc-style-name { color: var(--muted); font-size: 12px; }
   .oc-addr { margin-top: 6px; }
+  .oc-addr.pickup .oc-addr-btn { background: #e3f1d8; color: #3b6d11; }
   .oc-addr-btn { border: none; background: #f3f4f6; color: var(--muted); border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; text-align: left; font-family: inherit; max-width: 100%; }
   .oc-addr.none .oc-addr-btn { background: #fdf3dc; color: #854f0b; }
   .oc-addr-btn u { color: var(--blue); }
@@ -4689,7 +4690,7 @@
     }
     if (day === today) {
       state.orders.filter(function (o) {
-        return !o.shipTo && ['queueing', 'uv curing', 'ready to ship'].indexOf(o.status) !== -1;
+        return !o.shipTo && !o.pickup && ['queueing', 'uv curing', 'ready to ship'].indexOf(o.status) !== -1;
       }).forEach(function (o) {
         out.push({ key: 'addr-' + o.id, text: 'Ask ' + (o.buyerName || 'customer') + ' for shipping address', tag: 'From orders' });
       });
@@ -6345,6 +6346,9 @@
           '<button type="button" class="btn btn-secondary btn-small" data-cust-new-order="' + escapeHtml(c.key) + '" style="flex:1;">+ New order</button>' +
           '<button type="button" class="btn btn-secondary btn-small" data-toggle-customer="' + c.key + '">' + (expanded ? 'Hide orders' : 'Past orders') + '</button>' +
         '</div>' +
+        (expanded ? '<div style="margin-top:8px;">' + (c.orders.some(function (x) { return x.scam; })
+          ? '<button type="button" class="btn-text" data-cust-scam="' + escapeHtml(c.key) + '" data-cust-scam-on="0" style="font-size:12px;">↩ Not a scammer — count all their orders again</button>'
+          : '<button type="button" class="btn-text danger" data-cust-scam="' + escapeHtml(c.key) + '" data-cust-scam-on="1" style="font-size:12px;">⚠ Mark as scammer (all their orders)</button>') + '</div>' : '') +
         (expanded ? customerDetailHtml(c) : '') +
         '</div>';
     }).join('');
@@ -6377,6 +6381,23 @@
       expandedCustomerKey = expandedCustomerKey === key ? null : key;
       showGiveCreditForCustomerKey = null;
       renderCustomers();
+      return;
+    }
+    var custScam = e.target.closest('[data-cust-scam]');
+    if (custScam) {
+      var cs = customerAggregates().find(function (x) { return x.key === custScam.getAttribute('data-cust-scam'); });
+      if (!cs) return;
+      var on = custScam.getAttribute('data-cust-scam-on') === '1';
+      var targets = cs.orders.filter(function (x) { return x.status !== 'cancelled'; });
+      if (on) {
+        var sum = targets.reduce(function (t, x) { return t + orderGrossTotal(x); }, 0);
+        if (!confirm('Mark ' + (cs.name || 'this customer') + ' as a scammer?\n\nAll ' + targets.length + ' of their orders (' + money(sum) + ') will be taken out of revenue and "owed by customers", and what the items cost you is counted as a scam loss. Stock stays as sent. You can undo this here.')) return;
+        targets.forEach(function (x) { x.scam = true; x.scamOn = x.scamOn || todayISO(); });
+      } else {
+        targets.forEach(function (x) { x.scam = false; delete x.scamOn; });
+      }
+      save();
+      renderAll();
       return;
     }
     var custNewOrder = e.target.closest('[data-cust-new-order]');
@@ -6750,6 +6771,7 @@
 
   // The one obvious next thing to do with an order, as a single button on its row.
   function nextStepButtonHtml(o) {
+    if (o.pickup && (o.status === 'ready to ship' || o.status === 'order shipment' || o.status === 'shipped')) return '<button class="btn btn-secondary oc-next" data-pickup-done="' + o.id + '">✔ Picked up</button>';
     if (o.status === 'queueing') return '<button class="btn btn-secondary oc-next" data-next-step="' + o.id + '" title="All items made — move to UV curing">Mark as made →</button>';
     if (o.status === 'uv curing') return '<button class="btn btn-secondary oc-next" data-next-step="' + o.id + '" title="UV curing finished — ready to ship">Curing done →</button>';
     if (o.status === 'ready to ship' || o.status === 'order shipment') return '<button class="btn btn-secondary oc-next" data-go-shipping="' + o.id + '">Go to Shipping →</button>';
@@ -6918,7 +6940,7 @@
           '<td class="oc-buyer"><div style="font-weight:600;">' + buyerInner + '</div></td>' +
           '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (itemLines.length ? itemLines.join('<br>') : 'No items') + '</button>' +
             orderStyleChipsHtml(o) +
-            (o.status === 'cancelled' ? '' : (addrEdit.ctx === 'oc' && addrEdit.id === o.id
+            (o.status === 'cancelled' ? '' : o.pickup ? '<div class="oc-addr pickup"><button type="button" class="oc-addr-btn" data-toggle-pickup="' + o.id + '">🤝 Customer picks up · <u>Ship instead</u></button></div>' : (addrEdit.ctx === 'oc' && addrEdit.id === o.id
               ? addressEditorHtml(o, 'oc')
               : (o.shipTo
                 ? '<div class="oc-addr"><button type="button" class="oc-addr-btn" data-oc-addr="' + o.id + '" title="' + escapeHtml(o.shipTo + (o.postcode ? ', ' + o.postcode : '')) + '">📍 ' + escapeHtml(addrShortLine(o)) + ' · <u>Change</u></button></div>'
@@ -8914,8 +8936,9 @@
         '<div class="field-block"><label class="field-label">Postcode</label><input id="sa-postcode-' + k + '" value="' + escapeHtml(o.postcode || '') + '" placeholder="43000"></div>' +
       '</div>' +
       '<div class="field-block" style="margin-top:6px;"><label class="field-label">Address</label><textarea id="sa-shipTo-' + k + '" rows="2" style="resize:vertical; width:100%;" placeholder="12 Jalan ABC, Taman Damai, 43000 Kajang, Selangor">' + escapeHtml(o.shipTo || '') + '</textarea></div>' +
-      '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" ' + saveAttr + '>Save address</button> ' +
-      '<button type="button" class="btn btn-secondary btn-small" ' + cancelAttr + '>Cancel</button></div>' +
+      '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><button type="button" class="btn btn-primary btn-small" ' + saveAttr + '>Save address</button> ' +
+      '<button type="button" class="btn btn-secondary btn-small" ' + cancelAttr + '>Cancel</button>' +
+      '<button type="button" class="btn-text" data-toggle-pickup="' + o.id + '" style="margin-left:auto; font-size:13px;">🤝 Customer picks up instead</button></div>' +
     '</div>';
   }
   // "Nurul · 82000 Pontian, Johor" — the short line shown once an address is on file.
@@ -8951,6 +8974,25 @@
       }
       return;
     }
+    var pickEl = t.closest ? t.closest('[data-toggle-pickup]') : null;
+    if (pickEl) {
+      var po = state.orders.find(function (o) { return o.id === pickEl.getAttribute('data-toggle-pickup'); });
+      if (po) {
+        po.pickup = !po.pickup;
+        if (po.pickup) { po.shippingCostActual = 0; po.shippingCostEntered = true; }
+        else if (!(Number(po.shippingCostActual) > 0)) { po.shippingCostEntered = false; } // shipping after all — ask for the postage again
+        addrEdit = { ctx: null, id: null }; editingShippingAddressOrderId = null;
+        closeOrderMenus();
+        save(); renderAll();
+      }
+      return;
+    }
+    var pickDone = t.getAttribute('data-pickup-done');
+    if (pickDone) {
+      var pd2 = state.orders.find(function (o) { return o.id === pickDone; });
+      if (pd2) { autoAdvanceStatus(pd2, 'delivered'); save(); renderAll(); }
+      return;
+    }
     var openOc = t.closest ? t.closest('[data-oc-addr]') : null;
     if (openOc) { addrEdit = { ctx: 'oc', id: openOc.getAttribute('data-oc-addr') }; renderOrders(); return; }
     var openPd = t.getAttribute('data-pd-addr');
@@ -8960,6 +9002,7 @@
     if (t.getAttribute('data-ae-cancel')) { addrEdit = { ctx: null, id: null }; renderAll(); return; }
   });
   function shippingAddressBlockHtml(o) {
+    if (o.pickup) return '<div class="oc-addr pickup" style="margin-top:8px;"><button type="button" class="oc-addr-btn" data-toggle-pickup="' + o.id + '">🤝 Customer picks up · <u>Ship instead</u></button></div>';
     if (editingShippingAddressOrderId === o.id) {
       return '<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">' + addressEditorHtml(o, 'ship') + '</div>';
     }
@@ -9626,6 +9669,7 @@
   // answer, not a forgotten one. As long as EITHER "shipping paid by customer" or "shipping paid
   // by me" has been explicitly confirmed (even as 0), this order isn't flagged as missing.
   function isShippingCostMissing(o) {
+    if (o.pickup) return false; // customer collects it herself — no postage
     var costEntered = isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual);
     var feeEntered = isShippingFieldEntered(o.shippingFeeEntered, o.shippingFee);
     return !(costEntered || feeEntered);
@@ -9671,7 +9715,7 @@
     return '';
   }
   function packDayParcels() {
-    return state.orders.filter(function (o) { return o.status === 'uv curing' || o.status === 'ready to ship' || o.status === 'order shipment'; })
+    return state.orders.filter(function (o) { return !o.pickup && (o.status === 'uv curing' || o.status === 'ready to ship' || o.status === 'order shipment'); })
       .slice().sort(function (a, b) { return (a.scheduledDate || a.date || '').localeCompare(b.scheduledDate || b.date || ''); });
   }
   function shortPlace(o) {
@@ -9929,7 +9973,9 @@
       var isUvCuring = o.status === 'uv curing';
       var statusPill = isOrderShipment ? '<span class="pill pill-purple">Order shipment</span>' : (isShipped ? '<span class="pill pill-blue">Shipped</span>' : (isUvCuring ? '<span class="pill pill-amber">🔆 UV curing</span>' : ''));
       var actionBtn;
-      if (isShipped) {
+      if (o.pickup) {
+        actionBtn = '<button type="button" class="btn btn-primary btn-small" data-pickup-done="' + o.id + '">✔ Picked up</button>';
+      } else if (isShipped) {
         // Stays here — with its tracking still visible — until she confirms the customer actually
         // got it. That's the whole point of this change: "shipped" is not the finish line anymore.
         actionBtn = '<button type="button" class="btn btn-primary btn-small btn-mark-delivered" data-order-id="' + o.id + '">✅ Mark as delivered</button>';
@@ -9947,7 +9993,8 @@
       var menuHtml = '<div class="oc-more">' +
         '<button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button>' +
         '<div class="oc-menu">' +
-          '<button type="button" class="btn-copy-ship-address" data-order-id="' + o.id + '">📋 Copy address</button>' +
+          '<button type="button" data-toggle-pickup="' + o.id + '">' + (o.pickup ? '📦 Ship it instead' : '🤝 Customer picks up') + '</button>' +
+          (o.pickup ? '' : '<button type="button" class="btn-copy-ship-address" data-order-id="' + o.id + '">📋 Copy address</button>') +
           splitBtnHtml +
           (editingReplacementOrderId === o.id ? '' : '<button type="button" data-toggle-replacement="' + o.id + '">🔁 Send replacement</button>') +
         '</div></div>';
@@ -9970,8 +10017,8 @@
         '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
         shippingCostInlineHtml(o) +
         '<div class="ship-actions">' + actionBtn + menuHtml + '</div>' +
-        shippingBarcodeControl(o) +
-        ((isOrderShipment || isShipped) ? trackingSectionControl(o) : '') +
+        (o.pickup ? '' : shippingBarcodeControl(o)) +
+        ((!o.pickup && (isOrderShipment || isShipped)) ? trackingSectionControl(o) : '') +
         orderReplacementsHtml(o) +
         (editingReplacementOrderId === o.id ? replacementFormHtml(o) : '') +
       '</div>';
@@ -12920,7 +12967,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30g';
+  var APP_VERSION = '2026-09-30i';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
