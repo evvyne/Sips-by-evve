@@ -4933,9 +4933,22 @@
   // addresses aren't offered here (that only happens later, on the Shipping tab, once there's
   // actually an address to compare against), but any outstanding goodwill credit is, since the
   // discount field lives right here on this form.
+  // Same WhatsApp, parcel phone or name as someone who scammed her before -> say so up front.
+  function scamWarningHtml() {
+    var wa = normalizeIdentifier(document.getElementById('of-buyer-whatsapp').value.trim());
+    var nm = document.getElementById('of-buyer-name').value.trim().toLowerCase();
+    var hit = state.orders.find(function (o) {
+      if (!o.scam) return false;
+      if (wa && (normalizeIdentifier(o.buyerWhatsapp) === wa || normalizeIdentifier(o.recipientPhone) === wa)) return true;
+      return !!nm && String(o.buyerName || '').trim().toLowerCase() === nm;
+    });
+    return hit ? '<div style="background:#fcebeb; color:#a32d2d; border-radius:6px; padding:8px 10px; margin:-6px 0 8px; font-size:13px; font-weight:600;">⚠ ' + escapeHtml(hit.buyerName || 'This customer') + ' scammed you before (' + escapeHtml(shortDate(hit.date)) + ', ' + money(orderGrossTotal(hit)) + ' never paid). Get payment first.</div>' : '';
+  }
   function renderRepeatCustomerBanner() {
     var wrap = document.getElementById('of-repeat-customer-wrap');
     if (!wrap) return;
+    var scamWarn = scamWarningHtml();
+    if (scamWarn) { wrap.innerHTML = scamWarn; return; }
     var waVal = document.getElementById('of-buyer-whatsapp').value.trim();
     pendingCreditConsumption = null;
     if (!waVal) { wrap.innerHTML = ''; return; }
@@ -5466,6 +5479,7 @@
     var suggestWrap = document.getElementById('of-whatsapp-suggest');
     if (suggestWrap) suggestWrap.innerHTML = customerAutocompleteHtml(findCustomerMatches(e.target.value, 5), 'wa');
   });
+  document.getElementById('of-buyer-name').addEventListener('blur', function () { setTimeout(renderRepeatCustomerBanner, 150); });
   document.getElementById('of-buyer-whatsapp').addEventListener('blur', function () {
     // Small delay so a click on the autocomplete dropdown (which also blurs the input) has a
     // chance to fill the field and set its own state before we react to the final value.
@@ -6056,7 +6070,13 @@
     return a.flatPrice ? (Number(a.unitPrice) || 0) : a.qty * a.unitPrice;
   }
 
+  // An order she was scammed on (goods sent, money never came) earns nothing: it's left out of
+  // revenue and of "owed by customers"; what it cost her is counted as a scam loss instead.
   function orderTotal(o) {
+    if (o && o.scam) return 0;
+    return orderGrossTotal(o);
+  }
+  function orderGrossTotal(o) {
     var itemsTotal = o.items.reduce(function (s, i) { return s + i.qty * i.unitPrice; }, 0);
     var addOnsTotal = (o.addOns || []).reduce(function (s, a) { return s + addOnAmount(a); }, 0);
     return itemsTotal + addOnsTotal + Number(o.shippingFee || 0) - Number(o.discount || 0);
@@ -6318,7 +6338,7 @@
       var expanded = expandedCustomerKey === c.key;
       return '<div class="card" style="margin-bottom:8px;">' +
         '<button type="button" class="btn-text" data-toggle-customer="' + c.key + '" style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; color:inherit;">' +
-          '<span><strong>' + escapeHtml(c.name || 'Unnamed') + (c.recipientName && c.recipientName !== c.name ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(c.recipientName) + ')</span>' : '') + '</strong><br><span class="muted" style="font-size:12px;">' + (c.whatsapp ? escapeHtml(c.whatsapp) : '<span style="color:#b5680a;">No WhatsApp yet' + (c.phone ? ' · ' + escapeHtml(c.phone) : '') + '</span>') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
+          '<span><strong>' + escapeHtml(c.name || 'Unnamed') + (c.orders.some(function (x) { return x.scam; }) ? ' <span class="pill pill-red" style="font-size:10px;">⚠ Scammer</span>' : '') + (c.recipientName && c.recipientName !== c.name ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(c.recipientName) + ')</span>' : '') + '</strong><br><span class="muted" style="font-size:12px;">' + (c.whatsapp ? escapeHtml(c.whatsapp) : '<span style="color:#b5680a;">No WhatsApp yet' + (c.phone ? ' · ' + escapeHtml(c.phone) : '') + '</span>') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
           '<span style="text-align:right;"><strong>' + money(c.totalSpent) + '</strong>' + (c.creditBalance ? '<br><span style="font-size:11px; color:var(--green,#3b6d11);">Credit ' + money(c.creditBalance) + '</span>' : '') + '</span>' +
         '</button>' +
         '<div style="display:flex; gap:8px; margin-top:10px;">' +
@@ -6845,6 +6865,7 @@
           (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
             ? '<button type="button" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">➕ Add another order</button>'
             : '') +
+          (o.status !== 'cancelled' ? '<button type="button" data-order-scam="' + o.id + '">' + (o.scam ? '↩ Not a scam after all' : '⚠ Scam — sent, never paid') + '</button>' : '') +
           '<button type="button" class="danger" data-delete-order="' + o.id + '">🗑 Delete</button>' +
         '</div></div>';
       var buyerInner = (escapeHtml(o.buyerName) || '—') +
@@ -6852,12 +6873,13 @@
         (o.buyerWhatsapp ? ' <span class="oc-sub">· ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') +
         (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 Replacement</span>' : '');
       var totalHtml;
-      if (o.isReplacement && total <= 0) totalHtml = '<span style="font-weight:500; color:var(--muted);">Free replacement</span>';
+      if (o.scam) totalHtml = '<s style="color:var(--muted); font-weight:400;">' + money(orderGrossTotal(o)) + '</s><span class="oc-extra" style="color:var(--red);">never paid</span>';
+      else if (o.isReplacement && total <= 0) totalHtml = '<span style="font-weight:500; color:var(--muted);">Free replacement</span>';
       else if (o.isReplacement) {
         var extras = (o.items || []).filter(function (i) { return (Number(i.unitPrice) || 0) > 0; }).map(function (i) { return i.qty + ' × ' + cleanItemName(i.productName); });
         totalHtml = money(total) + (extras.length ? '<span class="oc-extra">extra: ' + escapeHtml(extras.join(', ')) + '</span>' : '');
       } else totalHtml = money(total);
-      var paidHtml = o.status === 'cancelled'
+      var paidHtml = o.scam ? '<span class="pill pill-red">⚠ Scam</span>' : o.status === 'cancelled'
         ? '<span class="pill pill-gray" title="Cancelled — payment not applicable">⛔ Cancelled</span>'
         : ((o.isReplacement && total <= 0) ? '' :
           '<label class="oc-paid-chip ' + (o.paid ? 'is-paid' : 'is-unpaid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? 'Paid' : 'Unpaid') + '</label>' +
@@ -6877,7 +6899,7 @@
           '<td class="oc-buyer"><span style="font-weight:600;">' + (escapeHtml(o.buyerName) || '—') + '</span>' + (o.isReplacement ? ' <span class="oc-sub">🔁</span>' : '') +
             ' <button class="btn-text oc-sub" data-toggle-order="' + o.id + '" style="font-weight:400; padding:0;">· ' + (itemLines.length ? itemLines.join(' · ') : 'No items') + '</button></td>' +
           '<td class="oc-date">' + doneWhen + '</td>' +
-          '<td class="oc-total">' + ((o.isReplacement && total <= 0) ? '<span style="font-weight:400; color:var(--muted);">Free</span>' : money(total)) + '</td>' +
+          '<td class="oc-total">' + (o.scam ? '<span class="pill pill-red">⚠ Scam</span> <s style="font-weight:400; color:var(--muted);">' + money(orderGrossTotal(o)) + '</s>' : ((o.isReplacement && total <= 0) ? '<span style="font-weight:400; color:var(--muted);">Free</span>' : money(total))) + '</td>' +
           '<td class="oc-actions">' + menuHtml + '</td>' +
           '</tr>';
       } else {
@@ -7065,6 +7087,18 @@
       return;
     }
     if (e.target.closest && e.target.closest('.oc-menu') && e.target.tagName === 'BUTTON') closeOrderMenus();
+    var scamId = e.target.getAttribute && e.target.getAttribute('data-order-scam');
+    if (scamId) {
+      var so = state.orders.find(function (x) { return x.id === scamId; });
+      if (!so) return;
+      if (!so.scam) {
+        if (!confirm('Mark ' + (so.buyerName || 'this order') + ' as a scam?\n\n• Its ' + money(orderGrossTotal(so)) + ' is taken out of revenue and "owed by customers".\n• What the items and postage cost you is counted as a scam loss.\n• Stock stays as sent.\n• If this person orders again, you\'ll get a warning.')) return;
+        so.scam = true; so.scamOn = todayISO();
+      } else { so.scam = false; delete so.scamOn; }
+      save();
+      renderAll();
+      return;
+    }
     var nextStepId = e.target.getAttribute('data-next-step');
     if (nextStepId) { advanceOrderOneStep(nextStepId); return; }
     var goShipId = e.target.getAttribute('data-go-shipping');
@@ -7485,6 +7519,7 @@
     { key: 'testing', label: 'Testing / R&D' },
     { key: 'wastage', label: 'Wastage & damaged stock' },
     { key: 'refunds', label: 'Refunds to customers' },
+    { key: 'scams', label: 'Losses from scams (sent, never paid)' },
     { key: 'other', label: 'Other expenses' }
   ];
 
@@ -7552,8 +7587,16 @@
     var active = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
     var periodOrders = active.filter(function (o) { return inRange(o.date); });
     var lines = []; // { ym, type, productId, name, units, revenue, cost, isGift, isDefect }
+    var scamRows = [];
     periodOrders.forEach(function (o) {
       var ym = invMonthKey(o.date);
+      if (o.scam) {
+        var lost = 0;
+        (o.items || []).forEach(function (i) { var p0 = productById[i.productId]; lost += (Number(i.qty) || 0) * ((typeof i.unitCost === 'number' && isFinite(i.unitCost)) ? i.unitCost : (p0 ? Number(p0.cost) || 0 : 0)); });
+        (o.addOns || []).forEach(function (a) { var p1 = productById[a.productId]; lost += (Number(a.qty) || 0) * ((typeof a.unitCost === 'number' && isFinite(a.unitCost)) ? a.unitCost : (p1 ? Number(p1.cost) || 0 : 0)); });
+        if (lost) scamRows.push({ ym: ym, line: 'scams', amount: lost });
+        return;
+      }
       function push(productId, name, qty, unitPrice, unitCost, flags, revenueOverride) {
         var p = productById[productId];
         var costEach = (typeof unitCost === 'number' && isFinite(unitCost)) ? unitCost : (p ? Number(p.cost) || 0 : 0);
@@ -7610,6 +7653,7 @@
       else line = 'other';
       costRows.push({ ym: invMonthKey(c.date), line: line, amount: amt, c: c });
     });
+    scamRows.forEach(function (r) { costRows.push(r); });
     periodOrders.forEach(function (o) {
       var ship = Number(o.shippingCostActual || 0);
       if (ship) costRows.push({ ym: invMonthKey(o.date), line: 'outbound', amount: ship });
@@ -12876,7 +12920,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30f';
+  var APP_VERSION = '2026-09-30g';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
