@@ -2360,6 +2360,18 @@
     });
     return out;
   }
+  // "16 × 10ml = 160ml" when the name/variant says how many bottles of what size; else "160ml".
+  function purchaseBreakdown(p, total) {
+    var u = p.unit || '';
+    var src = String(p.variant || '') + ' ' + String(p.name || '');
+    var m = src.match(/(\d+(?:\.\d+)?)\s*(ml|l|kg|g)\b\s*[x×]\s*(\d+)/i);
+    if (m && Number(m[3]) > 1) {
+      var each = parseFloat(m[1]) * (/^(l|kg)$/i.test(m[2]) ? 1000 : 1);
+      var n = Math.round(total / each);
+      if (n > 1 && Math.abs(n * each - total) < 1e-6) return n + ' × ' + fmtQty(each) + u + ' = ' + fmtQty(total) + u + ' in total';
+    }
+    return fmtQty(total) + u + ' in total';
+  }
   function fixPurchaseQty(costId, newQty) {
     var c = state.costs.find(function (x) { return x.id === costId; });
     if (!c || !(newQty > 0)) return;
@@ -2384,13 +2396,13 @@
     if (!list.length) return '';
     return '<div class="card" id="qty-check-banner" style="margin-bottom:14px; border-color:#f0c674; background:#fffaf0;">' +
       '<div style="font-weight:600; margin-bottom:4px;">⚠️ ' + list.length + ' restock' + (list.length === 1 ? '' : 's') + ' may have the quantity typed wrong</div>' +
-      '<div class="muted" style="font-size:12px; margin-bottom:8px;">Each one is less than a single pack. The amount paid stays the same — fixing it corrects the stock and the cost per ' + 'unit.</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px;">Each one recorded less than you actually bought. The amount paid stays the same — fixing it only corrects the quantity in stock and the cost per ml/g.</div>' +
       list.map(function (x) {
         var u = x.p.unit || '';
         return '<div style="padding:8px 0; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
           '<div style="min-width:0;"><div style="font-weight:500;">' + escapeHtml(x.p.name + (x.p.variant ? ' — ' + x.p.variant : '')) + '</div>' +
-          '<div class="muted" style="font-size:12px;">' + escapeHtml(shortDate(x.c.date)) + ' · ' + money(x.c.amount) + ' for ' + fmtQty(x.c.qty) + u + ' (one pack is ' + fmtQty(productPackSize(x.p)) + u + ')</div></div>' +
-          '<div style="display:flex; gap:8px; align-items:center;"><button type="button" class="btn btn-primary btn-small" data-qty-fix="' + x.c.id + '" data-qty-new="' + x.suggest + '">Fix to ' + fmtQty(x.suggest) + u + '</button>' +
+          '<div class="muted" style="font-size:12px;">' + escapeHtml(shortDate(x.c.date)) + ' · recorded as ' + money(x.c.amount) + ' for <b>' + fmtQty(x.c.qty) + u + '</b> — but that purchase was ' + escapeHtml(purchaseBreakdown(x.p, x.suggest)) + '</div></div>' +
+          '<div style="display:flex; gap:8px; align-items:center;"><button type="button" class="btn btn-primary btn-small" data-qty-fix="' + x.c.id + '" data-qty-new="' + x.suggest + '">Fix to ' + fmtQty(x.suggest) + u + ' in total</button>' +
           '<button type="button" class="btn-text" data-qty-ok="' + x.c.id + '" style="font-size:12px;">It\'s right</button></div></div>';
       }).join('') + '</div>';
   }
@@ -12967,7 +12979,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30i';
+  var APP_VERSION = '2026-09-30j';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
