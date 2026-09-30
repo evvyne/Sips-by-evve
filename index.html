@@ -1208,6 +1208,7 @@
 
 <footer>
   <div>Data is stored locally in this browser (localStorage) and synced to your account. Use Export any time for an extra backup.</div>
+  <div id="app-version-line" style="font-size:11px; margin-top:4px;"></div>
   <div class="footer-actions">
     <button class="btn-text" id="btn-sample">Load sample data</button>
     <button class="btn-text" id="btn-reset-data" style="color:var(--red);">Reset all data</button>
@@ -8911,7 +8912,7 @@
     var product = state.products.find(function (p) { return p.id === item.productId; });
     var style = SHIPPING_TYPE_STYLE[product ? product.type : 'Others'] || SHIPPING_TYPE_STYLE['Others'];
     return '<span style="display:inline-flex; align-items:center; gap:5px; background:' + style.bg + '; color:' + style.color + '; border-radius:8px; padding:6px 12px; font-size:13px; font-weight:600;">' +
-      shippingItemIconHtml(product && product.image, style.icon) + ' ' + qty + ' × ' + escapeHtml(cleanItemName(item.productName)) + (item.isGift ? ' 🎁' : '') +
+      shippingItemIconHtml(product && product.image, style.icon) + ' ' + qty + ' × ' + escapeHtml(cleanItemName(item.productName)) + (item.pattern && tumblerPatternInfo(item.pattern) ? ' · ' + escapeHtml(tumblerPatternInfo(item.pattern).label) : '') + (item.isGift ? ' 🎁' : '') +
     '</span>';
   }
   function addOnBoxHtml(a) {
@@ -9816,7 +9817,7 @@
             (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
             shipGroupBadgeHtml(o) +
           '</div>' +
-          '<div class="ship-pills">' + paidPill + statusPill + '</div>' +
+          '<div class="ship-pills">' + (o.isReplacement ? '<span class="pill pill-amber">🔁 Replacement' + (orderTotal(o) > 0 ? ' · top-up ' + money(orderTotal(o)) : ' · free') + '</span>' : '') + paidPill + statusPill + '</div>' +
         '</div>' +
         (o.parcels && o.parcels.length
           ? addOnsOnlyBoxesHtml(o) +
@@ -12659,6 +12660,7 @@
   };
 
   renderAll();
+  setTimeout(function () { if (typeof updateVersionLine === "function") updateVersionLine(); }, 0);
 
   // ================= VERSION-CHECK RELOAD PROMPT =================
   // A homescreen/cached tab keeps running the JS it loaded, even after a newer index.html is
@@ -12773,7 +12775,29 @@
       .map(function (k) { return JSON.stringify(k) + ':' + stableStr(v[k]); }).join(',') + '}';
   }
   function sameValue(a, b) { return stableStr(a) === stableStr(b); }
-  function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; return c; }
+  function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
+  // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
+  // exactly which phone/computer an unexpected change came from.
+  var APP_VERSION = '2026-09-30c';
+  function deviceLabel() {
+    var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+    var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
+    var br = /Edg\//.test(ua) ? 'Edge' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'browser';
+    return dev + ' · ' + br;
+  }
+  function stampWriter(data, why) {
+    var entry = { at: new Date().toISOString(), device: deviceLabel(), version: APP_VERSION, why: why || '', orders: (data.orders || []).length };
+    data.cloudWriters = [entry].concat(Array.isArray(data.cloudWriters) ? data.cloudWriters : []).slice(0, 20);
+    state.cloudWriters = data.cloudWriters;
+    updateVersionLine();
+    return data;
+  }
+  function updateVersionLine() {
+    var el = document.getElementById('app-version-line');
+    if (!el) return;
+    var w = (state.cloudWriters || [])[0];
+    el.textContent = 'App version ' + APP_VERSION + (w ? ' · Cloud last saved by ' + w.device + ' (v' + w.version + ') at ' + new Date(w.at).toLocaleString() + ' · ' + w.orders + ' orders' : '');
+  }
   function loadSyncMeta(userId) {
     try {
       var m = JSON.parse(localStorage.getItem(SYNC_META_KEY) || 'null');
@@ -12838,6 +12862,7 @@
     [local, remote].forEach(function (s2) { Object.keys(s2 || {}).forEach(function (k) { keys[k] = true; }); });
     Object.keys(keys).forEach(function (k) {
       if (k === 'updatedAt') return;
+      if (k === 'cloudWriters') { if (remote[k]) out[k] = remote[k]; return; }
       var nv = newer[k], ov = older[k];
       if (isIdList(nv) || isIdList(ov)) {
         var seen = {}, list = [];
@@ -12876,6 +12901,7 @@
     [base, local, remote].forEach(function (s) { Object.keys(s || {}).forEach(function (k) { keys[k] = true; }); });
     Object.keys(keys).forEach(function (k) {
       if (k === 'updatedAt') return;
+      if (k === 'cloudWriters') { if (remote[k]) out[k] = remote[k]; return; }
       var b = base[k], l = local[k], r = remote[k];
       if (isIdList(b) || isIdList(l) || isIdList(r)) out[k] = mergeIdList(b || [], l || [], r || []);
       else {
@@ -12891,6 +12917,7 @@
   // kicking off another push.
   function adoptStateLocally(newState) {
     state = newState;
+    setTimeout(updateVersionLine, 0);
     if (!state.blockedDates) state.blockedDates = {};
     if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6];
     if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
@@ -12922,6 +12949,7 @@
   // Only writes if the cloud is still at `expectedRemoteUpdatedAt` — returns a promise of true
   // (written) / false (someone else saved first) / null (couldn't reach the server).
   function conditionalCloudWrite(userId, data, expectedRemoteUpdatedAt) {
+    stampWriter(data, 'sync');
     return sb.from('app_state').update({ data: data })
       .eq('user_id', userId)
       .eq('data->>updatedAt', String(expectedRemoteUpdatedAt))
@@ -12943,7 +12971,7 @@
       var cloud = res.data && res.data.data;
       if (!cloud) {
         var firstCopy = cloneJSON(state);
-        return sb.from('app_state').upsert({ user_id: userId, data: firstCopy }).then(function (r2) {
+        return sb.from('app_state').upsert({ user_id: userId, data: stampWriter(firstCopy, 'first') }).then(function (r2) {
           if (r2.error) { setSyncStatus('offline'); return; }
           saveSyncMeta(userId, firstCopy);
           setSyncStatus('synced');
@@ -12969,7 +12997,7 @@
           var writeNB = snapshotCloudBeforeSync(userId, cloud).then(function () {
             return cloud.updatedAt
               ? conditionalCloudWrite(userId, toWriteNB, cloud.updatedAt)
-              : sb.from('app_state').upsert({ user_id: userId, data: toWriteNB }).then(function (r4) { return r4.error ? null : true; });
+              : sb.from('app_state').upsert({ user_id: userId, data: stampWriter(toWriteNB, 'merge') }).then(function (r4) { return r4.error ? null : true; });
           });
           return writeNB.then(function (ok) {
             if (ok === null) { setSyncStatus('offline'); return; }
@@ -12995,7 +13023,7 @@
       var writeAttempt = safety.then(function () {
         return cloud.updatedAt
           ? conditionalCloudWrite(userId, toWrite, cloud.updatedAt)
-          : sb.from('app_state').upsert({ user_id: userId, data: toWrite }).then(function (r3) { return r3.error ? null : true; });
+          : sb.from('app_state').upsert({ user_id: userId, data: stampWriter(toWrite, 'write') }).then(function (r3) { return r3.error ? null : true; });
       });
       return writeAttempt.then(function (ok) {
         if (ok === null) { setSyncStatus('offline'); return; }
