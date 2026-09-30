@@ -141,6 +141,12 @@
     .oc-compact .oc-buyer { white-space: normal; }
     .order-card:not(.oc-compact) .oc-next { flex: 1; }
   }
+  .oc-styles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .oc-style { display: inline-flex; align-items: center; gap: 6px; background: #f3f0fb; border-radius: 8px; padding: 2px 4px 2px 8px; font-size: 13px; }
+  .oc-style.set { background: #e6f1fb; }
+  .oc-style select { border: none; background: transparent; font-size: 13px; padding: 4px 2px; width: auto; min-width: 0; font-family: inherit; color: var(--text); cursor: pointer; }
+  .oc-style:not(.set) select { color: #6d4fc2; font-weight: 600; }
+  .oc-style-name { color: var(--muted); font-size: 12px; }
   .oc-addr { margin-top: 6px; }
   .oc-addr-btn { border: none; background: #f3f4f6; color: var(--muted); border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; text-align: left; font-family: inherit; max-width: 100%; }
   .oc-addr.none .oc-addr-btn { background: #fdf3dc; color: #854f0b; }
@@ -5248,8 +5254,11 @@
             '<input type="checkbox" class="di-defect" data-idx="' + idx + '"' + (line.isDefect ? ' checked' : '') + '> 🔧 Defect</label>' +
         '</div>' : '';
 
+      var patternSelect = (line.type === 'Tumbler' && line.productId)
+        ? '<select class="di-pattern" data-idx="' + idx + '" title="Style">' + patternOptionsHtml(line.pattern || '') + '</select>'
+        : '';
       return '<div class="item-line" data-idx="' + idx + '">' +
-        typeSelect + themeSelect + productSelectHtml +
+        typeSelect + themeSelect + productSelectHtml + patternSelect +
         '<input class="di-qty" type="number" min="1" value="' + line.qty + '" data-idx="' + idx + '" placeholder="Qty">' +
         '<input class="di-price" type="number" step="0.01" min="0" value="' + line.unitPrice + '" data-idx="' + idx + '" placeholder="Unit RM"' + (line.isGift ? ' disabled' : '') + '>' +
         '<button type="button" class="btn-text" data-toggle-more="' + idx + '" style="font-size:12px; white-space:nowrap;">⋯ more' + moreBadges + '</button>' +
@@ -5296,6 +5305,17 @@
       draftItems[idx].productId = e.target.value;
       var p = state.products.find(function (x) { return x.id === e.target.value; });
       if (p && !draftItems[idx].unitPrice && ofKind !== 'replacement') draftItems[idx].unitPrice = p.price;
+      renderDraftItems();
+    } else if (e.target.classList.contains('di-pattern')) {
+      // Same pricing rule as on the order card: only the style's surcharge (Full Glitter +RM5)
+      // is added/removed, so her own typed price is never overwritten.
+      var dl = draftItems[idx];
+      var oldSur = Number(dl.patternSurcharge) || 0;
+      var info = tumblerPatternInfo(e.target.value);
+      var newSur = info ? info.surcharge : 0;
+      if (dl.unitPrice !== '' && dl.unitPrice != null) dl.unitPrice = (Number(dl.unitPrice) || 0) - oldSur + newSur;
+      dl.pattern = e.target.value;
+      dl.patternSurcharge = newSur;
       renderDraftItems();
     } else if (e.target.classList.contains('di-qty')) {
       draftItems[idx].qty = e.target.value;
@@ -5597,8 +5617,8 @@
         unitCost: p ? p.cost : 0,
         madeQty: (alreadyMade && !editingOrderId) ? qty : Math.min(prevMade, qty),
         photo: prevPhoto,
-        pattern: prevPattern,
-        patternSurcharge: prevPatternSurcharge,
+        pattern: l.pattern !== undefined ? (l.pattern || '') : prevPattern,
+        patternSurcharge: l.pattern !== undefined ? (Number(l.patternSurcharge) || 0) : prevPatternSurcharge,
         isGift: !!l.isGift,
         isDefect: !!l.isDefect,
         defectNormalPrice: l.isDefect ? (Number(l.defectNormalPrice) || 0) : null
@@ -6153,8 +6173,26 @@
 
   function customerAggregates() {
     var groups = {};
+    // Everyone who ever ordered is listed. WhatsApp identifies a customer; an order without one is
+    // matched by name to a customer who has one, otherwise identified by the parcel's phone number,
+    // otherwise by the buyer's name — so nobody is left out just because a box was left empty.
+    var nameToKey = {};
     state.orders.forEach(function (o) {
-      var key = normalizeIdentifier(o.buyerWhatsapp);
+      var k = normalizeIdentifier(o.buyerWhatsapp);
+      var nm = String(o.buyerName || '').trim().toLowerCase();
+      if (k && nm && !nameToKey[nm]) nameToKey[nm] = k;
+    });
+    function customerKeyFor(o) {
+      var k = normalizeIdentifier(o.buyerWhatsapp);
+      if (k) return k;
+      var nm = String(o.buyerName || '').trim().toLowerCase();
+      if (nm && nameToKey[nm]) return nameToKey[nm];
+      var tel = normalizeIdentifier(o.recipientPhone);
+      if (tel) return 'tel:' + tel;
+      return nm ? 'name:' + nm : '';
+    }
+    state.orders.forEach(function (o) {
+      var key = customerKeyFor(o);
       if (!key) return;
       if (!groups[key]) {
         groups[key] = { key: key, rawIdentifier: o.buyerWhatsapp, name: o.buyerName || '', orders: [] };
@@ -6165,6 +6203,7 @@
         groups[key].name = o.buyerName || groups[key].name;
         groups[key].rawIdentifier = o.buyerWhatsapp || groups[key].rawIdentifier;
       }
+      if (!groups[key].rawIdentifier && o.buyerWhatsapp) groups[key].rawIdentifier = o.buyerWhatsapp;
       groups[key].orders.push(o);
     });
     return Object.keys(groups).map(function (key) {
@@ -6179,14 +6218,19 @@
       for (var ri = 0; ri < ordersSorted.length; ri++) {
         if (ordersSorted[ri].recipientName) { recipientName = ordersSorted[ri].recipientName; break; }
       }
+      var handle = '', phone = '';
+      for (var hi = 0; hi < ordersSorted.length; hi++) { if (!handle && ordersSorted[hi].buyerHandle) handle = ordersSorted[hi].buyerHandle; if (!phone && ordersSorted[hi].recipientPhone) phone = ordersSorted[hi].recipientPhone; }
       return {
         key: key,
         name: g.name,
+        handle: handle,
+        noWhatsapp: !g.rawIdentifier,
+        phone: phone,
         recipientName: recipientName,
-        whatsapp: g.rawIdentifier,
+        whatsapp: g.rawIdentifier || '',
         orderCount: ordersSorted.length,
         totalSpent: totalSpent,
-        creditBalance: creditBalanceForKey(g.rawIdentifier),
+        creditBalance: g.rawIdentifier ? creditBalanceForKey(g.rawIdentifier) : 0,
         orders: ordersSorted
       };
     }).sort(function (a, b) { return b.totalSpent - a.totalSpent; });
@@ -6195,7 +6239,7 @@
   function matchesCustomerSearch(c) {
     if (!customersSearchText) return true;
     var q = customersSearchText.toLowerCase();
-    return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.whatsapp || '').toLowerCase().indexOf(q) !== -1;
+    return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.whatsapp || '').toLowerCase().indexOf(q) !== -1 || (c.phone || '').toLowerCase().indexOf(q) !== -1 || (c.recipientName || '').toLowerCase().indexOf(q) !== -1;
   }
 
   // Every credit ledger entry for this one customer — grants (positive) and consumptions
@@ -6263,7 +6307,7 @@
       '</div>' +
     '</div>';
     if (all.length === 0) {
-      content.innerHTML = searchBar + '<div class="empty">No customers yet — orders need a WhatsApp number to show up here.</div>';
+      content.innerHTML = searchBar + '<div class="empty">No customers yet.</div>';
       return;
     }
     if (filtered.length === 0) {
@@ -6274,11 +6318,11 @@
       var expanded = expandedCustomerKey === c.key;
       return '<div class="card" style="margin-bottom:8px;">' +
         '<button type="button" class="btn-text" data-toggle-customer="' + c.key + '" style="width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; color:inherit;">' +
-          '<span><strong>' + escapeHtml(c.name || 'Unnamed') + (c.recipientName && c.recipientName !== c.name ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(c.recipientName) + ')</span>' : '') + '</strong><br><span class="muted" style="font-size:12px;">' + escapeHtml(c.whatsapp || '') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
+          '<span><strong>' + escapeHtml(c.name || 'Unnamed') + (c.recipientName && c.recipientName !== c.name ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(c.recipientName) + ')</span>' : '') + '</strong><br><span class="muted" style="font-size:12px;">' + (c.whatsapp ? escapeHtml(c.whatsapp) : '<span style="color:#b5680a;">No WhatsApp yet' + (c.phone ? ' · ' + escapeHtml(c.phone) : '') + '</span>') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
           '<span style="text-align:right;"><strong>' + money(c.totalSpent) + '</strong>' + (c.creditBalance ? '<br><span style="font-size:11px; color:var(--green,#3b6d11);">Credit ' + money(c.creditBalance) + '</span>' : '') + '</span>' +
         '</button>' +
         '<div style="display:flex; gap:8px; margin-top:10px;">' +
-          '<button type="button" class="btn btn-secondary btn-small" data-cust-new-order="' + escapeHtml(c.whatsapp || '') + '" style="flex:1;">+ New order</button>' +
+          '<button type="button" class="btn btn-secondary btn-small" data-cust-new-order="' + escapeHtml(c.key) + '" style="flex:1;">+ New order</button>' +
           '<button type="button" class="btn btn-secondary btn-small" data-toggle-customer="' + c.key + '">' + (expanded ? 'Hide orders' : 'Past orders') + '</button>' +
         '</div>' +
         (expanded ? customerDetailHtml(c) : '') +
@@ -6287,9 +6331,10 @@
   }
   // "+ New order" from a customer card: opens the order form with her name, TikTok handle and
   // WhatsApp filled in; the usual repeat-customer box then offers her credit and last address.
-  function startOrderForCustomer(whatsapp) {
-    var m = findCustomerMatches(whatsapp, 1)[0];
-    if (!m) return;
+  function startOrderForCustomer(key) {
+    var c = customerAggregates().find(function (x) { return x.key === key; });
+    if (!c) return;
+    var m = { buyerName: c.name, buyerHandle: c.handle, buyerWhatsapp: c.whatsapp };
     activatePage('orders');
     editingOrderId = null;
     pendingShipGroupId = null;
@@ -6712,6 +6757,23 @@
   function orderStatusLabel(st) {
     return ({ 'queueing': 'To make', 'uv curing': 'UV curing', 'ready to ship': 'Ready to ship', 'order shipment': 'Booked', 'shipped': 'Shipped', 'delivered': 'Delivered', 'cancelled': 'Cancelled' })[st] || st;
   }
+  // Style (pattern) of each bottle, picked right on the card — one small dropdown per bottle.
+  function patternOptionsHtml(current) {
+    return '<option value="">🎨 Choose style…</option>' + TUMBLER_PATTERNS.map(function (pt) {
+      return '<option value="' + pt.value + '"' + (current === pt.value ? ' selected' : '') + '>' + escapeHtml(pt.label) + (pt.surcharge ? ' (+' + money(pt.surcharge) + ')' : '') + '</option>';
+    }).join('');
+  }
+  function orderStyleChipsHtml(o) {
+    if (o.status === 'cancelled') return '';
+    var bottles = [];
+    (o.items || []).forEach(function (i, idx) { if (isBottleItem(i)) bottles.push({ i: i, idx: idx }); });
+    if (!bottles.length) return '';
+    return '<div class="oc-styles">' + bottles.map(function (b) {
+      return '<label class="oc-style' + (b.i.pattern ? ' set' : '') + '">' +
+        (bottles.length > 1 ? '<span class="oc-style-name">' + escapeHtml(cleanItemName(b.i.productName)) + '</span>' : '') +
+        '<select class="order-item-pattern-select" data-order-id="' + o.id + '" data-item-index="' + b.idx + '">' + patternOptionsHtml(b.i.pattern || '') + '</select></label>';
+    }).join('') + '</div>';
+  }
   // "Select" on the filter bar shows the tick boxes for changing several orders at once.
   var orderSelectMode = false;
 
@@ -6802,7 +6864,8 @@
             (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : ''));
       var statusTag = orderStage === 'all' ? '<span class="oc-status-tag">' + escapeHtml(orderStatusLabel(o.status)) + '</span>' : '';
       var itemLines = (o.items || []).map(function (i) {
-        return i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + (i.pattern ? ' · ' + escapeHtml(i.pattern) : '') +
+        var patLbl = i.pattern && tumblerPatternInfo(i.pattern) ? tumblerPatternInfo(i.pattern).label : (i.pattern || '');
+        return i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + ((patLbl && (isDone || !isBottleItem(i))) ? ' · ' + escapeHtml(patLbl) : '') +
           (o.isReplacement ? ' <span class="muted" style="font-size:12px;">' + ((Number(i.unitPrice) || 0) > 0 ? '(' + money(i.qty * i.unitPrice) + ')' : '(free)') + '</span>' : '') +
           (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : '');
       });
@@ -6832,6 +6895,7 @@
           '<td class="oc-date">' + dateHtml + (o.trackingNumber ? ' · ' + escapeHtml(o.trackingNumber) : '') + statusTag + '</td>' +
           '<td class="oc-buyer"><div style="font-weight:600;">' + buyerInner + '</div></td>' +
           '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (itemLines.length ? itemLines.join('<br>') : 'No items') + '</button>' +
+            orderStyleChipsHtml(o) +
             (o.status === 'cancelled' ? '' : (addrEdit.ctx === 'oc' && addrEdit.id === o.id
               ? addressEditorHtml(o, 'oc')
               : (o.shipTo
@@ -6897,7 +6961,8 @@
             // bottles apart later. Only shown for Tumbler-type items. Required before she can mark
             // the item as made (see the order-item-made-input handler) so it never gets skipped.
             var itemProductForPattern = state.products.find(function (p) { return p.id === i.productId; });
-            var patternControl = (o.status !== 'cancelled' && itemProductForPattern && itemProductForPattern.type === 'Tumbler')
+            // The style is now picked on the card itself (see orderStyleChipsHtml) — not repeated here.
+            var patternControl = (false && o.status !== 'cancelled' && itemProductForPattern && itemProductForPattern.type === 'Tumbler')
               ? '<span style="display:flex; align-items:center; gap:4px; margin-left:12px;">' +
                   '<span class="muted" style="font-size:11px; white-space:nowrap;">Pattern:</span>' +
                   '<select class="order-item-pattern-select" data-order-id="' + o.id + '" data-item-index="' + idx + '" style="font-size:12px; padding:3px 5px;">' +
@@ -6973,7 +7038,7 @@
     draftItems = order.items.map(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
       if (!p) return null;
-      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice, isGift: !!item.isGift, isDefect: !!item.isDefect, defectNormalPrice: item.isDefect ? item.defectNormalPrice : null };
+      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice, isGift: !!item.isGift, isDefect: !!item.isDefect, defectNormalPrice: item.isDefect ? item.defectNormalPrice : null, pattern: item.pattern || '', patternSurcharge: Number(item.patternSurcharge) || 0 };
     }).filter(function (l) { return l; });
     if (draftItems.length === 0) draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
     renderDraftItems();
@@ -12811,7 +12876,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30d';
+  var APP_VERSION = '2026-09-30f';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
