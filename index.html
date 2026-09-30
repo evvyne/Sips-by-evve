@@ -1004,11 +1004,8 @@
       <button class="btn btn-secondary btn-small" id="btn-add-item" style="margin-bottom:14px;">+ Add item</button>
 
       <div class="of-kind-row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:4px 0 12px;">
-        <span class="field-label" style="margin:0;">This order is</span>
         <div class="of-kind" id="of-kind">
-          <button type="button" data-of-kind="make" class="on">To make</button>
-          <button type="button" data-of-kind="made">Already made</button>
-          <button type="button" data-of-kind="replacement">🔁 Replacement</button>
+          <button type="button" data-of-kind="replacement">🔁 This is a replacement</button>
         </div>
       </div>
       <div class="muted" id="of-kind-rep-hint" style="display:none; font-size:12px; margin:-6px 0 10px;">Items at RM 0 go out free (counted as wastage). Put a price on anything the customer pays for, e.g. an extra sticker.</div>
@@ -1023,7 +1020,7 @@
             <input id="of-estimated-date" type="date" style="flex:1;">
             <button type="button" class="btn btn-secondary btn-small" id="of-estimated-date-clear">Clear</button>
           </div>
-          <div class="muted" style="font-size:12px; margin-top:4px;">Leave blank and the next free day is picked for you.</div>
+          <div class="muted" id="of-date-hint" style="font-size:12px; margin-top:4px;">Leave blank and the next free day is picked for you. A day before today means it's already made.</div>
         </div>
         <div id="of-kind-made" style="display:none;">
           <label class="field-label">Made on</label>
@@ -4678,7 +4675,7 @@
     var today = todayISO();
     if (day < today) return [];
     var out = [];
-    var making = state.orders.filter(function (o) { return o.status === 'queueing' && !o.productionDone && o.scheduledDate === day; });
+    var making = state.orders.filter(function (o) { return o.status === 'queueing' && o.scheduledDate === day; });
     if (making.length) {
       var cups = making.reduce(function (s, o) { return s + orderTumblerQty(o); }, 0);
       var names = making.map(function (o) { return o.buyerName || 'Unknown'; }).join(', ');
@@ -4857,7 +4854,7 @@
     var el = document.getElementById('simple-content');
     if (!el) return;
     var today = todayISO();
-    var todays = state.orders.filter(function (o) { return o.status === 'queueing' && !o.productionDone && o.scheduledDate === today; });
+    var todays = state.orders.filter(function (o) { return o.status === 'queueing' && o.scheduledDate === today; });
     var tumblersToday = todays.reduce(function (s, o) { return s + orderTumblerQty(o); }, 0);
     var readyToShip = state.orders.filter(function (o) { return o.status === 'ready to ship'; }).length;
     var d = new Date(today + 'T00:00:00');
@@ -5023,22 +5020,42 @@
   // "This order is": To make (gets a making date), Already made (logged late — pick where it is
   // now and the day it was made, no production slot used), or Replacement (items at RM 0 are free).
   var ofKind = 'make';
+  // The date says whether it's made: blank = pick the next free day, today or later = to make on
+  // that day, a day before today = already made (then she picks where it is now).
+  var ofOriginalSched = null; // when editing: the order's making date as it was, so an overdue
+                              // To-make order edited for another reason isn't marked made.
+  function ofDateMeansMade() {
+    var v = document.getElementById('of-estimated-date').value;
+    if (!v || v >= todayISO()) return false;
+    if (editingOrderId && ofOriginalSched !== null && v === ofOriginalSched && ofKind !== 'made') return false;
+    return true;
+  }
+  function refreshMadeByDate() {
+    var past = ofDateMeansMade();
+    var made = past || ofKind === 'made';
+    document.getElementById('of-kind-made-stage').style.display = made ? '' : 'none';
+    var hint = document.getElementById('of-date-hint');
+    if (hint) hint.textContent = past
+      ? '✔ Already made on this day — it won\'t take a making slot. Pick where it is now →'
+      : 'Leave blank and the next free day is picked for you. A day before today means it\'s already made.';
+    var statusSel = document.getElementById('of-status');
+    if (made) statusSel.value = document.getElementById('of-made-stage').value;
+    else if (statusSel.value !== 'queueing') statusSel.value = 'queueing';
+  }
   function setOrderKind(kind) {
     ofKind = kind;
     Array.from(document.querySelectorAll('#of-kind [data-of-kind]')).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-of-kind') === kind); });
-    var made = kind === 'made';
-    document.getElementById('of-kind-make').style.display = made ? 'none' : '';
-    document.getElementById('of-kind-made').style.display = made ? '' : 'none';
-    document.getElementById('of-kind-made-stage').style.display = made ? '' : 'none';
+    document.getElementById('of-kind-make').style.display = '';
+    document.getElementById('of-kind-made').style.display = 'none';
     document.getElementById('of-kind-rep-hint').style.display = kind === 'replacement' ? '' : 'none';
-    var statusSel = document.getElementById('of-status');
-    if (made) { statusSel.value = document.getElementById('of-made-stage').value; }
-    else if (statusSel.value !== 'queueing') { statusSel.value = 'queueing'; }
+    refreshMadeByDate();
   }
+  ['input', 'change'].forEach(function (ev) { document.getElementById('of-estimated-date').addEventListener(ev, refreshMadeByDate); });
   document.getElementById('of-kind').addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-of-kind]') : null;
     if (!b) return;
     var k = b.getAttribute('data-of-kind');
+    if (k === 'replacement' && ofKind === 'replacement') { setOrderKind('make'); return; } // tap again to turn it off
     if (k === 'replacement' && ofKind !== 'replacement' && !editingOrderId) {
       // Replacement items default to free; she prices only what the customer pays for.
       draftItems.forEach(function (l) { l.unitPrice = 0; });
@@ -5050,7 +5067,7 @@
     setOrderKind(k);
   });
   document.getElementById('of-made-stage').addEventListener('change', function () {
-    if (ofKind === 'made') document.getElementById('of-status').value = this.value;
+    if (ofKind === 'made' || ofDateMeansMade()) document.getElementById('of-status').value = this.value;
   });
   // Older code paths (and tests) may still set the hidden status box directly — keep the chips in step.
   document.getElementById('of-status').addEventListener('change', function () {
@@ -5075,6 +5092,7 @@
   });
   document.getElementById('of-estimated-date-clear').addEventListener('click', function () {
     document.getElementById('of-estimated-date').value = '';
+    refreshMadeByDate();
   });
 
   // Checking "Ready right away" means there's no date to schedule at all — disable+clear the
@@ -5170,6 +5188,7 @@
     document.getElementById('of-made-stage').value = 'uv curing';
     setOrderKind('make');
     editingOrderWasReplacement = false;
+    ofOriginalSched = null;
     document.getElementById('of-shipping-zone').value = 'west_malaysia';
     document.getElementById('of-shipping-weight').value = '';
     document.getElementById('of-shipping').value = '';
@@ -5496,8 +5515,9 @@
     if (validLines.length === 0) { alert('Add at least one line item.'); return null; }
 
     var status = document.getElementById('of-status').value;
-    if (ofKind === 'made') status = document.getElementById('of-made-stage').value;
-    var madeOn = ofKind === 'made' ? (document.getElementById('of-made-date').value || '') : '';
+    var madeByDate = ofDateMeansMade() && !document.getElementById('of-immediate').checked;
+    if (ofKind === 'made' || madeByDate) status = document.getElementById('of-made-stage').value;
+    var madeOn = madeByDate ? document.getElementById('of-estimated-date').value : (ofKind === 'made' ? (document.getElementById('of-made-date').value || '') : '');
     var isReplacementOrder = ofKind === 'replacement' || (!!editingOrderId && editingOrderWasReplacement);
     var buyerName = document.getElementById('of-buyer-name').value.trim();
     var buyerHandle = document.getElementById('of-buyer-handle').value.trim();
@@ -5507,7 +5527,7 @@
     // One single production date now — no separate "rough" vs "confirmed" step. Whatever she
     // sets (or leaves for the auto-suggestion below to fill in) is saved straight to
     // scheduledDate and shows on the Calendar immediately.
-    var productionDate = immediate ? '' : document.getElementById('of-estimated-date').value;
+    var productionDate = (immediate || madeByDate) ? '' : document.getElementById('of-estimated-date').value;
     // Logged late and already past making (e.g. saved straight as "uv curing")? Then it's made —
     // don't hand it a production slot it doesn't need.
     var alreadyMade = ['uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered'].indexOf(status) !== -1;
@@ -5617,7 +5637,8 @@
         if (order.scheduledDate !== productionDate) order.customerNotified = false; // date moved — you'll need to notify again
         order.scheduledDate = productionDate;
         order.immediate = immediate;
-        if (ofKind === 'made') order.madeOn = madeOn;
+        if (ofKind === 'made' || madeByDate) order.madeOn = madeOn;
+        if (status === 'queueing') order.productionDone = false; // an old "done" tick never overrides To make
         if (isReplacementOrder) order.isReplacement = true;
         if (status !== 'cancelled') deductStock(order);
       }
@@ -6067,7 +6088,7 @@
     return state.orders
       // Only orders still waiting to be made take up a day's slots — once an order has moved on
       // (UV curing, ready, shipped…) or is marked done, its cups are already made.
-      .filter(function (o) { return o.status === 'queueing' && !o.productionDone && o.scheduledDate === dateStr; })
+      .filter(function (o) { return o.status === 'queueing' && o.scheduledDate === dateStr; })
       .reduce(function (sum, o) { return sum + orderTumblerQty(o); }, 0);
   }
   function isProductionDay(dateStr) {
@@ -6941,7 +6962,11 @@
     document.getElementById('of-postcode').value = order.postcode || '';
     document.getElementById('of-production-hint').textContent = '';
     document.getElementById('of-made-date').value = order.madeOn || '';
-    if (order.status !== 'queueing') document.getElementById('of-made-stage').value = order.status;
+    ofOriginalSched = order.status === 'queueing' ? (order.scheduledDate || '') : null;
+    if (order.status !== 'queueing') {
+      document.getElementById('of-made-stage').value = order.status;
+      document.getElementById('of-estimated-date').value = order.madeOn || '';
+    }
     setOrderKind(order.isReplacement && order.status === 'queueing' ? 'replacement' : (order.status === 'queueing' ? 'make' : 'made'));
     if (order.isReplacement && order.status !== 'queueing') ofKind = 'made';
     editingOrderWasReplacement = !!order.isReplacement;
@@ -8444,7 +8469,8 @@
     var notCancelled = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
     // "To make" = still queueing (plus "ready right away" orders). Anything that has already moved
     // on to UV curing / ready / shipped is made, so it sits under Completed instead.
-    var stillToMake = function (o) { return !o.productionDone && (o.immediate || o.status === 'queueing'); };
+    // Status decides it: an old leftover "done" tick never hides an order that's still To make.
+    var stillToMake = function (o) { return o.status === 'queueing' || (o.immediate && !o.productionDone && ['uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1); };
     var active = notCancelled.filter(stillToMake);
     var done = notCancelled.filter(function (o) { return !stillToMake(o); });
     // Orders marked "Ready right away" (see the order form) are things she can make immediately
@@ -8477,7 +8503,7 @@
           '<div class="schedule-controls">' + queuePill + paidPill +
             (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '">') +
             '<label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); white-space:nowrap;">' +
-              '<input type="checkbox" class="schedule-done-checkbox" data-order-id="' + o.id + '"' + (isDone ? ' checked' : '') + '> Done' +
+              '<input type="checkbox" class="schedule-done-checkbox" data-order-id="' + o.id + '"' + (isDone ? ' checked' : '') + '> Made' +
             '</label>' +
           '</div>' +
         '</div></div>';
@@ -8563,12 +8589,19 @@
       }
     }
     if (e.target.classList.contains('schedule-done-checkbox')) {
+      // "Made" here is the same as the order card's "Mark as made": it moves the order on to UV
+      // curing (with Undo), so the status, the Calendar and the day's slots always agree.
       var id2 = e.target.getAttribute('data-order-id');
       var order2 = state.orders.find(function (o) { return o.id === id2; });
       if (order2) {
-        order2.productionDone = e.target.checked;
+        order2.productionDone = false;
+        if (e.target.checked && order2.status === 'queueing') { advanceOrderOneStep(id2); return; }
+        if (!e.target.checked && order2.status === 'uv curing') {
+          (order2.items || []).forEach(function (i) { i.madeQty = 0; });
+          autoAdvanceStatus(order2, 'queueing');
+        }
         save();
-        renderSchedule();
+        renderAll();
       }
     }
   });
@@ -10269,7 +10302,7 @@
   var calYear = (new Date()).getFullYear();
   var calMonth = (new Date()).getMonth();
   var calShowMade = function () { try { return localStorage.getItem('sipsCalShowMade') === '1'; } catch (e) { return false; } };
-  var calOrderToMake = function (o) { return o.status === 'queueing' && !o.productionDone && !o.immediate; };
+  var calOrderToMake = function (o) { return o.status === 'queueing' && !o.immediate; };
   var calEditingDate = null; // day currently open in the edit panel — nothing is saved until "Save"
 
   function renderCalendar() {
@@ -10293,7 +10326,7 @@
     var showMade = calShowMade();
     state.orders.forEach(function (o) {
       if (o.status === 'cancelled') return;
-      var toMake = o.status === 'queueing' && !o.productionDone && !o.immediate;
+      var toMake = o.status === 'queueing' && !o.immediate;
       if (o.scheduledDate && (toMake || (showMade && !o.immediate))) {
         if (!ordersByDate[o.scheduledDate]) ordersByDate[o.scheduledDate] = [];
         ordersByDate[o.scheduledDate].push(o);
@@ -12778,7 +12811,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30c';
+  var APP_VERSION = '2026-09-30d';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
