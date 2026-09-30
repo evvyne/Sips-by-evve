@@ -180,6 +180,7 @@
     #cost-breakdown .cost-cards .stat-card { flex: 0 0 160px; scroll-snap-align: start; padding-right: 12px !important; }
     #cost-breakdown .cost-breakdown-select { position: static !important; max-width: 100% !important; width: 100%; margin-bottom: 6px; }
   }
+  .ship-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .ship-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
   .ship-pills { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .ship-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -477,6 +478,7 @@
       <button data-tab="monthly" data-group="reports">Monthly Report</button>
       <button data-tab="alerts" data-group="reports">Alerts</button>
       <button data-tab="producttotals" data-group="reports">Product Totals</button>
+      <button data-tab="history" data-group="reports">Data History</button>
       <button data-tab="orders" data-group="orders">Orders</button>
       <button data-tab="shipping" data-group="orders">Shipping</button>
       <button data-tab="customers" data-group="orders">Customers</button>
@@ -964,6 +966,12 @@
     </div>
   </section>
 
+  <section class="page" id="page-history">
+    <div class="page-header"><h1>Data History</h1></div>
+    <div class="muted" style="font-size:12px; margin:-8px 0 14px;">Every time the cloud copy changes, the version before it is kept (last 30). If data ever goes missing, find the last good version here, preview it, and restore it. Restoring keeps today's copy in this list too, so you can always switch back.</div>
+    <div id="history-content"></div>
+  </section>
+
   <section class="page" id="page-producttotals">
     <div class="page-header">
       <h1>Product Totals</h1>
@@ -1124,6 +1132,7 @@
         <button class="btn btn-secondary" id="btn-cancel-order">Cancel</button>
       </div>
     </div>
+ <div class="card" id="pay-reminder-editor" style="display:none; margin-bottom:12px;"></div>
     <div id="order-stage-bar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
     <div class="card" id="order-filter-bar" style="padding:12px 14px;">
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
@@ -6917,6 +6926,8 @@
           (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
             ? '<button type="button" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">➕ Add another order</button>'
             : '') +
+          ((!o.paid && !o.scam && o.status !== 'cancelled' && orderTotal(o) > 0) ? '<button type="button" data-pay-reminder="' + o.id + '">💬 Copy payment reminder</button>' : '') +
+          '<button type="button" data-edit-pay-reminder="1">✏️ Edit payment reminder</button>' +
           (o.status !== 'cancelled' ? '<button type="button" data-order-scam="' + o.id + '">' + (o.scam ? '↩ Not a scam after all' : '⚠ Scam — sent, never paid') + '</button>' : '') +
           '<button type="button" class="danger" data-delete-order="' + o.id + '">🗑 Delete</button>' +
         '</div></div>';
@@ -6973,7 +6984,7 @@
             (o.status === 'cancelled' ? '' : o.pickup ? '<div class="oc-addr pickup"><button type="button" class="oc-addr-btn" data-toggle-pickup="' + o.id + '">🤝 Customer picks up · <u>Ship instead</u></button></div>' : (addrEdit.ctx === 'oc' && addrEdit.id === o.id
               ? addressEditorHtml(o, 'oc')
               : (o.shipTo
-                ? '<div class="oc-addr"><button type="button" class="oc-addr-btn" data-oc-addr="' + o.id + '" title="' + escapeHtml(o.shipTo + (o.postcode ? ', ' + o.postcode : '')) + '">📍 ' + escapeHtml(addrShortLine(o)) + ' · <u>Change</u></button></div>'
+                ? '<div class="oc-addr"><button type="button" class="oc-addr-btn" data-oc-addr="' + o.id + '" title="' + escapeHtml(o.shipTo + (o.postcode ? ', ' + o.postcode : '')) + '">📍 ' + escapeHtml(addrShortLine(o)) + ' · <u>Change</u></button> ' + eastMalaysiaTagHtml(o) + '</div>'
                 : '<div class="oc-addr none"><button type="button" class="oc-addr-btn" data-oc-addr="' + o.id + '">📍 No address yet · <u>Add</u></button></div>'))) +
           '</td>' +
           '<td class="oc-total">' + totalHtml + '</td>' +
@@ -7124,6 +7135,38 @@
     }
   }
 
+  var DEFAULT_PAY_REMINDER = 'Hihi Kakak {buyerName}! 😊\nJust a gentle reminder for your order:\n{items}\nTotal: {amount}\n\nKakak can make payment to:\n{bankDetails}\n\nOnce done, please send me the receipt ya. Thank you so much! 💕';
+  function payReminderText(o) {
+    var tpl = state.paymentReminderTemplate || DEFAULT_PAY_REMINDER;
+    var items = (o.items || []).map(function (i) { return i.qty + ' × ' + cleanItemName(i.productName) + (i.pattern && tumblerPatternInfo(i.pattern) ? ' (' + tumblerPatternInfo(i.pattern).label + ')' : ''); }).join('\n');
+    var owed = unpaidAmountFor(o) || orderTotal(o);
+    return tpl.split('{buyerName}').join(o.buyerName || '')
+      .split('{items}').join(items)
+      .split('{amount}').join(money(owed).replace(/\u00a0/g, ' '))
+      .split('{bankDetails}').join(state.bankDetails || '(bank details)');
+  }
+  function renderPayReminderEditor(open) {
+    var box = document.getElementById('pay-reminder-editor');
+    if (!box) return;
+    if (!open) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div style="font-weight:600; margin-bottom:6px;">💬 Payment reminder</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">Use {buyerName}, {items}, {amount} and {bankDetails} — they\'re filled in for each order when you copy.</div>' +
+      '<textarea id="pay-reminder-template" rows="9" style="width:100%; font-size:13px;">' + escapeHtml(state.paymentReminderTemplate || DEFAULT_PAY_REMINDER) + '</textarea>' +
+      '<label class="field-label" style="margin-top:8px;">Your bank details</label>' +
+      '<textarea id="pay-reminder-bank" rows="3" style="width:100%; font-size:13px;" placeholder="Account number\nName\nBank">' + escapeHtml(state.bankDetails || '') + '</textarea>' +
+      '<div style="margin-top:8px; display:flex; gap:6px;"><button type="button" class="btn btn-primary btn-small" id="btn-save-pay-reminder">Save</button><button type="button" class="btn btn-secondary btn-small" id="btn-cancel-pay-reminder">Cancel</button>' +
+      '<button type="button" class="btn-text" id="btn-reset-pay-reminder" style="margin-left:auto; font-size:12px;">Reset to default message</button></div>';
+  }
+  document.getElementById('pay-reminder-editor').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-save-pay-reminder') {
+      state.paymentReminderTemplate = document.getElementById('pay-reminder-template').value;
+      state.bankDetails = document.getElementById('pay-reminder-bank').value.trim();
+      save(); renderPayReminderEditor(false); showCopiedToast('Payment reminder saved'); return;
+    }
+    if (e.target.id === 'btn-cancel-pay-reminder') { renderPayReminderEditor(false); return; }
+    if (e.target.id === 'btn-reset-pay-reminder') { document.getElementById('pay-reminder-template').value = DEFAULT_PAY_REMINDER; }
+  });
   function closeOrderMenus(except) {
     Array.from(document.querySelectorAll('.oc-more.open')).forEach(function (m) { if (m !== except) m.classList.remove('open'); });
   }
@@ -7139,6 +7182,17 @@
       return;
     }
     if (e.target.closest && e.target.closest('.oc-menu') && e.target.tagName === 'BUTTON') closeOrderMenus();
+    var payRemId = e.target.getAttribute && e.target.getAttribute('data-pay-reminder');
+    if (payRemId) {
+      var pro = state.orders.find(function (x) { return x.id === payRemId; });
+      if (pro) {
+        var msg = payReminderText(pro);
+        window.__lastCopiedText = msg;
+        copyTextWithToast(msg, state.bankDetails ? 'Payment reminder copied — paste into WhatsApp' : 'Copied — add your bank details in ⋯ → Edit payment reminder');
+      }
+      return;
+    }
+    if (e.target.getAttribute && e.target.getAttribute('data-edit-pay-reminder')) { renderPayReminderEditor(true); window.scrollTo && window.scrollTo(0, 0); return; }
     var scamId = e.target.getAttribute && e.target.getAttribute('data-order-scam');
     if (scamId) {
       var so = state.orders.find(function (x) { return x.id === scamId; });
@@ -8972,6 +9026,21 @@
     '</div>';
   }
   // "Nurul · 82000 Pontian, Johor" — the short line shown once an address is on file.
+  // Sabah (88xxx–91xxx), Labuan (87xxx) and Sarawak (93xxx–98xxx) — postage there costs more.
+  function isEastMalaysia(o) {
+    if (!o || o.pickup) return false;
+    if (o.shippingZone === 'east_malaysia') return true;
+    var addr = String(o.shipTo || '') + ' ' + String(o.postcode || '');
+    var pc = o.postcode || (addr.match(/\b(\d{5})\b/) || [])[1] || '';
+    var n = Number(pc);
+    if (pc && ((n >= 87000 && n <= 91999) || (n >= 93000 && n <= 98999))) return true;
+    return /\b(sabah|sarawak|labuan|kota kinabalu|kuching|miri|sibu|sandakan|tawau|bintulu)\b/i.test(addr);
+  }
+  function eastMalaysiaTagHtml(o) {
+    if (!isEastMalaysia(o)) return '';
+    var cheap = isShippingFieldEntered(o.shippingCostEntered, o.shippingCostActual) && Number(o.shippingCostActual) > 0 && Number(o.shippingCostActual) <= 8;
+    return '<span class="pill pill-amber" style="font-size:11px;" title="Sabah / Sarawak / Labuan">🌴 East Malaysia' + (cheap ? ' · check postage (' + money(o.shippingCostActual) + ')' : '') + '</span>';
+  }
   function addrShortLine(o) {
     var addr = String(o.shipTo || '');
     var pc = o.postcode || (addr.match(/\b\d{5}\b/) || [''])[0];
@@ -9800,7 +9869,7 @@
           '<div style="min-width:0;"><div style="font-weight:600;">' + (idx + 1) + '. ' + escapeHtml(o.buyerName || 'Unknown') +
             (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') +
             (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
-            '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Unpaid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + '</div></div>' +
+            '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Unpaid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + ' ' + eastMalaysiaTagHtml(o) + '</div></div>' +
           '<div class="pd-row-steps">' + step(!!o.shipTo, 'Address') + step(booked || hasTracking, 'Booked') + step(hasTracking, 'Tracking') + '</div>' +
         '</div>' +
         (!o.shipTo && !editing ? '<div class="pd-row-actions"><button type="button" class="btn btn-secondary btn-small" data-pd-addr="' + o.id + '">📍 Add address</button>' +
@@ -9945,21 +10014,21 @@
     // a missed shipping cost even on an order that's already been delivered, since that's still
     // real money that needs to be recorded.
     var missingShippingCostList = fullQueue.concat(delivered).filter(isShippingCostMissing);
-    var summary = '<div class="card" style="margin-bottom:10px;">' +
-      '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">' +
-        '<span><strong>' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</span>' +
-        (editingShippedTemplate ? '' : '<button type="button" class="btn-text" id="btn-edit-shipped-template">✏️ Edit shipped message</button>') +
+    // One tidy row: search · filter · sort · ⋯ (Give credit / Edit shipped message).
+    var summary = '<div class="card" style="margin-bottom:10px; padding:12px 14px;">' +
+      '<div class="muted" style="font-size:13px; margin-bottom:8px;"><strong style="color:var(--text);">' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</div>' +
+      '<div class="ship-tools">' +
+        (fullQueue.length > 0
+          ? '<span style="display:inline-flex; gap:4px; flex:1; min-width:170px;"><input type="text" id="shipping-search" class="search-input" placeholder="Search name, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="flex:1; min-width:0; font-size:13px;">' +
+              '<button type="button" class="btn btn-secondary btn-small" id="btn-shipping-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button></span>' +
+            '<select id="shipping-status-filter" style="font-size:13px; width:auto;">' + shippingFilterOptionsHtml() + '</select>' +
+            '<button type="button" class="of-chip" id="btn-toggle-shipping-sort">' + (shippingSortNewestFirst ? '↓ Newest first' : '↑ Oldest first') + '</button>'
+          : '') +
+        '<div class="oc-more"><button type="button" class="oc-more-btn" data-order-more="ship-tools" aria-label="More">⋯</button><div class="oc-menu">' +
+          '<button type="button" id="btn-toggle-give-credit">🎁 Give credit</button>' +
+          (editingShippedTemplate ? '' : '<button type="button" id="btn-edit-shipped-template">✏️ Edit shipped message</button>') +
+        '</div></div>' +
       '</div>' +
-      (fullQueue.length > 0
-        ? '<div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
-            '<label class="muted" style="font-size:12px;">Filter:</label>' +
-            '<select id="shipping-status-filter" style="font-size:13px;">' + shippingFilterOptionsHtml() + '</select>' +
-            '<button type="button" class="btn btn-secondary btn-small" id="btn-toggle-shipping-sort" style="padding:6px 9px; font-size:13px;">' + (shippingSortNewestFirst ? '↓ Newest first' : '↑ Oldest first') + '</button>' +
-            '<input type="text" id="shipping-search" class="search-input" placeholder="Search name, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="font-size:13px; width:190px;">' +
-            '<button type="button" class="btn btn-secondary btn-small" id="btn-shipping-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button>' +
-            '<button type="button" class="btn btn-secondary btn-small" id="btn-toggle-give-credit" style="padding:6px 9px;">🎁 Give credit</button>' +
-          '</div>'
-        : '') +
       (missingShippingCostList.length > 0
         ? '<button type="button" id="btn-toggle-missing-shipcost" style="margin-top:8px; width:100%; text-align:left; background:var(--bg-warning, #FAEEDA); border:1px solid var(--border-warning, #EF9F27); border-radius:8px; padding:8px 12px; color:var(--text-warning, #854F0B); font-size:13px; cursor:pointer;">' +
             '⚠️ ' + missingShippingCostList.length + ' order' + (missingShippingCostList.length !== 1 ? 's' : '') + " haven't had shipping cost entered yet — tap to see which" +
@@ -10036,7 +10105,7 @@
             (contactPhone ? '<div class="muted" style="font-size:12px;">' + escapeHtml(contactPhone) + '</div>' : '') +
             shipGroupBadgeHtml(o) +
           '</div>' +
-          '<div class="ship-pills">' + (o.isReplacement ? '<span class="pill pill-amber">🔁 Replacement' + (orderTotal(o) > 0 ? ' · top-up ' + money(orderTotal(o)) : ' · free') + '</span>' : '') + paidPill + statusPill + '</div>' +
+          '<div class="ship-pills">' + eastMalaysiaTagHtml(o) + (o.isReplacement ? '<span class="pill pill-amber">🔁 Replacement' + (orderTotal(o) > 0 ? ' · top-up ' + money(orderTotal(o)) : ' · free') + '</span>' : '') + paidPill + statusPill + '</div>' +
         '</div>' +
         (o.parcels && o.parcels.length
           ? addOnsOnlyBoxesHtml(o) +
@@ -12997,7 +13066,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30k';
+  var APP_VERSION = '2026-09-30l';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
@@ -13180,6 +13249,138 @@
   }
   // Compares this device with the cloud and settles the difference (adopt, push, or merge).
   // `remote` can be passed in when the caller has already downloaded it.
+  // A page still running an OLDER copy of the app must never write over what a newer copy saved
+  // (old tabs left open are what overwrote her data on 30 Sep). It can still read; it just stops
+  // uploading and asks her to refresh — her edits stay on this device and merge in after.
+  function cloudWrittenByNewerApp(copy) {
+    var w = copy && Array.isArray(copy.cloudWriters) ? copy.cloudWriters[0] : null;
+    return !!(w && w.version && String(w.version) > APP_VERSION);
+  }
+  function showStaleVersionBanner() {
+    setSyncStatus('offline');
+    if (document.getElementById('stale-version-banner')) return;
+    var b = document.createElement('div');
+    b.id = 'stale-version-banner';
+    b.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:10000; background:#a32d2d; color:#fff; padding:12px 16px; font-size:14px; display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap;';
+    b.innerHTML = '<span>This page is an older version of the app, so it has stopped saving to the cloud. Please refresh — nothing you typed here is lost.</span>';
+    var btn = document.createElement('button');
+    btn.textContent = 'Refresh now';
+    btn.style.cssText = 'background:#fff; color:#a32d2d; border:none; border-radius:8px; padding:6px 14px; font-weight:600; cursor:pointer;';
+    btn.addEventListener('click', function () { location.reload(); });
+    b.appendChild(btn);
+    document.body.appendChild(b);
+  }
+  // ---------- Data History (versions kept by Supabase before every change) ----------
+  var historyView = { loading: false, rows: null, error: '', previewId: null, preview: null };
+  function loadHistory() {
+    var el = document.getElementById('history-content');
+    if (!el) return;
+    if (isViewerMode) { el.innerHTML = '<div class="empty">Only the owner can see data history.</div>'; return; }
+    if (!sb) { el.innerHTML = '<div class="empty">Sign in to see data history.</div>'; return; }
+    historyView = { loading: true, rows: null, error: '', previewId: null, preview: null };
+    renderHistory();
+    sb.auth.getUser().then(function (res) {
+      var user = res.data && res.data.user;
+      if (!user) { historyView.loading = false; historyView.error = 'Not signed in.'; renderHistory(); return; }
+      return sb.from('app_state_history').select('id, saved_at, writer:data->cloudWriters->0').eq('user_id', user.id).order('id', { ascending: false }).limit(30).then(function (r) {
+        historyView.loading = false;
+        if (r.error) historyView.error = 'Could not load history (' + r.error.message + '). If this says the table does not exist, run supabase-protect.sql once in Supabase.';
+        else historyView.rows = r.data || [];
+        renderHistory();
+      });
+    }).catch(function () { historyView.loading = false; historyView.error = 'Could not reach Supabase.'; renderHistory(); });
+  }
+  function historySummary(d) {
+    var orders = (d && d.orders) || [];
+    var newest = orders.map(function (o) { return o.date || ''; }).sort().pop() || '';
+    return { orders: orders.length, costs: ((d && d.costs) || []).length, products: ((d && d.products) || []).length, newest: newest };
+  }
+  function renderHistory() {
+    var el = document.getElementById('history-content');
+    if (!el) return;
+    if (historyView.loading) { el.innerHTML = '<div class="card"><div class="muted">Loading…</div></div>'; return; }
+    if (historyView.error) { el.innerHTML = '<div class="card" style="color:var(--red);">' + escapeHtml(historyView.error) + '</div>'; return; }
+    var cur = historySummary(state);
+    var rows = historyView.rows || [];
+    var html = '<div class="card" style="margin-bottom:10px;"><div style="font-weight:600;">Now on this device</div><div class="muted" style="font-size:13px;">' + cur.orders + ' orders · ' + cur.costs + ' costs · ' + cur.products + ' products</div>' +
+      '<div style="margin-top:8px;"><button type="button" class="btn btn-secondary btn-small" id="btn-history-refresh">Refresh list</button></div></div>';
+    if (!rows.length) html += '<div class="empty">No earlier versions yet — they appear after the next change is saved.</div>';
+    html += rows.map(function (r) {
+      var w = r.writer || {};
+      var drop = (typeof w.orders === 'number') && w.orders < cur.orders - 3;
+      var open = historyView.previewId === r.id;
+      var pv = open ? historyView.preview : null;
+      return '<div class="card" style="margin-bottom:8px; padding:10px 14px;' + (drop ? ' border-color:#f0c674;' : '') + '">' +
+        '<div style="display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap;">' +
+          '<div><div style="font-weight:500;">' + escapeHtml(new Date(r.saved_at).toLocaleString()) + '</div>' +
+          '<div class="muted" style="font-size:12px;">' + (w.device ? 'saved by ' + escapeHtml(w.device) + (w.version ? ' · v' + escapeHtml(w.version) : '') : 'older version') + (typeof w.orders === 'number' ? ' · <b>' + w.orders + ' orders</b>' : '') + '</div></div>' +
+          '<button type="button" class="btn btn-secondary btn-small" data-history-preview="' + r.id + '">' + (open ? 'Hide' : 'Preview') + '</button>' +
+        '</div>' +
+        (open ? (pv ? historyPreviewHtml(r.id, pv) : '<div class="muted" style="margin-top:8px;">Loading…</div>') : '') +
+      '</div>';
+    }).join('');
+    el.innerHTML = html;
+  }
+  function historyPreviewHtml(id, d) {
+    var sm = historySummary(d);
+    var nowIds = {}; state.orders.forEach(function (o) { nowIds[o.id] = true; });
+    var thenIds = {}; (d.orders || []).forEach(function (o) { thenIds[o.id] = true; });
+    var onlyThen = (d.orders || []).filter(function (o) { return !nowIds[o.id]; });
+    var onlyNow = state.orders.filter(function (o) { return !thenIds[o.id]; });
+    function names(list) { return list.slice(0, 12).map(function (o) { return escapeHtml((o.buyerName || '?') + ' (' + shortDate(o.date) + ')'); }).join(', ') + (list.length > 12 ? ' +' + (list.length - 12) + ' more' : ''); }
+    return '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:13px;">' +
+      '<div>' + sm.orders + ' orders · ' + sm.costs + ' costs · ' + sm.products + ' products · newest order ' + escapeHtml(sm.newest ? shortDate(sm.newest) : '—') + '</div>' +
+      (onlyThen.length ? '<div style="margin-top:6px; color:#3b6d11;">Has ' + onlyThen.length + ' order(s) you don\'t have now: ' + names(onlyThen) + '</div>' : '') +
+      (onlyNow.length ? '<div style="margin-top:6px; color:#a32d2d;">Restoring would remove ' + onlyNow.length + ' order(s) you have now: ' + names(onlyNow) + '</div>' : '') +
+      (!onlyThen.length && !onlyNow.length ? '<div class="muted" style="margin-top:6px;">Same orders as now (other details may differ).</div>' : '') +
+      '<div style="margin-top:10px;"><button type="button" class="btn btn-primary btn-small" data-history-restore="' + id + '">Restore this version</button></div>' +
+    '</div>';
+  }
+  function restoreHistoryVersion(id) {
+    sb.auth.getUser().then(function (res) {
+      var user = res.data && res.data.user;
+      if (!user) return;
+      return Promise.all([
+        sb.from('app_state_history').select('data').eq('id', id).maybeSingle(),
+        sb.from('app_state').select('data').eq('user_id', user.id).maybeSingle()
+      ]).then(function (out) {
+        var h = out[0], cur = out[1];
+        if (h.error || !h.data || cur.error || !cur.data) { alert('Could not load that version. Please try again.'); return; }
+        var copy = cloneJSON(h.data.data);
+        copy.updatedAt = Date.now();
+        return conditionalCloudWrite(user.id, copy, cur.data.data.updatedAt).then(function (ok) {
+          if (ok === null) { alert('Supabase refused this restore — usually because it would remove many orders at once (the safety guard). Nothing was changed. Tell Claude which version you want.'); return; }
+          if (!ok) { alert('The cloud copy changed just now. Please try again.'); return; }
+          saveSyncMeta(user.id, copy);
+          adoptStateLocally(cloneJSON(copy));
+          showCopiedToast('Restored');
+          loadHistory();
+        });
+      });
+    }).catch(function () { alert('Could not reach Supabase.'); });
+  }
+  document.getElementById('history-content').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-history-refresh') { loadHistory(); return; }
+    var pid = e.target.getAttribute('data-history-preview');
+    if (pid) {
+      pid = Number(pid);
+      if (historyView.previewId === pid) { historyView.previewId = null; historyView.preview = null; renderHistory(); return; }
+      historyView.previewId = pid; historyView.preview = null; renderHistory();
+      sb.from('app_state_history').select('data').eq('id', pid).maybeSingle().then(function (r) {
+        if (historyView.previewId !== pid) return;
+        historyView.preview = (r.data && r.data.data) || { orders: [] };
+        renderHistory();
+      });
+      return;
+    }
+    var rid = e.target.getAttribute('data-history-restore');
+    if (rid) {
+      if (!confirm('Restore this version?\n\nThe cloud and this device will switch to it. Today\'s copy is kept in Data History, so you can switch back.')) return;
+      restoreHistoryVersion(Number(rid));
+    }
+  });
+  document.querySelector('nav button[data-tab="history"]').addEventListener('click', function () { setTimeout(loadHistory, 0); });
+
   function reconcileWithCloud(userId, remote, attempt) {
     attempt = attempt || 0;
     var fetchRemote = remote !== undefined
@@ -13196,6 +13397,7 @@
           setSyncStatus('synced');
         });
       }
+      if (cloudWrittenByNewerApp(cloud)) { showStaleVersionBanner(); return; }
       var meta = loadSyncMeta(userId);
       var base = meta && meta.base;
       var localChanged, remoteChanged;
@@ -13266,7 +13468,7 @@
       if (!user) return;
       var meta = loadSyncMeta(user.id);
       var snapshot = cloneJSON(state);
-      if (!meta || !meta.remoteUpdatedAt) return reconcileWithCloud(user.id);
+      if (!meta || !meta.remoteUpdatedAt || cloudWrittenByNewerApp(meta.base)) return reconcileWithCloud(user.id);
       // Fast path: nobody else has saved since this device last synced — just write.
       return conditionalCloudWrite(user.id, snapshot, meta.remoteUpdatedAt).then(function (ok) {
         if (ok === null) { setSyncStatus('offline'); return; }
