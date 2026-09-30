@@ -6309,7 +6309,8 @@
   }
   function customerDetailHtml(c) {
     return '<div style="border-top:0.5px solid var(--border,#e5e5e5); margin-top:8px; padding-top:8px;">' +
-      (c.creditBalance ? '<div style="margin-bottom:8px;"><span class="pill pill-green">Credit ' + money(c.creditBalance) + '</span></div>' : '') +
+      (c.creditBalance ? '<div style="margin-bottom:8px; display:flex; align-items:center; gap:10px;"><span class="pill pill-green">Credit ' + money(c.creditBalance) + '</span>' +
+        '<button type="button" class="btn-text danger" data-cancel-cust-credit="' + escapeHtml(c.key) + '" style="font-size:12px;">Cancel credit</button></div>' : '') +
       '<div style="margin-bottom:8px;"><button type="button" class="btn-text" data-toggle-cust-credit="' + c.key + '">🎁 Give credit</button></div>' +
       (showGiveCreditForCustomerKey === c.key ? giveCreditToCustomerFormHtml(c) : '') +
       customerCreditLedgerHtml(c) +
@@ -6395,6 +6396,20 @@
       renderCustomers();
       return;
     }
+    var cancelCredit = e.target.closest('[data-cancel-cust-credit]');
+    if (cancelCredit) {
+      var cc = customerAggregates().find(function (x) { return x.key === cancelCredit.getAttribute('data-cancel-cust-credit'); });
+      if (!cc || !cc.whatsapp) return;
+      var bal = creditBalanceForKey(cc.whatsapp);
+      if (!(bal > 0)) return;
+      var why = prompt('Cancel ' + (cc.name || 'this customer') + '\'s ' + money(bal) + ' credit?\n\nIt stays in their history as cancelled. Reason (optional):', '');
+      if (why === null) return;
+      addCustomerCredit(cc.whatsapp, -bal, 'Cancelled' + (why.trim() ? ' — ' + why.trim() : ''), null);
+      logAddToQuickAdd('Cancelled ' + money(bal) + ' credit for ' + (cc.name || cc.whatsapp) + (why.trim() ? ' — ' + why.trim() : '') + '.');
+      save();
+      renderCustomers();
+      return;
+    }
     var custScam = e.target.closest('[data-cust-scam]');
     if (custScam) {
       var cs = customerAggregates().find(function (x) { return x.key === custScam.getAttribute('data-cust-scam'); });
@@ -6403,8 +6418,11 @@
       var targets = cs.orders.filter(function (x) { return x.status !== 'cancelled'; });
       if (on) {
         var sum = targets.reduce(function (t, x) { return t + orderGrossTotal(x); }, 0);
-        if (!confirm('Mark ' + (cs.name || 'this customer') + ' as a scammer?\n\nAll ' + targets.length + ' of their orders (' + money(sum) + ') will be taken out of revenue and "owed by customers", and what the items cost you is counted as a scam loss. Stock stays as sent. You can undo this here.')) return;
+        var creditLeft = cs.whatsapp ? creditBalanceForKey(cs.whatsapp) : 0;
+        if (!confirm('Mark ' + (cs.name || 'this customer') + ' as a scammer?\n\nAll ' + targets.length + ' of their orders (' + money(sum) + ') will be taken out of revenue and "owed by customers", and what the items cost you is counted as a scam loss. Stock stays as sent.' +
+          (creditLeft > 0 ? '\n\nTheir unused credit of ' + money(creditLeft) + ' will be cancelled too.' : '') + '\n\nYou can undo this here.')) return;
         targets.forEach(function (x) { x.scam = true; x.scamOn = x.scamOn || todayISO(); });
+        if (creditLeft > 0) addCustomerCredit(cs.whatsapp, -creditLeft, 'Cancelled — scammer', null);
       } else {
         targets.forEach(function (x) { x.scam = false; delete x.scamOn; });
       }
@@ -12979,7 +12997,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30j';
+  var APP_VERSION = '2026-09-30k';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
