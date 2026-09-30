@@ -9073,6 +9073,13 @@
       }
       return;
     }
+    var openTog = t.getAttribute('data-open-ship-together');
+    if (openTog) { shipTogetherFor = openTog; closeOrderMenus(); renderShipping(); return; }
+    if (t.getAttribute('data-ship-together-cancel')) { shipTogetherFor = null; renderShipping(); return; }
+    var togA = t.getAttribute('data-ship-together');
+    if (togA) { linkShipTogether(togA, t.getAttribute('data-ship-together-with')); return; }
+    var unl = t.getAttribute('data-unlink-ship-together');
+    if (unl) { if (confirm('Send this order in its own parcel?')) unlinkShipTogether(unl); closeOrderMenus(); return; }
     var pickEl = t.closest ? t.closest('[data-toggle-pickup]') : null;
     if (pickEl) {
       var po = state.orders.find(function (o) { return o.id === pickEl.getAttribute('data-toggle-pickup'); });
@@ -9118,6 +9125,68 @@
   function shipGroupSiblings(order) {
     if (!order.shipGroupId) return [];
     return state.orders.filter(function (o) { return o.id !== order.id && o.shipGroupId === order.shipGroupId; });
+  }
+  // Orders going out in the same parcel (linked), still to be sent — this order first.
+  function parcelMates(order) {
+    return [order].concat(shipGroupSiblings(order).filter(function (o) { return ['cancelled', 'delivered'].indexOf(o.status) === -1; }));
+  }
+  // One entry per parcel: linked orders collapse into the first of them.
+  function onePerParcel(list) {
+    var seen = {};
+    return list.filter(function (o) {
+      if (!o.shipGroupId) return true;
+      if (seen[o.shipGroupId]) return false;
+      seen[o.shipGroupId] = true;
+      return true;
+    });
+  }
+  // Same customer = same WhatsApp, or (no WhatsApp) same name.
+  function sameCustomer(a, b) {
+    var wa = normalizeIdentifier(a.buyerWhatsapp), wb = normalizeIdentifier(b.buyerWhatsapp);
+    if (wa && wb) return wa === wb;
+    return String(a.buyerName || '').trim().toLowerCase() === String(b.buyerName || '').trim().toLowerCase() && !!String(a.buyerName || '').trim();
+  }
+  var shipTogetherFor = null;
+  function shipTogetherCandidates(o) {
+    return state.orders.filter(function (x) {
+      return x.id !== o.id && !(o.shipGroupId && x.shipGroupId === o.shipGroupId) && sameCustomer(o, x) &&
+        ['queueing', 'uv curing', 'ready to ship', 'order shipment'].indexOf(x.status) !== -1 && !x.pickup;
+    });
+  }
+  function shipTogetherPickerHtml(o) {
+    var list = shipTogetherCandidates(o);
+    return '<div class="addr-editor"><div style="font-weight:600; margin-bottom:6px;">🔗 Ship together with…</div>' +
+      (list.length ? list.map(function (x) {
+        return '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--border);">' +
+          '<span style="font-size:13px;">' + escapeHtml(x.buyerName || '?') + ' · ' + escapeHtml(shortDate(x.date)) + ' · ' + escapeHtml((x.items || []).map(function (i) { return i.qty + ' × ' + cleanItemName(i.productName); }).join(', ')) + ' <span class="oc-status-tag">' + escapeHtml(orderStatusLabel(x.status)) + '</span></span>' +
+          '<button type="button" class="btn btn-secondary btn-small" data-ship-together="' + o.id + '" data-ship-together-with="' + x.id + '">Link</button></div>';
+      }).join('') : '<div class="muted" style="font-size:13px;">No other unsent orders from this customer.</div>') +
+      '<div style="margin-top:8px;"><button type="button" class="btn-text" data-ship-together-cancel="1">Close</button></div></div>';
+  }
+  function linkShipTogether(aId, bId) {
+    var a = state.orders.find(function (o) { return o.id === aId; });
+    var b = state.orders.find(function (o) { return o.id === bId; });
+    if (!a || !b) return;
+    var gid = a.shipGroupId || b.shipGroupId || uid();
+    var oldB = b.shipGroupId;
+    state.orders.forEach(function (o) { if (o.id === a.id || o.id === b.id || (oldB && o.shipGroupId === oldB) || (a.shipGroupId && o.shipGroupId === a.shipGroupId)) o.shipGroupId = gid; });
+    var group = state.orders.filter(function (o) { return o.shipGroupId === gid; });
+    // One parcel: share the address, and one postage split between the orders.
+    var withAddr = group.find(function (o) { return o.shipTo; });
+    if (withAddr) group.forEach(function (o) { if (!o.shipTo) { o.shipTo = withAddr.shipTo; o.postcode = withAddr.postcode; o.recipientName = o.recipientName || withAddr.recipientName; o.recipientPhone = o.recipientPhone || withAddr.recipientPhone; } });
+    var postage = Math.max.apply(null, group.map(function (o) { return Number(o.shippingCostActual) || 0; }));
+    if (postage > 0) { a.shippingCostActual = postage; a.shippingCostEntered = true; splitShippingCostAcrossGroup(a); }
+    shipTogetherFor = null;
+    save(); renderAll();
+  }
+  function unlinkShipTogether(id) {
+    var o = state.orders.find(function (x) { return x.id === id; });
+    if (!o || !o.shipGroupId) return;
+    var gid = o.shipGroupId;
+    delete o.shipGroupId;
+    var left = state.orders.filter(function (x) { return x.shipGroupId === gid; });
+    if (left.length === 1) delete left[0].shipGroupId;
+    save(); renderAll();
   }
 
   // She enters the ONE total she actually paid/charged for a combined parcel (on whichever linked
@@ -9819,8 +9888,8 @@
     return '';
   }
   function packDayParcels() {
-    return state.orders.filter(function (o) { return !o.pickup && (o.status === 'uv curing' || o.status === 'ready to ship' || o.status === 'order shipment'); })
-      .slice().sort(function (a, b) { return (a.scheduledDate || a.date || '').localeCompare(b.scheduledDate || b.date || ''); });
+    return onePerParcel(state.orders.filter(function (o) { return !o.pickup && (o.status === 'uv curing' || o.status === 'ready to ship' || o.status === 'order shipment'); })
+      .slice().sort(function (a, b) { return (a.scheduledDate || a.date || '').localeCompare(b.scheduledDate || b.date || ''); }));
   }
   function shortPlace(o) {
     var addr = o.shipTo || '';
@@ -9839,7 +9908,7 @@
     return packDayParcels().filter(function (o) { return o.status === 'ready to ship' && !!o.shipTo && !packDaySkipIds[o.id]; });
   }
   function packDayTrackCandidates() {
-    return state.orders.filter(function (o) { return (o.status === 'order shipment' || o.status === 'ready to ship') && !o.trackingNumber && !(o.parcels && o.parcels.length); });
+    return onePerParcel(state.orders.filter(function (o) { return !o.pickup && (o.status === 'order shipment' || o.status === 'ready to ship') && !o.trackingNumber && !(o.parcels && o.parcels.length); }));
   }
   function packDayTrackResultsHtml() {
     var q = packDayTrackQuery.trim().toLowerCase();
@@ -9871,7 +9940,7 @@
       var editing = addrEdit.ctx === 'pd' && addrEdit.id === o.id;
       return '<div class="pd-row">' +
         '<div class="pd-row-top">' +
-          '<div style="min-width:0;"><div style="font-weight:600;">' + (idx + 1) + '. ' + escapeHtml(o.buyerName || 'Unknown') +
+          '<div style="min-width:0;"><div style="font-weight:600;">' + (idx + 1) + '. ' + escapeHtml(o.buyerName || 'Unknown') + (parcelMates(o).length > 1 ? ' <span class="pill pill-blue" style="font-size:10px;">🔗 ' + parcelMates(o).length + ' orders, 1 parcel</span>' : '') +
             (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') +
             (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
             '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Unpaid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + ' ' + eastMalaysiaTagHtml(o) + '</div></div>' +
@@ -9968,7 +10037,7 @@
     var bookedId = t.getAttribute && t.getAttribute('data-pd-booked');
     if (bookedId) {
       var bo = state.orders.find(function (o) { return o.id === bookedId; });
-      if (bo) { changeOrderStatusCore(bo, 'order shipment'); save(); renderAll(); }
+      if (bo) { parcelMates(bo).forEach(function (m) { if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'order shipment'); }); save(); renderAll(); }
       return;
     }
     var skipId = t.getAttribute && t.getAttribute('data-pd-skip');
@@ -9980,10 +10049,12 @@
       var trk = inp ? inp.value.trim() : '';
       if (!to) return;
       if (!trk) { alert('Type the tracking number first.'); return; }
-      if (!to.courier) to.courier = 'jt';
-      to.trackingNumber = trk;
-      to.trackingMessageSent = false;
-      if (PRE_SHIP_STATUSES.indexOf(to.status) !== -1) autoAdvanceStatus(to, 'shipped');
+      parcelMates(to).forEach(function (m) {
+        if (!m.courier) m.courier = 'jt';
+        m.trackingNumber = trk;
+        m.trackingMessageSent = false;
+        if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'shipped');
+      });
       var msg = buildShippedMessage(to, shippingTrackingLink(to));
       window.__lastCopiedText = msg;
       save();
@@ -10098,6 +10169,8 @@
         '<button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button>' +
         '<div class="oc-menu">' +
           '<button type="button" data-toggle-pickup="' + o.id + '">' + (o.pickup ? '📦 Ship it instead' : '🤝 Customer picks up') + '</button>' +
+          (o.pickup ? '' : '<button type="button" data-open-ship-together="' + o.id + '">🔗 Ship together with…</button>') +
+          (o.shipGroupId ? '<button type="button" data-unlink-ship-together="' + o.id + '">✂ Send separately (unlink)</button>' : '') +
           (o.pickup ? '' : '<button type="button" class="btn-copy-ship-address" data-order-id="' + o.id + '">📋 Copy address</button>') +
           splitBtnHtml +
           (editingReplacementOrderId === o.id ? '' : '<button type="button" data-toggle-replacement="' + o.id + '">🔁 Send replacement</button>') +
@@ -10120,6 +10193,7 @@
         shippingAddressBlockHtml(o) +
         '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
         shippingCostInlineHtml(o) +
+        (shipTogetherFor === o.id ? shipTogetherPickerHtml(o) : '') +
         '<div class="ship-actions">' + actionBtn + menuHtml + '</div>' +
         (o.pickup ? '' : shippingBarcodeControl(o)) +
         ((!o.pickup && (isOrderShipment || isShipped)) ? trackingSectionControl(o) : '') +
@@ -13071,7 +13145,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30m';
+  var APP_VERSION = '2026-09-30n';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
