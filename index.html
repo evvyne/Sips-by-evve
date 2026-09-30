@@ -1328,13 +1328,15 @@
   // usually from accumulated product photos) — the button doing the save would just stay
   // disabled forever with zero explanation. Now any failure shows a clear message and is
   // re-thrown so the calling code stops (instead of pretending the save worked).
-  function save() {
+  function save(opts) {
     // Stamped on every local save so a fresh page load can tell whether the cloud's copy is
     // actually newer than what's already sitting on this device, or just hasn't caught up yet
     // (see pullStateFromCloud) — e.g. she uploads a photo, then refreshes before the network
     // push had time to land; without this, the refresh would pull the OLDER cloud copy and wipe
     // out the photo that was already saved locally, seconds after she made it.
-    state.updatedAt = Date.now();
+    // Automatic housekeeping (tidying old data on load, noting a backup time) is NOT an edit —
+    // it must never make an old copy on another device look "newer" than her real work.
+    if (!(opts && opts.keepStamp)) state.updatedAt = Date.now();
     try {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1363,7 +1365,7 @@
   // Persist the migration immediately — otherwise it only ever lives in memory for this one
   // session (mutating `state` doesn't touch localStorage), so a fresh reload with no other
   // save-triggering action in between would still see the old, unmigrated data forever.
-  if (didMigrate) save();
+  if (didMigrate) save({ keepStamp: true });
 
   // Every place that changes a product's stock count also calls this, so Inventory can
   // show a full history of why stock moved (restocks, sales, wastage, corrections).
@@ -12824,6 +12826,50 @@
     (lArr || []).forEach(function (x) { if (x && x.id != null) decide(x.id); });
     return out;
   }
+  // No shared "last synced" copy to compare against (first sync on a device, or it was dropped
+  // for space): never let one whole copy replace the other. Every order / cost / product that
+  // exists on EITHER side is kept; when both sides have the same one, the more recently saved
+  // side's version is used. (Something deleted on one device may come back — safer than losing.)
+  function mergeWithoutBase(local, remote) {
+    var localNewer = (local.updatedAt || 0) > (remote.updatedAt || 0);
+    var newer = localNewer ? local : remote, older = localNewer ? remote : local;
+    var out = {};
+    var keys = {};
+    [local, remote].forEach(function (s2) { Object.keys(s2 || {}).forEach(function (k) { keys[k] = true; }); });
+    Object.keys(keys).forEach(function (k) {
+      if (k === 'updatedAt') return;
+      var nv = newer[k], ov = older[k];
+      if (isIdList(nv) || isIdList(ov)) {
+        var seen = {}, list = [];
+        (nv || []).forEach(function (x) { if (x && x.id != null) { seen[x.id] = true; list.push(x); } });
+        (ov || []).forEach(function (x) { if (x && x.id != null && !seen[x.id]) { seen[x.id] = true; list.push(x); } });
+        out[k] = list;
+      } else out[k] = (nv !== undefined) ? nv : ov;
+    });
+    out.updatedAt = Date.now();
+    return out;
+  }
+  // Ids of records the cloud has that `next` would no longer have.
+  function recordsDropped(cloudCopy, next) {
+    var n = 0;
+    ['orders', 'costs', 'products'].forEach(function (k) {
+      var have = {};
+      (next[k] || []).forEach(function (x) { if (x && x.id != null) have[x.id] = true; });
+      (cloudCopy[k] || []).forEach(function (x) { if (x && x.id != null && !have[x.id]) n++; });
+    });
+    return n;
+  }
+  // Before a sync write that removes anything from the cloud copy, keep a full copy of what
+  // the cloud had, in the backups folder — so nothing a sync does can ever be unrecoverable.
+  function snapshotCloudBeforeSync(userId, cloudCopy) {
+    try {
+      var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      var blob = new Blob([JSON.stringify(cloudCopy)], { type: 'application/json' });
+      return sb.storage.from(BACKUP_BUCKET).upload(userId + '/before-sync-' + stamp + '.json', blob, { upsert: false, contentType: 'application/json' })
+        .then(function () { try { pruneOldBackups(userId); } catch (e2) {} })
+        .catch(function () {}); // a failed safety copy must never stop the sync itself
+    } catch (e) { return Promise.resolve(); }
+  }
   function mergeStates(base, local, remote) {
     var out = {};
     var keys = {};
@@ -12910,10 +12956,30 @@
         localChanged = !sameValue(withoutStamp(state), withoutStamp(base));
         remoteChanged = !sameValue(withoutStamp(cloud), withoutStamp(base));
       } else {
-        // First sync on this device since this safety feature arrived — no shared starting point
-        // to merge from, so the more recently saved copy wins (same rule as before).
-        localChanged = (state.updatedAt || 0) > (cloud.updatedAt || 0);
-        remoteChanged = !localChanged;
+        // No shared starting point: if the two copies already match, nothing to do; if this
+        // device has nothing the cloud lacks, just take the cloud's copy; otherwise MERGE both
+        // (never one whole copy over the other).
+        var same = sameValue(withoutStamp(state), withoutStamp(cloud));
+        var mergedNB = same ? null : mergeWithoutBase(cloneJSON(state), cloneJSON(cloud));
+        localChanged = !same && !sameValue(withoutStamp(mergedNB), withoutStamp(cloud));
+        remoteChanged = !same;
+        if (localChanged) {
+          var toWriteNB = mergedNB;
+          // The cloud copy is about to change without a shared starting point — keep a copy of it first.
+          var writeNB = snapshotCloudBeforeSync(userId, cloud).then(function () {
+            return cloud.updatedAt
+              ? conditionalCloudWrite(userId, toWriteNB, cloud.updatedAt)
+              : sb.from('app_state').upsert({ user_id: userId, data: toWriteNB }).then(function (r4) { return r4.error ? null : true; });
+          });
+          return writeNB.then(function (ok) {
+            if (ok === null) { setSyncStatus('offline'); return; }
+            if (!ok) { if (attempt >= 3) { setSyncStatus('offline'); return; } return reconcileWithCloud(userId, undefined, attempt + 1); }
+            saveSyncMeta(userId, toWriteNB);
+            adoptStateLocally(cloneJSON(toWriteNB));
+            showMergedNotice();
+            setSyncStatus('synced');
+          });
+        }
       }
       if (!localChanged) {
         if (remoteChanged || !base) adoptStateLocally(cloneJSON(cloud));
@@ -12923,10 +12989,14 @@
       }
       var toWrite = (base && remoteChanged) ? mergeStates(base, cloneJSON(state), cloneJSON(cloud)) : cloneJSON(state);
       var wasMerge = !!(base && remoteChanged);
+      // Anything this write would take OUT of the cloud copy gets a safety copy first.
+      var safety = recordsDropped(cloud, toWrite) > 0 ? snapshotCloudBeforeSync(userId, cloud) : Promise.resolve();
       // A cloud copy saved before version stamps existed can't be matched on — plain write.
-      var writeAttempt = cloud.updatedAt
-        ? conditionalCloudWrite(userId, toWrite, cloud.updatedAt)
-        : sb.from('app_state').upsert({ user_id: userId, data: toWrite }).then(function (r3) { return r3.error ? null : true; });
+      var writeAttempt = safety.then(function () {
+        return cloud.updatedAt
+          ? conditionalCloudWrite(userId, toWrite, cloud.updatedAt)
+          : sb.from('app_state').upsert({ user_id: userId, data: toWrite }).then(function (r3) { return r3.error ? null : true; });
+      });
       return writeAttempt.then(function (ok) {
         if (ok === null) { setSyncStatus('offline'); return; }
         if (!ok) {
@@ -13213,8 +13283,8 @@
   // app yet — if she ever needs one of these back, she'd need to ask for it manually — but having
   // the safety net in place is the priority for now.
   var BACKUP_BUCKET = 'backups';
-  var MAX_BACKUPS = 4;
-  var BACKUP_INTERVAL_DAYS = 7;
+  var MAX_BACKUPS = 14;
+  var BACKUP_INTERVAL_DAYS = 1;
   var backupInFlight = false;
 
   function maybeRunAutoBackup(userId) {
@@ -13234,19 +13304,25 @@
       backupInFlight = false;
       if (res.error) return; // bucket may not exist yet, or offline — just try again next login
       state.lastBackupDate = new Date().toISOString();
-      save();
+      save({ keepStamp: true });
       pruneOldBackups(userId);
     }).catch(function () { backupInFlight = false; });
   }
 
   function pruneOldBackups(userId) {
-    sb.storage.from(BACKUP_BUCKET).list(userId, { limit: 100 }).then(function (res) {
+    var bucketApi = sb.storage.from(BACKUP_BUCKET);
+    if (!bucketApi || typeof bucketApi.list !== 'function') return;
+    bucketApi.list(userId, { limit: 100 }).then(function (res) {
       if (res.error || !res.data) return;
-      var files = res.data.filter(function (f) { return /\.json$/.test(f.name); })
-        .sort(function (a, b) { return a.name.localeCompare(b.name); });
-      if (files.length <= MAX_BACKUPS) return;
-      var toDelete = files.slice(0, files.length - MAX_BACKUPS).map(function (f) { return userId + '/' + f.name; });
-      sb.storage.from(BACKUP_BUCKET).remove(toDelete);
+      // Daily backups and the "before sync" safety copies are pruned separately, so a burst of
+      // one kind never pushes out the other.
+      [['backup-', MAX_BACKUPS], ['before-sync-', 20]].forEach(function (kind) {
+        var files = res.data.filter(function (f) { return f.name.indexOf(kind[0]) === 0 && /\.json$/.test(f.name); })
+          .sort(function (a, b) { return a.name.localeCompare(b.name); });
+        if (files.length <= kind[1]) return;
+        var toDelete = files.slice(0, files.length - kind[1]).map(function (f) { return userId + '/' + f.name; });
+        sb.storage.from(BACKUP_BUCKET).remove(toDelete);
+      });
     }).catch(function () {});
   }
 
