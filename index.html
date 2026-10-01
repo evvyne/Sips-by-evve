@@ -10092,7 +10092,8 @@
     var missingShippingCostList = fullQueue.concat(delivered).filter(isShippingCostMissing);
     // One tidy row: search · filter · sort · ⋯ (Give credit / Edit shipped message).
     var summary = '<div class="card" style="margin-bottom:10px; padding:12px 14px;">' +
-      '<div class="muted" style="font-size:13px; margin-bottom:8px;"><strong style="color:var(--text);">' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;"><span class="muted" style="font-size:13px;"><strong style="color:var(--text);">' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</span>' +
+        (editingShippedTemplate ? '' : '<button type="button" class="btn-text" id="btn-edit-shipped-template" style="font-size:13px;">✏️ Edit shipped message</button>') + '</div>' +
       '<div class="ship-tools">' +
         (fullQueue.length > 0
           ? '<span style="display:inline-flex; gap:4px; flex:1; min-width:170px;"><input type="text" id="shipping-search" class="search-input" placeholder="Search name, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="flex:1; min-width:0; font-size:13px;">' +
@@ -10102,7 +10103,6 @@
           : '') +
         '<div class="oc-more"><button type="button" class="oc-more-btn" data-order-more="ship-tools" aria-label="More">⋯</button><div class="oc-menu">' +
           '<button type="button" id="btn-toggle-give-credit">🎁 Give credit</button>' +
-          (editingShippedTemplate ? '' : '<button type="button" id="btn-edit-shipped-template">✏️ Edit shipped message</button>') +
         '</div></div>' +
       '</div>' +
       (missingShippingCostList.length > 0
@@ -13145,7 +13145,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-09-30n';
+  var APP_VERSION = '2026-10-01a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
