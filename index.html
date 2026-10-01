@@ -4767,7 +4767,7 @@
           '<button type="button" class="btn btn-secondary btn-small" id="todo-filter-prev" aria-label="Previous day">‹</button>' +
           '<span style="font-weight:600; font-size:15px;">' + escapeHtml(dayLabel) + '</span>' +
           '<button type="button" class="btn btn-secondary btn-small" id="todo-filter-next" aria-label="Next day">›</button>' +
-          (day !== today ? '<button type="button" class="btn-text" id="todo-filter-today" style="font-size:13px;">Back to today</button>' : '') +
+          (day !== today ? '<button type="button" class="btn-text" id="todo-filter-today" style="font-size:13px;">Back to today</button>' : '<button type="button" class="btn-text" id="btn-todo-poster" style="font-size:13px;">📋 Today\'s queue poster</button>') +
         '</div>' +
         '<span class="muted" style="font-size:13px;">' + doneCount + ' of ' + total + ' done</span>' +
       '</div>' +
@@ -4809,6 +4809,7 @@
     if (id === 'todo-filter-prev') { todoViewDate = todoAddDays(todoViewDate || today, -1); renderTodo(); return; }
     if (id === 'todo-filter-next') { todoViewDate = todoAddDays(todoViewDate || today, 1); renderTodo(); return; }
     if (id === 'todo-filter-today') { todoViewDate = null; renderTodo(); return; }
+    if (id === 'btn-todo-poster') { calEditingDate = today; calPosterOpen = true; var cd = new Date(today + 'T00:00:00'); calYear = cd.getFullYear(); calMonth = cd.getMonth(); goToPage('calendar'); return; }
     if (id === 'btn-todo-add') { addTodoItem(); return; }
     if (id === 'btn-todo-toggle-done') { todoShowDone = !todoShowDone; renderTodo(); return; }
     var del = e.target.getAttribute && e.target.getAttribute('data-todo-delete');
@@ -5655,7 +5656,8 @@
         qty: qty,
         unitPrice: Number(l.unitPrice) || 0,
         unitCost: p ? p.cost : 0,
-        madeQty: (alreadyMade && !editingOrderId) ? qty : Math.min(prevMade, qty),
+        // Made stage -> bottles are made; moved back to To make -> not made yet.
+        madeQty: alreadyMade ? qty : ((existingOrderForItems && existingOrderForItems.status !== 'queueing' && status === 'queueing') ? 0 : Math.min(prevMade, qty)),
         photo: prevPhoto,
         pattern: l.pattern !== undefined ? (l.pattern || '') : prevPattern,
         patternSurcharge: l.pattern !== undefined ? (Number(l.patternSurcharge) || 0) : prevPatternSurcharge,
@@ -5906,6 +5908,17 @@
   // renderAll() of its own — shared by the single-row change below and the bulk-apply toolbar, so
   // a bulk change over many orders only saves/re-renders once at the end instead of once per row.
   function changeOrderStatusCore(order, newStatus) {
+    // Moved back to "To make" (e.g. a replacement that still has to be made): it needs a making
+    // day on the Calendar, and its bottles aren't made yet.
+    if (newStatus === 'queueing' && order.status !== 'queueing') {
+      var bottlesQ = (order.items || []).filter(isBottleItem);
+      bottlesQ.forEach(function (i) { i.madeQty = 0; });
+      order.productionDone = false;
+      order.immediate = false;
+      if (!order.scheduledDate && bottlesQ.length) {
+        order.scheduledDate = nextAvailableProductionDate(bottlesQ.reduce(function (t, i) { return t + (Number(i.qty) || 0); }, 0), todayISO());
+      }
+    }
     var wasCancelled = order.status === 'cancelled';
     var willBeCancelled = newStatus === 'cancelled';
     if (!wasCancelled && willBeCancelled && depositOf(order) && !order.paid) {
@@ -5953,15 +5966,22 @@
     document.body.appendChild(bar);
     setTimeout(function () { if (bar.parentNode) bar.parentNode.removeChild(bar); }, 7000);
   }
-  function autoAdvanceStatus(order, newStatus) {
+  function autoAdvanceStatus(order, newStatus, madeBefore) {
     if (!order || order.status === newStatus) return;
     var prevStatus = order.status;
     var hadPackagingDeducted = !!order.parcelBagDeducted;
+    // Undo puts everything back as it was — including how many bottles were marked made and the
+    // making day — so an undone "Mark as made" never leaves a To-make order looking made.
+    var before = { made: madeBefore || (order.items || []).map(function (i) { return i.madeQty; }), scheduledDate: order.scheduledDate, immediate: order.immediate, productionDone: order.productionDone };
     changeOrderStatusCore(order, newStatus);
     showUndoToast((order.buyerName ? order.buyerName + ': ' : '') + 'status changed to ' + newStatus, function () {
       if (!hadPackagingDeducted && order.parcelBagDeducted) restoreParcelBag(order);
       if (pendingPackagingChoiceOrderId === order.id) pendingPackagingChoiceOrderId = null;
       order.status = prevStatus;
+      (order.items || []).forEach(function (i, ix) { i.madeQty = before.made[ix]; });
+      order.scheduledDate = before.scheduledDate;
+      order.immediate = before.immediate;
+      order.productionDone = before.productionDone;
       save();
       renderAll();
     });
@@ -6016,8 +6036,9 @@
         renderOrders();
         return;
       }
+      var madeBeforeAdv = (o.items || []).map(function (i) { return i.madeQty; });
       (o.items || []).forEach(function (i) { i.madeQty = Number(i.qty) || 0; });
-      autoAdvanceStatus(o, 'uv curing');
+      autoAdvanceStatus(o, 'uv curing', madeBeforeAdv);
     } else if (o.status === 'uv curing') {
       autoAdvanceStatus(o, 'ready to ship');
     } else if (o.status === 'shipped') {
@@ -9539,9 +9560,11 @@
       var product = state.products.find(function (p) { return p.id === l.productId; });
       if (!product) return;
       var qty = Number(l.qty);
-      var stockReady = product.stock >= qty;
+      // A Tumbler is always hand-made per order (stock is just blank cups), so a replacement bottle
+      // always goes into the making queue with a date; stickers / add-ons are ready as they are.
+      var stockReady = product.type === 'Tumbler' ? false : product.stock >= qty;
       if (!stockReady) anyNeedsProduction = true;
-      if (product.type === 'Tumbler' && !stockReady) maxTumblerQtyNeeded += qty;
+      if (product.type === 'Tumbler') maxTumblerQtyNeeded += qty;
       var isFree = l.free !== false;
       var unitPrice = isFree ? 0 : (Number(l.price) || 0);
       newItems.push({ productId: product.id, productName: product.name, qty: qty, unitPrice: unitPrice, unitCost: product.cost, madeQty: stockReady ? qty : 0 });
@@ -10785,10 +10808,12 @@
               }).join('') +
             '</div></div>'
         : '';
+      var isDayOffForPoster = editIsBlocked || (state.weeklyBreakDays || []).indexOf(new Date(calEditingDate + 'T00:00:00').getDay()) !== -1;
       editPanelHtml = '<div class="order-edit-grid" style="margin-top:14px;">' +
           '<div style="grid-column: 1 / -1; font-weight:600; font-size:13px;">Editing ' + escapeHtml(formatDateLong(calEditingDate)) + '</div>' +
           ordersListHtml +
           immediateListHtml +
+          (isDayOffForPoster ? '' : calPosterHtml(calEditingDate)) +
           '<div class="field-block checkbox-row" style="padding-top:0;">' +
             '<input type="checkbox" id="cal-edit-blocked"' + (editIsBlocked ? ' checked' : '') + '>' +
             '<label for="cal-edit-blocked">Mark as personal day (unavailable for customer slots)</label>' +
@@ -10846,6 +10871,74 @@
       '</div>';
   }
 
+  // ---------- Queue poster: a ready-to-paste ChatGPT image prompt for a day's making queue ----------
+  var calPosterOpen = false;
+  function posterDigits(o) {
+    var wa = String(o.buyerWhatsapp || '').replace(/\D/g, '');
+    var ph = String(o.recipientPhone || '').replace(/\D/g, '');
+    var d = wa.length >= 7 ? wa : (ph.length >= 7 ? ph : '');
+    return d ? d.slice(-4) : '';
+  }
+  function posterSlotsFor(dateStr) {
+    var list = state.orders.filter(function (o) { return o.status === 'queueing' && !o.immediate && o.scheduledDate === dateStr; })
+      .sort(function (a, b) { return String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')); });
+    var slots = [];
+    list.forEach(function (o) {
+      var bottles = (o.items || []).filter(isBottleItem).reduce(function (t, i) { return t + (Number(i.qty) || 0); }, 0);
+      var name = String(o.buyerName || o.recipientName || 'Customer').trim();
+      var digits = posterDigits(o);
+      for (var k = 0; k < bottles; k++) slots.push(name + (digits ? ' · ' + digits : ''));
+    });
+    return slots;
+  }
+  function posterPromptFor(dateStr) {
+    var CIRCLED = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫', '⑬', '⑭', '⑮'];
+    var taken = posterSlotsFor(dateStr);
+    var cap = Number(state.dailyTumblerCapacity) || 5;
+    var total = Math.max(cap, taken.length);
+    var lines = [];
+    for (var i = 0; i < total; i++) lines.push('   ' + (CIRCLED[i] || (i + 1) + '.') + ' ' + (taken[i] || 'Open slot ♡'));
+    var dt = new Date(dateStr + 'T00:00:00');
+    var DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    var MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+    var dateLine = DAYS[dt.getDay()] + ' · ' + dt.getDate() + ' ' + MONTHS[dt.getMonth()];
+    var heading = "TODAY'S MAKING QUEUE"; // she posts it on the day; kept the same for every date
+    return [
+      'Create a minimalist poster for Instagram / TikTok, portrait 4:5 (1080×1350 px), for my handmade tumbler shop "Sips by Evve".',
+      '',
+      'If I attached a reference image: copy it EXACTLY — same background, fonts, colours, cards, number circles, decorations and footer. Only the date and the list text change, as written below.',
+      '',
+      'STYLE:',
+      '- Warm cream / beige background (#F3EDE4), very clean, lots of empty space.',
+      '- Cards: soft rounded rectangles in a slightly lighter cream (#F8F3EC), only a very faint shadow.',
+      '- Numbers sit in solid cocoa-brown circles (#6B4A3A) with cream numbers.',
+      '- Title "Sips by Evve" in an elegant flowing handwritten script; under it "HANDMADE TUMBLERS" in small serif capitals with wide letter spacing.',
+      '- Decorations tiny and few: two small hand-drawn outline hearts beside the title, one thin dried-flower sprig in the top-right corner.',
+      '- No tumbler photos, no characters, no busy patterns, no extra text.',
+      '',
+      'LAYOUT (top to bottom):',
+      '1. "Sips by Evve" (script) and "HANDMADE TUMBLERS" (spaced capitals), centred.',
+      '2. Heading: a wide solid cocoa-brown (#7A4E3A) rounded pill with "' + heading + '" in cream (#FBF7F1), a bold elegant serif (like Playfair Display), all capitals, upright, centred. Nothing else on or around the pill.',
+      '3. Below it, centred, in small spaced serif capitals in cocoa brown: "' + dateLine + '"',
+      '4. A vertical list of ' + total + ' slots, each its own rounded card with the number in a brown circle on the left.',
+      '   List text: a classic book serif (like EB Garamond / Cormorant Garamond), REGULAR weight (not bold), upright, dark cocoa brown (#5C3A2A), large — the text height is about the same as the number circles, left-aligned next to the circle. The name, the "·" and the 4 digits are ALL the same font, the same size and the same colour (digits NOT smaller, NOT lighter):',
+      lines.join('\n'),
+      '   Open slots in the same font and size, in faded taupe (#B8A493).',
+      '5. Bottom: a thin brown line with a small bow in the middle, then "Handmade with love ♡" in script and "THANK YOU" in small spaced capitals.',
+      '',
+      'TEXT RULES: write every word EXACTLY as above, correctly spelled, keeping the names and numbers exactly. Do not add any other words, prices or logos.'
+    ].join('\n');
+  }
+  function calPosterHtml(dateStr) {
+    if (!calPosterOpen) return '<div style="grid-column: 1 / -1;"><button type="button" class="btn btn-secondary btn-small" data-cal-poster="1">📋 Copy poster prompt</button></div>';
+    var taken = posterSlotsFor(dateStr).length;
+    return '<div style="grid-column: 1 / -1;" class="addr-editor">' +
+      '<div style="font-weight:600; margin-bottom:4px;">📋 Queue poster prompt</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">' + taken + ' of ' + (Number(state.dailyTumblerCapacity) || 5) + ' slots taken. You can edit the text here before copying. Paste it into ChatGPT (attach your earlier poster as a reference for the best match).</div>' +
+      '<textarea id="cal-poster-text" rows="12" style="width:100%; font-size:12px; font-family:inherit;">' + escapeHtml(posterPromptFor(dateStr)) + '</textarea>' +
+      '<div style="margin-top:8px; display:flex; gap:6px;"><button type="button" class="btn btn-primary btn-small" data-cal-poster-copy="1">Copy</button><button type="button" class="btn btn-secondary btn-small" data-cal-poster-close="1">Close</button></div>' +
+    '</div>';
+  }
   function saveCalendarEdit() {
     if (!calEditingDate) return;
     var blocked = document.getElementById('cal-edit-blocked').checked;
@@ -10912,6 +11005,15 @@
       renderCalendar();
       return;
     }
+    if (e.target.getAttribute('data-cal-poster')) { calPosterOpen = true; renderCalendar(); return; }
+    if (e.target.getAttribute('data-cal-poster-close')) { calPosterOpen = false; renderCalendar(); return; }
+    if (e.target.getAttribute('data-cal-poster-copy')) {
+      var pt = document.getElementById('cal-poster-text');
+      var txt = pt ? pt.value : posterPromptFor(calEditingDate);
+      window.__lastCopiedText = txt;
+      copyTextWithToast(txt, 'Poster prompt copied — paste it into ChatGPT');
+      return;
+    }
     if (e.target.getAttribute('data-cal-save')) { saveCalendarEdit(); return; }
     if (e.target.getAttribute('data-cal-cancel')) { calEditingDate = null; renderCalendar(); return; }
     if (e.target.getAttribute('data-cal-clear')) {
@@ -10928,6 +11030,7 @@
     var dayEl = e.target.closest ? e.target.closest('.cal-day[data-cal-day]') : null;
     if (dayEl) {
       calEditingDate = dayEl.getAttribute('data-cal-day');
+      calPosterOpen = false;
       // The order list under the calendar (the old Schedule page) narrows to just this day —
       // "Clear dates" in that list's filter bar shows everything again.
       scheduleFilterFrom = calEditingDate;
@@ -13187,7 +13290,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-01b';
+  var APP_VERSION = '2026-10-01d';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
