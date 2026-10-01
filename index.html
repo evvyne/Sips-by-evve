@@ -121,6 +121,7 @@
   .oc-paid-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
   .oc-paid-chip.is-paid { background: #e3f1d8; color: #3b6d11; }
   .oc-paid-chip.is-unpaid { background: #fcebeb; color: #a32d2d; }
+  .oc-paid-chip.is-deposit { background: #fdf3dc; color: #854f0b; }
   .oc-paid-chip input { margin: 0; }
   .od-sec { border-top: 1px solid var(--border); padding: 10px 0 6px; }
   .od-sec:first-child { border-top: none; padding-top: 0; }
@@ -1071,6 +1072,7 @@
         <label style="display:flex; align-items:center; gap:8px; font-size:15px; font-weight:500; cursor:pointer;">
           <input type="checkbox" id="of-paid" style="width:18px; height:18px;"> Paid
         </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:14px;" title="Paid part now to lock the sticker / cup">or deposit RM <input id="of-deposit" type="number" min="0" step="0.01" placeholder="0" style="width:80px;"></label>
         <div class="total-line" id="order-draft-total" style="text-align:right; margin:0;"></div>
       </div>
       <div class="muted" id="of-production-hint" style="font-size:12px; margin-top:6px;"></div>
@@ -5213,6 +5215,7 @@
 
   function clearOrderForm() {
     document.getElementById('of-paid').checked = false;
+    document.getElementById('of-deposit').value = '';
     ['of-ship-paste', 'of-recipient-name', 'of-recipient-phone', 'of-shipto', 'of-postcode'].forEach(function (id) { document.getElementById(id).value = ''; });
     document.getElementById('of-more-options').open = false;
     document.getElementById('of-production-hint').textContent = '';
@@ -5622,6 +5625,7 @@
     var discount = Number(document.getElementById('of-discount').value) || 0;
     var notes = document.getElementById('of-notes').value.trim();
     var paidChecked = document.getElementById('of-paid').checked;
+    var depositIn = Math.round((Number(document.getElementById('of-deposit').value) || 0) * 100) / 100;
     var shipInfo = {
       recipientName: document.getElementById('of-recipient-name').value.trim(),
       recipientPhone: document.getElementById('of-recipient-phone').value.trim(),
@@ -5677,6 +5681,8 @@
         // leaves whatever she already added (e.g. from the Shipping tab) untouched.
         Object.keys(shipInfo).forEach(function (k) { if (shipInfo[k]) order[k] = shipInfo[k]; });
         if (paidChecked && !order.paid) { order.paid = true; order.paymentDate = order.paymentDate || todayISO(); }
+        if (depositIn > 0 && !paidChecked) { if (depositIn !== depositOf(order)) order.depositDate = todayISO(); order.depositAmount = depositIn; }
+        else if (!depositIn) { order.depositAmount = 0; delete order.depositDate; }
         else if (!paidChecked && order.paid) { order.paid = false; }
         order.shippingZone = shippingZone;
         order.shippingWeight = shippingWeight;
@@ -5712,6 +5718,8 @@
         date: date,
         status: status,
         paid: paidChecked,
+        depositAmount: (!paidChecked && depositIn > 0) ? depositIn : 0,
+        depositDate: (!paidChecked && depositIn > 0) ? todayISO() : '',
         paymentDate: paidChecked ? todayISO() : '',
         paymentRef: '',
         paymentBankName: '',
@@ -5900,6 +5908,10 @@
   function changeOrderStatusCore(order, newStatus) {
     var wasCancelled = order.status === 'cancelled';
     var willBeCancelled = newStatus === 'cancelled';
+    if (!wasCancelled && willBeCancelled && depositOf(order) && !order.paid) {
+      order.depositForfeited = confirm(money(depositOf(order)) + ' deposit from ' + (order.buyerName || 'this customer') + ' — deposits are not refunded.\n\nOK = keep it as income (the items go back into stock).\nCancel = I refunded it.');
+    }
+    if (wasCancelled && !willBeCancelled) delete order.depositForfeited;
     if (!wasCancelled && willBeCancelled) restoreStock(order);
     else if (wasCancelled && !willBeCancelled) deductStock(order);
     if (!order.parcelBagDeducted && (newStatus === 'shipped' || newStatus === 'delivered')) {
@@ -6129,8 +6141,9 @@
     return { made: made, ordered: ordered };
   }
 
+  function depositOf(o) { return Math.max(0, Number(o && o.depositAmount) || 0); }
   function unpaidAmountFor(o) {
-    if (!o.paid) return orderTotal(o);
+    if (!o.paid) return Math.max(0, orderTotal(o) - depositOf(o));
     return (o.addOns || []).filter(function (a) { return !a.paid; }).reduce(function (s, a) { return s + addOnAmount(a); }, 0);
   }
 
@@ -6926,7 +6939,7 @@
           (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
             ? '<button type="button" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">➕ Add another order</button>'
             : '') +
-          ((!o.paid && !o.scam && o.status !== 'cancelled' && orderTotal(o) > 0) ? '<button type="button" data-pay-reminder="' + o.id + '">💬 Copy payment reminder</button>' : '') +
+          ((!o.paid && !o.scam && o.status !== 'cancelled' && orderTotal(o) > 0) ? '<button type="button" data-pay-reminder="' + o.id + '">💬 Copy payment reminder</button><button type="button" data-record-deposit="' + o.id + '">💰 ' + (depositOf(o) ? 'Change deposit' : 'Record deposit') + '</button>' : '') +
           '<button type="button" data-edit-pay-reminder="1">✏️ Edit payment reminder</button>' +
           (o.status !== 'cancelled' ? '<button type="button" data-order-scam="' + o.id + '">' + (o.scam ? '↩ Not a scam after all' : '⚠ Scam — sent, never paid') + '</button>' : '') +
           '<button type="button" class="danger" data-delete-order="' + o.id + '">🗑 Delete</button>' +
@@ -6945,7 +6958,7 @@
       var paidHtml = o.scam ? '<span class="pill pill-red">⚠ Scam</span>' : o.status === 'cancelled'
         ? '<span class="pill pill-gray" title="Cancelled — payment not applicable">⛔ Cancelled</span>'
         : ((o.isReplacement && total <= 0) ? '' :
-          '<label class="oc-paid-chip ' + (o.paid ? 'is-paid' : 'is-unpaid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? 'Paid' : 'Unpaid') + '</label>' +
+          '<label class="oc-paid-chip ' + (o.paid ? 'is-paid' : (depositOf(o) ? 'is-deposit' : 'is-unpaid')) + '" title="' + (o.paid ? 'Paid' : 'Tick when fully paid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? 'Paid' : (depositOf(o) ? 'Deposit ' + money(depositOf(o)) + ' · ' + money(unpaidAmountFor(o)) + ' left' : 'Unpaid')) + '</label>' +
             (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : ''));
       var statusTag = orderStage === 'all' ? '<span class="oc-status-tag">' + escapeHtml(orderStatusLabel(o.status)) + '</span>' : '';
       var itemLines = (o.items || []).map(function (i) {
@@ -7105,6 +7118,7 @@
     document.getElementById('of-discount').value = order.discount || 0;
     document.getElementById('of-notes').value = order.notes || '';
     document.getElementById('of-paid').checked = !!order.paid;
+    document.getElementById('of-deposit').value = depositOf(order) ? depositOf(order) : '';
     document.getElementById('of-ship-paste').value = '';
     document.getElementById('of-recipient-name').value = order.recipientName || '';
     document.getElementById('of-recipient-phone').value = order.recipientPhone || '';
@@ -7182,6 +7196,20 @@
       return;
     }
     if (e.target.closest && e.target.closest('.oc-menu') && e.target.tagName === 'BUTTON') closeOrderMenus();
+    var depId = e.target.getAttribute && e.target.getAttribute('data-record-deposit');
+    if (depId) {
+      var dpo = state.orders.find(function (x) { return x.id === depId; });
+      if (!dpo) return;
+      var v = prompt('Deposit received from ' + (dpo.buyerName || 'customer') + ' (RM)  —  order total ' + money(orderTotal(dpo)) + '.\nType 0 to remove the deposit.', depositOf(dpo) ? String(depositOf(dpo)) : '');
+      if (v === null) return;
+      var amt = Math.round((Number(v) || 0) * 100) / 100;
+      if (amt < 0) return;
+      if (amt >= orderTotal(dpo) && amt > 0) { dpo.paid = true; dpo.paymentDate = dpo.paymentDate || todayISO(); dpo.depositAmount = 0; delete dpo.depositDate; }
+      else if (amt > 0) { dpo.depositAmount = amt; dpo.depositDate = dpo.depositDate || todayISO(); }
+      else { dpo.depositAmount = 0; delete dpo.depositDate; }
+      save(); renderAll();
+      return;
+    }
     var payRemId = e.target.getAttribute && e.target.getAttribute('data-pay-reminder');
     if (payRemId) {
       var pro = state.orders.find(function (x) { return x.id === payRemId; });
@@ -7585,7 +7613,9 @@
     // (which would retroactively rewrite that order's Revenue/paid history). Unlike wastage,
     // this DOES reduce Cash, since unlike a broken item, money genuinely moved.
     var refundsGiven = active.reduce(function (s, o) { return s + Number(o.refundAmount || 0); }, 0);
-    var cash = Number(state.startingCash || 0) - (allCostsSpent - unclaimedOwed) - shippingCostsPaid + cashCollected - refundsGiven;
+    // A deposit kept from a cancelled order (deposits aren't refunded) is still money in hand.
+    var forfeitedDeposits = state.orders.reduce(function (s, o) { return s + ((o.status === 'cancelled' && o.depositForfeited) ? depositOf(o) : 0); }, 0);
+    var cash = Number(state.startingCash || 0) - (allCostsSpent - unclaimedOwed) - shippingCostsPaid + cashCollected - refundsGiven + forfeitedDeposits;
     var unclaimedOwedTotal = unclaimedOwnerAmount();
     var invValue = state.products.reduce(function (s, p) { return isMaterialProduct(p) ? s : s + p.stock * p.cost; }, 0);
     var materialsLeftValue = state.products.reduce(function (s, p) { return isMaterialProduct(p) ? s + p.stock * p.cost : s; }, 0);
@@ -7783,14 +7813,21 @@
     costRows.forEach(function (r) { if (r.line === 'stock') stockPurchases += r.amount; else opex[r.line] += r.amount; });
     var opexTotal = invSum(INV_OPEX_LINES, function (x) { return opex[x.key]; });
     var gross = revenue - cogs;
-    var net = gross - opexTotal;
+    // Kept deposits from cancelled orders: income, but not a sale.
+    var forfeited = invSum(state.orders.filter(function (o) {
+      if (o.status !== 'cancelled' || !o.depositForfeited || !depositOf(o)) return false;
+      var d = o.depositDate || o.date;
+      if (!d || d < facts.from || d > facts.to) return false;
+      return !ym || invMonthKey(d) === ym;
+    }), depositOf);
+    var net = gross - opexTotal + forfeited;
     var nonReplacement = orders.filter(function (o) { return !o.isReplacement; });
     var tumblers = invSum(lines.filter(function (l) { return l.type === 'Tumbler' && !l.isGift; }), function (l) { return l.units; });
     return {
       revenue: revenue, cogs: cogs, gross: gross, grossMargin: revenue ? gross / revenue : null,
       opex: opex, opexTotal: opexTotal, net: net, netMargin: revenue ? net / revenue : null,
       orders: nonReplacement.length, aov: nonReplacement.length ? invSum(nonReplacement, orderTotal) / nonReplacement.length : null,
-      tumblers: tumblers, stockPurchases: stockPurchases
+      tumblers: tumblers, stockPurchases: stockPurchases, forfeited: forfeited
     };
   }
 
@@ -7843,7 +7880,8 @@
       addRow(s, [C(x.label, null, 'labelIndent'), C(pnl.opex[x.key], INV_MONEY, 'value'), C(null, null, 'note')]);
     });
     addRow(s, [C('Total operating costs', null, 'subtotalLabel'), C(pnl.opexTotal, INV_MONEY, 'subtotal'), C(null, null, 'subtotalNote')]);
-    addRow(s, [C('Net profit', null, 'totalLabel'), C(pnl.net, INV_MONEY, 'total'), C('Gross profit − operating costs', null, 'totalNote')], 22);
+    if (pnl.forfeited) addRow(s, [C('Kept deposits (cancelled orders)', null, 'label'), C(pnl.forfeited, INV_MONEY, 'value'), C('Non-refundable deposits from orders the customer cancelled', null, 'note')]);
+    addRow(s, [C('Net profit', null, 'totalLabel'), C(pnl.net, INV_MONEY, 'total'), C('Gross profit − operating costs' + (pnl.forfeited ? ' + kept deposits' : ''), null, 'totalNote')], 22);
     addRow(s, [C('Net margin', null, 'label'), C(pnl.netMargin, INV_PCT, 'value'), C(null, null, 'note')]);
     addRow(s, [], 10);
 
@@ -9943,7 +9981,7 @@
           '<div style="min-width:0;"><div style="font-weight:600;">' + (idx + 1) + '. ' + escapeHtml(o.buyerName || 'Unknown') + (parcelMates(o).length > 1 ? ' <span class="pill pill-blue" style="font-size:10px;">🔗 ' + parcelMates(o).length + ' orders, 1 parcel</span>' : '') +
             (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') +
             (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
-            '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Unpaid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + ' ' + eastMalaysiaTagHtml(o) + '</div></div>' +
+            '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Balance ' + money(unpaidAmountFor(o)) + ' not paid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + ' ' + eastMalaysiaTagHtml(o) + '</div></div>' +
           '<div class="pd-row-steps">' + step(!!o.shipTo, 'Address') + step(booked || hasTracking, 'Booked') + step(hasTracking, 'Tracking') + '</div>' +
         '</div>' +
         (!o.shipTo && !editing ? '<div class="pd-row-actions"><button type="button" class="btn btn-secondary btn-small" data-pd-addr="' + o.id + '">📍 Add address</button>' +
@@ -10037,6 +10075,8 @@
     var bookedId = t.getAttribute && t.getAttribute('data-pd-booked');
     if (bookedId) {
       var bo = state.orders.find(function (o) { return o.id === bookedId; });
+      var owedP = bo ? parcelMates(bo).reduce(function (t, m) { return t + (m.paid ? 0 : unpaidAmountFor(m)); }, 0) : 0;
+      if (bo && owedP > 0 && !confirm((bo.buyerName || 'This parcel') + ' still owes ' + money(owedP) + '. Book it anyway?')) return;
       if (bo) { parcelMates(bo).forEach(function (m) { if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'order shipment'); }); save(); renderAll(); }
       return;
     }
@@ -10141,7 +10181,7 @@
       return;
     }
     content.innerHTML = summary + queue.map(function (o) {
-      var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : 'Unpaid') + '</span>';
+      var paidPill = '<span class="pill ' + (o.paid && orderFullyPaid(o) ? 'pill-green' : 'pill-red') + '">' + (orderFullyPaid(o) ? 'Paid' : (depositOf(o) ? 'Deposit ' + money(depositOf(o)) + ' · balance ' + money(unpaidAmountFor(o)) + ' not paid' : 'Unpaid ' + money(unpaidAmountFor(o)))) + '</span>';
       var contactPhone = o.recipientPhone || o.buyerWhatsapp || '';
       var isOrderShipment = o.status === 'order shipment';
       var isShipped = o.status === 'shipped';
@@ -10260,6 +10300,8 @@
       // No payment-confirmation gate here — that check is specifically about the parcel
       // physically leaving ("shipped"/"delivered"), not about having booked the courier yet.
       var osOrderId = e.target.getAttribute('data-order-id');
+      var osOrder = state.orders.find(function (o) { return o.id === osOrderId; });
+      if (osOrder && !osOrder.paid && unpaidAmountFor(osOrder) > 0 && !confirm((osOrder.buyerName || 'This order') + ' still owes ' + money(unpaidAmountFor(osOrder)) + '. Book it anyway?')) return;
       changeOrderStatus(osOrderId, 'order shipment');
       return;
     }
@@ -13145,7 +13187,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-01a';
+  var APP_VERSION = '2026-10-01b';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
