@@ -1202,6 +1202,7 @@
   <section class="page" id="page-calendar">
     <div class="page-header"><h1>Calendar</h1></div>
     <p class="muted" style="margin-top:-8px;">Orders still to make show on their making day (made ones hide unless you tick “Show made orders”). Tap a day to see just that day's orders below, or to mark it as a personal day.</p>
+    <div id="cups-to-make"></div>
     <div id="calendar-content"></div>
     <h2 id="schedule-list-title" style="font-size:18px; margin:24px 0 10px;">Orders to make</h2>
     <div id="schedule-content"></div>
@@ -1691,10 +1692,22 @@
   // towels, packaging) aren't something a customer orders, so they're left out of this picker to
   // keep it short and relevant, even though they're still valid picks elsewhere (Costs, the main
   // order item picker).
+  // Add-ons are only ever stickers or add-on items (glass straw, name…), grouped for easy picking.
+  var ADDON_STICKER_PRICE = 7;
+  function addOnDefaultPrice(p) {
+    if (!p) return '';
+    return p.type === 'Stickers' ? ADDON_STICKER_PRICE : (Number(p.price) || 0);
+  }
   function addOnProductOptionsHtml(selected) {
-    return state.products.filter(function (p) { return p.type !== 'Others'; }).map(function (p) {
-      return '<option value="' + p.id + '"' + (p.id === selected ? ' selected' : '') + '>' + (p.type ? '[' + escapeHtml(p.type) + '] ' : '') + escapeHtml(p.name) + (p.variant ? ' — ' + escapeHtml(p.variant) : '') + '</option>';
-    }).join('');
+    function opts(type) {
+      return state.products.filter(function (p) { return p.type === type; })
+        .slice().sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); })
+        .map(function (p) {
+          return '<option value="' + p.id + '"' + (p.id === selected ? ' selected' : '') + '>' + escapeHtml(p.name) + (p.variant ? ' — ' + escapeHtml(p.variant) : '') + '</option>';
+        }).join('');
+    }
+    var st = opts('Stickers'), ao = opts('Add ons');
+    return (st ? '<optgroup label="Stickers">' + st + '</optgroup>' : '') + (ao ? '<optgroup label="Add ons">' + ao + '</optgroup>' : '');
   }
 
   function refreshProductDropdowns() {
@@ -5300,6 +5313,7 @@
         typeSelect + themeSelect + productSelectHtml + patternSelect +
         '<input class="di-qty" type="number" min="1" value="' + line.qty + '" data-idx="' + idx + '" placeholder="Qty">' +
         '<input class="di-price" type="number" step="0.01" min="0" value="' + line.unitPrice + '" data-idx="' + idx + '" placeholder="Unit RM"' + (line.isGift ? ' disabled' : '') + '>' +
+        (line.priceHint != null ? '<button type="button" class="btn-text" data-use-std-price="' + idx + '" style="font-size:12px; white-space:nowrap;" title="You typed your own price for this line">Standard ' + money(line.priceHint) + ' — use it</button>' : '') +
         '<button type="button" class="btn-text" data-toggle-more="' + idx + '" style="font-size:12px; white-space:nowrap;">⋯ more' + moreBadges + '</button>' +
         '<button class="btn-text danger" data-remove-line="' + idx + '">Remove</button>' +
         moreRow +
@@ -5318,6 +5332,12 @@
     if (idx !== null) {
       draftItems.splice(Number(idx), 1);
       renderDraftItems();
+      return;
+    }
+    var stdIdx = e.target.getAttribute('data-use-std-price');
+    if (stdIdx !== null) {
+      var sl = draftItems[Number(stdIdx)];
+      if (sl && sl.priceHint != null) { sl.unitPrice = sl.priceHint; sl.priceHint = null; renderDraftItems(); }
       return;
     }
     var moreIdx = e.target.getAttribute('data-toggle-more');
@@ -5341,9 +5361,22 @@
       draftItems[idx].productId = '';
       renderDraftItems();
     } else if (e.target.classList.contains('di-product')) {
-      draftItems[idx].productId = e.target.value;
+      var dLine = draftItems[idx];
+      var oldProd = state.products.find(function (x) { return x.id === dLine.productId; });
+      dLine.productId = e.target.value;
       var p = state.products.find(function (x) { return x.id === e.target.value; });
-      if (p && !draftItems[idx].unitPrice && ofKind !== 'replacement') draftItems[idx].unitPrice = p.price;
+      dLine.priceHint = null;
+      if (p && ofKind !== 'replacement' && !dLine.isGift) {
+        // Switching to another product: if the line still had the old product's standard price
+        // (plus its style surcharge), move it to the new product's price. A price she typed
+        // herself (a discount, say) is kept, with a one-tap offer of the standard price.
+        var sur = Number(dLine.patternSurcharge) || 0;
+        var curP = dLine.unitPrice;
+        var newStd = (Number(p.price) || 0) + sur;
+        var wasStd = oldProd && Math.abs((Number(curP) || 0) - ((Number(oldProd.price) || 0) + sur)) < 0.005;
+        if (curP === '' || curP == null || wasStd) dLine.unitPrice = newStd;
+        else if (Math.abs((Number(curP) || 0) - newStd) >= 0.005) dLine.priceHint = newStd;
+      }
       renderDraftItems();
     } else if (e.target.classList.contains('di-pattern')) {
       // Same pricing rule as on the order card: only the style's surcharge (Full Glitter +RM5)
@@ -5361,6 +5394,7 @@
       updateDraftTotal();
     } else if (e.target.classList.contains('di-price')) {
       draftItems[idx].unitPrice = e.target.value;
+      draftItems[idx].priceHint = null;
       updateDraftTotal();
     } else if (e.target.classList.contains('di-gift')) {
       draftItems[idx].isGift = e.target.checked;
@@ -5838,7 +5872,11 @@
     var who = order.buyerName ? ('Order: ' + order.buyerName) : 'Order';
     order.items.forEach(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
-      if (p) { p.stock += item.qty; logStock(p.id, item.qty, 'order_restore', who); }
+      if (p) {
+        var back = Math.max(0, (Number(item.qty) || 0) - (Number(item.stockShort) || 0)); // only what was actually taken out
+        if (back) { p.stock += back; logStock(p.id, back, 'order_restore', who); }
+        delete item.stockShort;
+      }
     });
     (order.addOns || []).forEach(function (a) {
       var p = state.products.find(function (x) { return x.id === a.productId; });
@@ -5849,7 +5887,12 @@
     var who = order.buyerName ? ('Order: ' + order.buyerName) : 'Order';
     order.items.forEach(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
-      if (p) { var before = p.stock; p.stock = Math.max(0, p.stock - item.qty); logStock(p.id, -(before - p.stock), 'order', who, order.date); }
+      if (p) {
+        var before = p.stock; p.stock = Math.max(0, p.stock - item.qty); logStock(p.id, -(before - p.stock), 'order', who, order.date);
+        // How many of this line weren't in stock when the order was saved (stock can't go below 0).
+        var shortBy = Math.max(0, (Number(item.qty) || 0) - (before - p.stock));
+        if (shortBy) item.stockShort = shortBy; else delete item.stockShort;
+      }
     });
     (order.addOns || []).forEach(function (a) {
       var p = state.products.find(function (x) { return x.id === a.productId; });
@@ -6960,7 +7003,9 @@
           (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
             ? '<button type="button" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">➕ Add another order</button>'
             : '') +
+          (o.status !== 'cancelled' && !o.scam ? '<button type="button" data-menu-addon="' + o.id + '">➕ Add add-on (paid separately)</button>' : '') +
           ((!o.paid && !o.scam && o.status !== 'cancelled' && orderTotal(o) > 0) ? '<button type="button" data-pay-reminder="' + o.id + '">💬 Copy payment reminder</button><button type="button" data-record-deposit="' + o.id + '">💰 ' + (depositOf(o) ? 'Change deposit' : 'Record deposit') + '</button>' : '') +
+          ((o.paid && !o.scam && o.status !== 'cancelled' && unpaidAmountFor(o) > 0) ? '<button type="button" data-pay-reminder="' + o.id + '">💬 Copy payment reminder (add-on)</button>' : '') +
           '<button type="button" data-edit-pay-reminder="1">✏️ Edit payment reminder</button>' +
           (o.status !== 'cancelled' ? '<button type="button" data-order-scam="' + o.id + '">' + (o.scam ? '↩ Not a scam after all' : '⚠ Scam — sent, never paid') + '</button>' : '') +
           '<button type="button" class="danger" data-delete-order="' + o.id + '">🗑 Delete</button>' +
@@ -6979,8 +7024,7 @@
       var paidHtml = o.scam ? '<span class="pill pill-red">⚠ Scam</span>' : o.status === 'cancelled'
         ? '<span class="pill pill-gray" title="Cancelled — payment not applicable">⛔ Cancelled</span>'
         : ((o.isReplacement && total <= 0) ? '' :
-          '<label class="oc-paid-chip ' + (o.paid ? 'is-paid' : (depositOf(o) ? 'is-deposit' : 'is-unpaid')) + '" title="' + (o.paid ? 'Paid' : 'Tick when fully paid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? 'Paid' : (depositOf(o) ? 'Deposit ' + money(depositOf(o)) + ' · ' + money(unpaidAmountFor(o)) + ' left' : 'Unpaid')) + '</label>' +
-            (o.paid && !orderFullyPaid(o) ? '<span title="Add-on payment still pending" style="color:var(--red); margin-left:4px;">⚠</span>' : ''));
+          '<label class="oc-paid-chip ' + (o.paid ? (orderFullyPaid(o) ? 'is-paid' : 'is-deposit') : (depositOf(o) ? 'is-deposit' : 'is-unpaid')) + '" title="' + (o.paid ? (orderFullyPaid(o) ? 'Paid' : 'Order paid — an add-on is still unpaid (tick it Paid under Add-ons)') : 'Tick when fully paid') + '"><input type="checkbox" class="order-paid-checkbox" data-order-id="' + o.id + '"' + (o.paid ? ' checked' : '') + '> ' + (o.paid ? (orderFullyPaid(o) ? 'Paid' : 'Paid · add-on ' + money(unpaidAmountFor(o)) + ' unpaid') : (depositOf(o) ? 'Deposit ' + money(depositOf(o)) + ' · ' + money(unpaidAmountFor(o)) + ' left' : 'Unpaid')) + '</label>');
       var statusTag = orderStage === 'all' ? '<span class="oc-status-tag">' + escapeHtml(orderStatusLabel(o.status)) + '</span>' : '';
       var itemLines = (o.items || []).map(function (i) {
         var patLbl = i.pattern && tumblerPatternInfo(i.pattern) ? tumblerPatternInfo(i.pattern).label : (i.pattern || '');
@@ -7170,26 +7214,118 @@
     }
   }
 
-  var DEFAULT_PAY_REMINDER = 'Hihi Kakak {buyerName}! 😊\nJust a gentle reminder for your order:\n{items}\nTotal: {amount}\n\nKakak can make payment to:\n{bankDetails}\n\nOnce done, please send me the receipt ya. Thank you so much! 💕';
+  var DEFAULT_PAY_REMINDER = 'Hihi Kakak {buyerName}! 😊\nJust a gentle reminder for your order:\n{items}\nTotal: {amount}\n\nKakak can make payment to the QR or this bank account:\n{bankDetails}\n\nOnce done, please send me the receipt ya. Thank you so much! 💕';
+  // Earlier default wording — a saved copy that still matches it word for word follows the new default.
+  var OLD_DEFAULT_PAY_REMINDER = 'Hihi Kakak {buyerName}! 😊\nJust a gentle reminder for your order:\n{items}\nTotal: {amount}\n\nKakak can make payment to:\n{bankDetails}\n\nOnce done, please send me the receipt ya. Thank you so much! 💕';
   function payReminderText(o) {
-    var tpl = state.paymentReminderTemplate || DEFAULT_PAY_REMINDER;
-    var items = (o.items || []).map(function (i) { return i.qty + ' × ' + cleanItemName(i.productName) + (i.pattern && tumblerPatternInfo(i.pattern) ? ' (' + tumblerPatternInfo(i.pattern).label + ')' : ''); }).join('\n');
+    var tpl = (!state.paymentReminderTemplate || state.paymentReminderTemplate === OLD_DEFAULT_PAY_REMINDER) ? DEFAULT_PAY_REMINDER : state.paymentReminderTemplate;
+    var items = o.paid
+      ? (o.addOns || []).filter(function (a) { return !a.paid; }).map(function (a) { return a.qty + ' × ' + cleanItemName(a.productName) + ' (add-on)'; }).join('\n')
+      : (o.items || []).map(function (i) { return i.qty + ' × ' + cleanItemName(i.productName) + (i.pattern && tumblerPatternInfo(i.pattern) ? ' (' + tumblerPatternInfo(i.pattern).label + ')' : ''); })
+          .concat((o.addOns || []).filter(function (a) { return !a.paid; }).map(function (a) { return a.qty + ' × ' + cleanItemName(a.productName) + ' (add-on)'; })).join('\n');
     var owed = unpaidAmountFor(o) || orderTotal(o);
     return tpl.split('{buyerName}').join(o.buyerName || '')
       .split('{items}').join(items)
       .split('{amount}').join(money(owed).replace(/\u00a0/g, ' '))
       .split('{bankDetails}').join(state.bankDetails || '(bank details)');
   }
+  // Payment QR: uploaded once here, kept in her own (private, synced) data — never in the page
+  // file itself. After copying a payment reminder she gets a one-tap "Copy QR" to paste as a
+  // second message (WhatsApp drops the text when text and image are pasted together).
+  var payQrDraft;
+  function payQrBoxHtml() {
+    var src = payQrDraft;
+    return (src
+      ? '<div style="display:flex; align-items:center; gap:10px;"><img src="' + src + '" alt="Payment QR" style="width:90px; height:90px; object-fit:contain; border:1px solid var(--border); border-radius:8px; background:#fff;">' +
+          '<span style="display:flex; flex-direction:column; gap:4px;"><label class="btn-text" style="font-size:12px; cursor:pointer;">Change<input type="file" id="pay-qr-file" accept="image/*" style="display:none;"></label>' +
+          '<button type="button" class="btn-text danger" id="btn-remove-pay-qr" style="font-size:12px;">Remove</button></span></div>'
+      : '<label class="btn btn-secondary btn-small" style="cursor:pointer; display:inline-block;">📷 Upload QR<input type="file" id="pay-qr-file" accept="image/*" style="display:none;"></label>' +
+        '<div class="muted" style="font-size:12px; margin-top:4px;">A screenshot of your DuitNow / bank QR works.</div>');
+  }
+  function qrFileToDataUrl(file, cb) {
+    var reader = new FileReader();
+    reader.onerror = function () { alert(PHOTO_DECODE_ERROR_MESSAGE); };
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onerror = function () { alert(PHOTO_DECODE_ERROR_MESSAGE); };
+      img.onload = function () {
+        var scale = Math.min(1, 900 / Math.max(img.width, img.height));
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width * scale)); c.height = Math.max(1, Math.round(img.height * scale));
+        var cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(img, 0, 0, c.width, c.height);
+        cb(c.toDataURL('image/jpeg', 0.88)); // sharp enough to scan, small enough to sync
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  function qrPngBlob() {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () {
+        var c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        c.toBlob(function (b) { b ? resolve(b) : reject(new Error('no image')); }, 'image/png');
+      };
+      img.onerror = function () { reject(new Error('no image')); };
+      img.src = state.paymentQr;
+    });
+  }
+  function copyPayQr() {
+    if (!state.paymentQr) return;
+    try {
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        // Safari needs the ClipboardItem created right inside the tap, with the image as a promise.
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': qrPngBlob() })])
+          .then(function () { showCopiedToast('QR copied — paste it into WhatsApp'); hideQrBar(); })
+          .catch(function () { showCopiedToast("Couldn't copy the QR here — use Share instead"); });
+        return;
+      }
+    } catch (e) {}
+    showCopiedToast("This browser can't copy images — use Share instead");
+  }
+  function sharePayQr() {
+    qrPngBlob().then(function (b) {
+      var f = new File([b], 'payment-qr.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) return navigator.share({ files: [f] }).then(hideQrBar);
+      showCopiedToast("Sharing isn't available here — use Copy QR");
+    }).catch(function () {});
+  }
+  function hideQrBar() { var b = document.getElementById('pay-qr-bar'); if (b) b.remove(); }
+  function showQrBar() {
+    hideQrBar();
+    if (!state.paymentQr) return;
+    var bar = document.createElement('div');
+    bar.id = 'pay-qr-bar';
+    bar.style.cssText = 'position:fixed; bottom:70px; left:50%; transform:translateX(-50%); background:#fff; border:1px solid var(--border); border-radius:14px; padding:8px 10px; display:flex; align-items:center; gap:8px; z-index:9998; box-shadow:0 4px 16px rgba(0,0,0,0.15); font-size:13px; max-width:calc(100vw - 24px); box-sizing:border-box;';
+    var canShare = !!(navigator.canShare && window.File);
+    bar.innerHTML = '<img src="' + state.paymentQr + '" alt="" style="width:30px; height:30px; object-fit:contain; border-radius:4px;">' +
+      '<span class="muted" style="white-space:nowrap;">Now send your QR</span>' +
+      '<button type="button" class="btn btn-primary btn-small" id="btn-copy-pay-qr" style="white-space:nowrap;">📷 Copy QR</button>' +
+      (canShare ? '<button type="button" class="btn btn-secondary btn-small" id="btn-share-pay-qr" style="white-space:nowrap;">Share</button>' : '') +
+      '<button type="button" class="btn-text" id="btn-close-pay-qr" aria-label="Close">✕</button>';
+    document.body.appendChild(bar);
+    bar.addEventListener('click', function (e) {
+      if (e.target.id === 'btn-copy-pay-qr') copyPayQr();
+      else if (e.target.id === 'btn-share-pay-qr') sharePayQr();
+      else if (e.target.id === 'btn-close-pay-qr') hideQrBar();
+    });
+    setTimeout(function () { if (bar.parentNode) bar.parentNode.removeChild(bar); }, 30000);
+  }
+
   function renderPayReminderEditor(open) {
     var box = document.getElementById('pay-reminder-editor');
     if (!box) return;
     if (!open) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    payQrDraft = state.paymentQr || '';
     box.style.display = 'block';
     box.innerHTML = '<div style="font-weight:600; margin-bottom:6px;">💬 Payment reminder</div>' +
       '<div class="muted" style="font-size:12px; margin-bottom:6px;">Use {buyerName}, {items}, {amount} and {bankDetails} — they\'re filled in for each order when you copy.</div>' +
-      '<textarea id="pay-reminder-template" rows="9" style="width:100%; font-size:13px;">' + escapeHtml(state.paymentReminderTemplate || DEFAULT_PAY_REMINDER) + '</textarea>' +
+      '<textarea id="pay-reminder-template" rows="9" style="width:100%; font-size:13px;">' + escapeHtml((!state.paymentReminderTemplate || state.paymentReminderTemplate === OLD_DEFAULT_PAY_REMINDER) ? DEFAULT_PAY_REMINDER : state.paymentReminderTemplate) + '</textarea>' +
       '<label class="field-label" style="margin-top:8px;">Your bank details</label>' +
       '<textarea id="pay-reminder-bank" rows="3" style="width:100%; font-size:13px;" placeholder="Account number\nName\nBank">' + escapeHtml(state.bankDetails || '') + '</textarea>' +
+      '<label class="field-label" style="margin-top:8px;">Your payment QR</label>' +
+      '<div id="pay-qr-box">' + payQrBoxHtml() + '</div>' +
       '<div style="margin-top:8px; display:flex; gap:6px;"><button type="button" class="btn btn-primary btn-small" id="btn-save-pay-reminder">Save</button><button type="button" class="btn btn-secondary btn-small" id="btn-cancel-pay-reminder">Cancel</button>' +
       '<button type="button" class="btn-text" id="btn-reset-pay-reminder" style="margin-left:auto; font-size:12px;">Reset to default message</button></div>';
   }
@@ -7197,10 +7333,17 @@
     if (e.target.id === 'btn-save-pay-reminder') {
       state.paymentReminderTemplate = document.getElementById('pay-reminder-template').value;
       state.bankDetails = document.getElementById('pay-reminder-bank').value.trim();
+      if (payQrDraft) state.paymentQr = payQrDraft; else delete state.paymentQr;
       save(); renderPayReminderEditor(false); showCopiedToast('Payment reminder saved'); return;
     }
     if (e.target.id === 'btn-cancel-pay-reminder') { renderPayReminderEditor(false); return; }
     if (e.target.id === 'btn-reset-pay-reminder') { document.getElementById('pay-reminder-template').value = DEFAULT_PAY_REMINDER; }
+    if (e.target.id === 'btn-remove-pay-qr') { payQrDraft = ''; document.getElementById('pay-qr-box').innerHTML = payQrBoxHtml(); }
+  });
+  document.getElementById('pay-reminder-editor').addEventListener('change', function (e) {
+    if (e.target.id === 'pay-qr-file' && e.target.files && e.target.files[0]) {
+      qrFileToDataUrl(e.target.files[0], function (url) { payQrDraft = url; document.getElementById('pay-qr-box').innerHTML = payQrBoxHtml(); });
+    }
   });
   function closeOrderMenus(except) {
     Array.from(document.querySelectorAll('.oc-more.open')).forEach(function (m) { if (m !== except) m.classList.remove('open'); });
@@ -7238,6 +7381,7 @@
         var msg = payReminderText(pro);
         window.__lastCopiedText = msg;
         copyTextWithToast(msg, state.bankDetails ? 'Payment reminder copied — paste into WhatsApp' : 'Copied — add your bank details in ⋯ → Edit payment reminder');
+        showQrBar();
       }
       return;
     }
@@ -7297,6 +7441,17 @@
       saveOrderDetails(saveDetailsId);
     }
     if (startAddOnId) startAddOn(startAddOnId);
+    var menuAddOnId = e.target.getAttribute('data-menu-addon');
+    if (menuAddOnId) {
+      expandedOrderId = menuAddOnId;
+      editingDetailsOrderId = null;
+      startAddOn(menuAddOnId);
+      setTimeout(function () {
+        var sel = document.getElementById('ao-product');
+        if (sel && typeof sel.scrollIntoView === 'function') sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 0);
+      return;
+    }
     if (cancelAddOnFlag) {
       addOnDraftFor = null;
       renderOrders();
@@ -7362,6 +7517,14 @@
       compressImageBlobToDataUrl(file, function (dataUrl) {
         applyPhotoToTarget({ kind: 'orderItem', orderId: fpOrderId, itemIndex: fpItemIndex }, dataUrl);
       });
+      return;
+    }
+    if (e.target.id === 'ao-product') {
+      var aoP = state.products.find(function (x) { return x.id === e.target.value; });
+      addOnDraft.productId = e.target.value;
+      addOnDraft.unitPrice = addOnDefaultPrice(aoP);
+      var aoPrice = document.getElementById('ao-price');
+      if (aoPrice) aoPrice.value = addOnDraft.unitPrice;
       return;
     }
     if (e.target.id === 'ao-flat-price') {
@@ -9680,8 +9843,14 @@
     var trackingNums = (o.parcels && o.parcels.length)
       ? o.parcels.map(function (p) { return p.trackingNumber || ''; })
       : [o.trackingNumber || ''];
-    var haystacks = [o.recipientName, o.buyerName, o.shipTo, o.postcode].concat(trackingNums);
-    return haystacks.some(function (h) { return h && h.toLowerCase().indexOf(needle) !== -1; });
+    var haystacks = [o.recipientName, o.buyerName, o.buyerHandle, o.shipTo, o.postcode].concat(trackingNums);
+    if (haystacks.some(function (h) { return h && String(h).toLowerCase().indexOf(needle) !== -1; })) return true;
+    // Phone numbers: compare digits only, so "012-345 6789", "+6012..." and "0123456789" all match.
+    var digits = needle.replace(/\D/g, '');
+    if (digits.length >= 3 && /^[\d\s+\-().]+$/.test(needle)) {
+      return [o.buyerWhatsapp, o.recipientPhone].some(function (ph) { return ph && String(ph).replace(/\D/g, '').indexOf(digits) !== -1; });
+    }
+    return false;
   }
 
   function courierOptionsHtml(selected) {
@@ -10148,6 +10317,8 @@
     var queue = fullQueue.filter(matchesShippingFilter).filter(matchesShippingSearch);
     var delivered = state.orders.filter(function (o) { return o.status === 'delivered'; })
       .slice().sort(function (a, b) { return shippingSortKey(b).localeCompare(shippingSortKey(a)); });
+    // Searching looks through delivered orders too, so she can find a person whatever stage.
+    var deliveredMatches = shippingSearchText ? delivered.filter(matchesShippingSearch) : [];
     var content = document.getElementById('shipping-content');
     // Checked across the whole shipping lifecycle, not just the active queue — she wants to catch
     // a missed shipping cost even on an order that's already been delivered, since that's still
@@ -10155,13 +10326,15 @@
     var missingShippingCostList = fullQueue.concat(delivered).filter(isShippingCostMissing);
     // One tidy row: search · filter · sort · ⋯ (Give credit / Edit shipped message).
     var summary = '<div class="card" style="margin-bottom:10px; padding:12px 14px;">' +
-      '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;"><span class="muted" style="font-size:13px;"><strong style="color:var(--text);">' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + ((shippingStatusFilter === 'all' && !shippingSearchText) ? ' in the shipping queue' : ' matching') + '</span>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;"><span class="muted" style="font-size:13px;">' + (shippingSearchText
+          ? '<strong style="color:var(--text);">' + (queue.length + deliveredMatches.length) + '</strong> order' + ((queue.length + deliveredMatches.length) !== 1 ? 's' : '') + ' matching · ' + queue.length + ' still to ship, ' + deliveredMatches.length + ' delivered'
+          : '<strong style="color:var(--text);">' + queue.length + '</strong> order' + (queue.length !== 1 ? 's' : '') + (shippingStatusFilter === 'all' ? ' in the shipping queue' : ' matching')) + '</span>' +
         (editingShippedTemplate ? '' : '<button type="button" class="btn-text" id="btn-edit-shipped-template" style="font-size:13px;">✏️ Edit shipped message</button>') + '</div>' +
       '<div class="ship-tools">' +
+        '<span style="display:inline-flex; gap:4px; flex:1; min-width:170px;"><input type="text" id="shipping-search" class="search-input" placeholder="Search name, handle, phone, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="flex:1; min-width:0; font-size:13px;">' +
+          '<button type="button" class="btn btn-secondary btn-small" id="btn-shipping-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button></span>' +
         (fullQueue.length > 0
-          ? '<span style="display:inline-flex; gap:4px; flex:1; min-width:170px;"><input type="text" id="shipping-search" class="search-input" placeholder="Search name, tracking #, address…" value="' + escapeHtml(shippingSearchText) + '" style="flex:1; min-width:0; font-size:13px;">' +
-              '<button type="button" class="btn btn-secondary btn-small" id="btn-shipping-search-go" style="padding:6px 9px;" aria-label="Search">🔍</button></span>' +
-            '<select id="shipping-status-filter" style="font-size:13px; width:auto;">' + shippingFilterOptionsHtml() + '</select>' +
+          ? '<select id="shipping-status-filter" style="font-size:13px; width:auto;">' + shippingFilterOptionsHtml() + '</select>' +
             '<button type="button" class="of-chip" id="btn-toggle-shipping-sort">' + (shippingSortNewestFirst ? '↓ Newest first' : '↑ Oldest first') + '</button>'
           : '') +
         '<div class="oc-more"><button type="button" class="oc-more-btn" data-order-more="ship-tools" aria-label="More">⋯</button><div class="oc-menu">' +
@@ -10193,8 +10366,14 @@
           '<button type="button" class="btn-text" id="btn-toggle-glass-straw">' + (showGlassStrawList ? '▲ Hide' : '🥤 View') + ' glass straw orders (' + fullQueue.filter(function (o) { return orderAddOnQty(o, 'glass straw') > 0; }).length + ')</button>' +
         '</div>') +
     '</div>';
-    var deliveredSection = showDeliveredHistory ? renderDeliveredHistory(delivered) : '';
+    var deliveredSection = shippingSearchText
+      ? (deliveredMatches.length ? renderDeliveredHistory(deliveredMatches) : '')
+      : (showDeliveredHistory ? renderDeliveredHistory(delivered) : '');
     var glassStrawSection = showGlassStrawList ? renderGlassStrawList(fullQueue) : '';
+    if (shippingSearchText && queue.length === 0) {
+      content.innerHTML = summary + (deliveredMatches.length ? '' : '<div class="empty">No orders match this search.</div>') + deliveredSection + glassStrawSection;
+      return;
+    }
     if (fullQueue.length === 0) {
       content.innerHTML = summary + '<div class="empty">Nothing ready to ship yet. Mark an order "ready to ship" from the Orders tab once it\'s packed.</div>' + deliveredSection + glassStrawSection;
       return;
@@ -10704,7 +10883,48 @@
   var calOrderToMake = function (o) { return o.status === 'queueing' && !o.immediate; };
   var calEditingDate = null; // day currently open in the edit panel — nothing is saved until "Save"
 
+  // 🥤 Cups to make: every bottle still to make across all queueing orders (replacements too),
+  // added up per cup. Cups are taken out of stock when an order is saved, so "short" only shows
+  // when stock had already run out at that moment and hasn't been restocked enough since.
+  function cupsToMakeSummary() {
+    var byProd = {};
+    state.orders.forEach(function (o) {
+      if (o.status !== 'queueing' || o.scam) return;
+      (o.items || []).forEach(function (i) {
+        if (!isBottleItem(i)) return;
+        var left = (Number(i.qty) || 0) - Math.min(Number(i.madeQty) || 0, Number(i.qty) || 0);
+        if (left <= 0) return;
+        var r = byProd[i.productId] || (byProd[i.productId] = { productId: i.productId, toMake: 0, short: 0 });
+        r.toMake += left;
+        r.short += Math.min(left, Number(i.stockShort) || 0);
+      });
+    });
+    return Object.keys(byProd).map(function (id) {
+      var r = byProd[id];
+      var p = state.products.find(function (x) { return x.id === id; });
+      r.name = p ? (p.name + (p.variant ? ' ' + p.variant : '')) : 'Unknown cup';
+      r.missing = Math.max(0, r.short - (p ? Number(p.stock) || 0 : 0));
+      return r;
+    }).sort(function (a, b) { return b.toMake - a.toMake || a.name.localeCompare(b.name); });
+  }
+  function renderCupsToMake() {
+    var el = document.getElementById('cups-to-make');
+    if (!el) return;
+    var rows = cupsToMakeSummary();
+    if (!rows.length) { el.innerHTML = ''; return; }
+    var total = rows.reduce(function (s, r) { return s + r.toMake; }, 0);
+    el.innerHTML = '<div class="card" style="margin-bottom:14px; padding:14px 16px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;"><b>🥤 Cups to make</b><span class="muted" style="font-size:13px;">' + total + ' in total</span></div>' +
+      rows.map(function (r) {
+        return '<div class="cups-row" data-cups-row="' + escapeHtml(r.productId) + '" style="display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-top:1px solid var(--border,#eee); font-size:14px;">' +
+          '<span>' + escapeHtml(r.name) + (r.missing ? ' <span style="color:var(--red,#c0392b); font-size:12px; font-weight:500;">· short ' + r.missing + ' — restock</span>' : '') + '</span>' +
+          '<b>× ' + r.toMake + '</b></div>';
+      }).join('') +
+    '</div>';
+  }
+
   function renderCalendar() {
+    renderCupsToMake();
     var container = document.getElementById('calendar-content');
     var firstOfMonth = new Date(calYear, calMonth, 1);
     var daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
@@ -13290,7 +13510,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-01d';
+  var APP_VERSION = '2026-10-05e';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
@@ -13399,6 +13619,7 @@
   // Before a sync write that removes anything from the cloud copy, keep a full copy of what
   // the cloud had, in the backups folder — so nothing a sync does can ever be unrecoverable.
   function snapshotCloudBeforeSync(userId, cloudCopy) {
+    if (isViewerMode) return Promise.resolve();
     try {
       var stamp = new Date().toISOString().replace(/[:.]/g, '-');
       var blob = new Blob([JSON.stringify(cloudCopy)], { type: 'application/json' });
@@ -13461,6 +13682,7 @@
   // Only writes if the cloud is still at `expectedRemoteUpdatedAt` — returns a promise of true
   // (written) / false (someone else saved first) / null (couldn't reach the server).
   function conditionalCloudWrite(userId, data, expectedRemoteUpdatedAt) {
+    if (isViewerMode) return Promise.resolve(null);
     stampWriter(data, 'sync');
     return sb.from('app_state').update({ data: data })
       .eq('user_id', userId)
@@ -13684,7 +13906,7 @@
   }
 
   function pushStateToCloud() {
-    if (!sb) return;
+    if (!sb || isViewerMode) return;
     clearTimeout(cloudPushTimer);
     cloudPushTimer = null; // nothing pending any more — this push is it
     sb.auth.getUser().then(function (res) {
@@ -13705,7 +13927,8 @@
   // Picks up changes from the other device whenever this one comes back to the foreground, so
   // the two copies rarely drift apart in the first place.
   function refreshFromCloudIfChanged() {
-    if (!sb || cloudSyncSuspended || isViewerMode) return;
+    if (isViewerMode) { loadOwnerDataForViewer(); return; }
+    if (!sb || cloudSyncSuspended) return;
     if (cloudPushTimer) return; // a push is pending — it will reconcile on its own
     sb.auth.getUser().then(function (res) {
       var user = res.data && res.data.user;
@@ -13727,7 +13950,7 @@
     if (isViewerMode || !showViewerAccessPanel) { panel.style.display = 'none'; return; }
     panel.style.display = '';
     panel.innerHTML = '<div style="font-weight:500; margin-bottom:8px;">👁 Viewer access</div>' +
-      '<p class="muted" style="font-size:13px; margin:0 0 10px;">Anyone on this list can sign in (with their own password) and see all your data, but can never add, edit, or delete anything.</p>' +
+      '<p class="muted" style="font-size:13px; margin:0 0 10px;">Anyone on this list can sign in (with their own password) and see all your data, but can never add, edit, or delete anything. After adding an email, send them the link and ask them to tap <b>Sign up</b> with that same email (first time only).</p>' +
       (viewerGrants.length === 0 ? '<div class="empty" style="margin-bottom:10px;">No one has viewer access yet.</div>' :
         viewerGrants.map(function (g) {
           return '<div class="row-line"><span>' + escapeHtml(g.viewer_email) + '</span><button type="button" class="btn-text danger" data-remove-viewer-grant="' + g.id + '">Remove</button></div>';
@@ -13780,64 +14003,151 @@
     }
   });
 
+  // Resolves to the owner's user id if this email was granted viewer access, null if not, or
+  // the string 'error' if the check itself couldn't be made (offline). limit(1) instead of
+  // maybeSingle so a duplicated grant can't make the check fail and treat a viewer as an owner.
   function checkViewerGrant(email) {
     if (!email) return Promise.resolve(null);
-    return sb.from('viewer_grants').select('owner_user_id').eq('viewer_email', email.toLowerCase()).maybeSingle()
-      .then(function (res) { return (res.data && res.data.owner_user_id) || null; })
-      .catch(function () { return null; });
+    try {
+      return Promise.resolve(sb.from('viewer_grants').select('owner_user_id').eq('viewer_email', email.toLowerCase()).limit(1))
+        .then(function (res) {
+          if (!res || res.error) return 'error';
+          return (res.data && res.data[0] && res.data[0].owner_user_id) || null;
+        })
+        .catch(function () { return 'error'; });
+    } catch (e) { return Promise.resolve('error'); }
   }
 
-  function pullStateFromCloud(userId, userEmail) {
-    return sb.from('app_state').select('data').eq('user_id', userId).maybeSingle().then(function (res) {
-      if (res.error) { setSyncStatus('offline'); return; }
-      if (res.data && res.data.data) {
-        // Before blindly adopting the cloud's copy, check whether what's ALREADY on this
-        // device (loaded from localStorage at the top of this file, before any of this ran) is
-        // actually more recent — e.g. she just saved something here (a photo, a new order...)
-        // and the 800ms debounced push to the cloud hadn't gone out yet, or was still in flight,
-        // when this page load's initial pull fired. Overwriting a newer local save with an
-        // older cloud snapshot would silently erase that edit — exactly the class of data loss
-        // already fixed once for tab-refocus (see the auth-event guard below); a full page
-        // reload needs the same protection. Both sides default to 0 for old data saved before
-        // this timestamp existed, so this only changes behavior once both sides actually have one.
-        // Now handled by reconcileWithCloud: adopts the cloud copy if nothing changed here,
-        // keeps + pushes this device's copy if the cloud hasn't moved, and MERGES the two if
-        // both sides changed since they were last in sync (instead of one wiping the other).
-        return reconcileWithCloud(userId, res.data.data);
-      } else {
-        // No app_state row of this account's own — check whether someone granted this email
-        // viewer access before assuming this is a brand-new owner account.
-        checkViewerGrant(userEmail).then(function (ownerUserId) {
-          if (!ownerUserId) {
-            // Genuinely a new owner account — seed the cloud with whatever's on this device already.
-            pushStateToCloud();
-            setSyncStatus('synced');
-            return;
-          }
-          isViewerMode = true;
-          viewerOwnerUserId = ownerUserId;
-          return sb.from('app_state').select('data').eq('user_id', ownerUserId).maybeSingle().then(function (ownerRes) {
-            if (ownerRes.error || !ownerRes.data || !ownerRes.data.data) { setSyncStatus('offline'); return; }
-            state = ownerRes.data.data;
-            if (!state.blockedDates) state.blockedDates = {};
-            if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6];
-            if (state.dailyTumblerCapacity == null) state.dailyTumblerCapacity = 5;
-            if (!state.products) state.products = [];
-            if (!state.costs) state.costs = [];
-            if (!state.orders) state.orders = [];
-            if (!state.stockLog) state.stockLog = [];
-            if (!state.chatLog) state.chatLog = [];
-            if (!state.customerCredits) state.customerCredits = [];
-            if (state.lastExportDate === undefined) state.lastExportDate = null;
-            if (state.lastBackupDate === undefined) state.lastBackupDate = null;
-            if (state.startingCash == null) state.startingCash = 5000;
-            if (state.shippedMessageTemplate == null) state.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
-            renderAll();
-            applyViewerLock();
-            setSyncStatus('synced');
-          });
-        });
+  function fillStateDefaults(st) {
+    if (!st.blockedDates) st.blockedDates = {};
+    if (!st.weeklyBreakDays) st.weeklyBreakDays = [2, 6];
+    if (st.dailyTumblerCapacity == null) st.dailyTumblerCapacity = 5;
+    if (!st.products) st.products = [];
+    if (!st.costs) st.costs = [];
+    if (!st.orders) st.orders = [];
+    if (!st.stockLog) st.stockLog = [];
+    if (!st.chatLog) st.chatLog = [];
+    if (!st.customerCredits) st.customerCredits = [];
+    if (st.lastExportDate === undefined) st.lastExportDate = null;
+    if (st.lastBackupDate === undefined) st.lastBackupDate = null;
+    if (st.startingCash == null) st.startingCash = 5000;
+    if (st.shippedMessageTemplate == null) st.shippedMessageTemplate = DEFAULT_SHIPPED_MESSAGE_TEMPLATE;
+    return st;
+  }
+
+  // Viewer: (re)load the owner's latest copy straight from the cloud. Only kept in memory —
+  // never saved on the viewer's device and never written anywhere.
+  var viewerLastLoadedAt = null;
+  function loadOwnerDataForViewer() {
+    if (!sb || !isViewerMode || !viewerOwnerUserId) return Promise.resolve();
+    return sb.from('app_state').select('data').eq('user_id', viewerOwnerUserId).maybeSingle().then(function (ownerRes) {
+      if (ownerRes.error || !ownerRes.data || !ownerRes.data.data) { setSyncStatus('offline'); return; }
+      var incoming = ownerRes.data.data;
+      if (viewerLastLoadedAt && incoming.updatedAt === viewerLastLoadedAt) { setSyncStatus('synced'); return; }
+      viewerLastLoadedAt = incoming.updatedAt || null;
+      state = fillStateDefaults(incoming);
+      renderAll();
+      applyViewerLock();
+      setSyncStatus('synced');
+    }).catch(function () { setSyncStatus('offline'); });
+  }
+
+  var accountHasNoAccess = false;
+
+  // One-time corrections Evvyne asked for (4–5 Oct 2026), applied once to her data right after
+  // it has been synced with the cloud. Each step only ADDS or corrects the exact record named
+  // by its id, checks first, and never deletes anything; running it again changes nothing.
+  // Amounts come from the cost already saved on each replacement order line.
+  function applyRequestedDataFixes() {
+    if (isViewerMode) return false;
+    var changed = false;
+    function order(id) { return state.orders.find(function (o) { return o.id === id; }); }
+    function prod(id) { return state.products.find(function (p) { return p.id === id; }); }
+    function hasCost(id) { return state.costs.some(function (c) { return c.id === id; }); }
+    function reasonOf(o) { var n = o.notes || ''; var k = n.lastIndexOf(' — '); return k !== -1 ? n.slice(k + 3) : ''; }
+    function addWriteOff(costId, o, productId) {
+      if (!o || hasCost(costId)) return;
+      var line = (o.items || []).concat(o.addOns || []).find(function (i) { return i.productId === productId; });
+      var p = prod(productId);
+      if (!line || !p) return;
+      var unit = Number(line.unitCost != null ? line.unitCost : p.cost) || 0;
+      var qty = Number(line.qty) || 1;
+      var r = reasonOf(o);
+      state.costs.push({ id: costId, category: 'wastage', date: o.date, productId: productId, qty: -qty,
+        amount: Math.round(unit * qty * 10000) / 10000,
+        description: 'Replacement sent — ' + (o.buyerName || '') + ' — ' + p.name + ' (' + qty + ' units)' + (r ? ' — ' + r : '') });
+      changed = true;
+    }
+    // 1) Yati's replacement typed as 27 Oct — it was created on 1 Oct.
+    var y2 = order('mupc8pcd8vuzu1');
+    if (y2 && y2.date === '2026-10-27') { y2.date = '2026-10-01'; changed = true; }
+    (state.stockLog || []).forEach(function (l) {
+      if ((l.id === 'mupcajpne2n4i5' || l.id === 'mupcajpnww09an') && l.date === '2026-10-27') { l.date = '2026-10-01'; changed = true; }
+    });
+    // 2) TNI's replacement was a 720ml + 2 Powerpuff stickers, but its write-off said stainless.
+    var tni = order('muda8yfe1ti686');
+    var tniCost = state.costs.find(function (c) { return c.id === 'muda8yfez5hhuu'; });
+    if (tni && tniCost && tniCost.productId === 'mszwxeis18v00p') {
+      var oldP = prod('mszwxeis18v00p'), newP = prod('mszwvzdjj2zx3d');
+      var tLine = (tni.items || []).find(function (i) { return i.productId === 'mszwvzdjj2zx3d'; });
+      if (oldP && newP && tLine) {
+        tniCost.productId = newP.id;
+        tniCost.amount = Number(tLine.unitCost != null ? tLine.unitCost : newP.cost) || 0;
+        tniCost.description = String(tniCost.description || '').split(oldP.name).join(newP.name);
+        changed = true;
       }
+    }
+    addWriteOff('fix1005-tni-a', tni, 'mtuda3kqbwzhli');
+    addWriteOff('fix1005-tni-b', tni, 'mtudanhd1fv5zw');
+    // 3) Novx's stainless replacement had no write-off.
+    addWriteOff('fix1005-novx', order('muhh16ri99rtkp'), 'mszwxeis18v00p');
+    // 4) The Stitch LA sent with Yati's replacement had no write-off.
+    addWriteOff('fix1005-yati-stitch', order('mupc884gmnhphb'), 'mtu5v2qos4sedp');
+    // 5) Two products both called "Mineral Oil 26# 500ml x1" (bought the same day at different
+    // prices) — name each by its price so they can be told apart. Only the variant text changes.
+    [['mtuhj3cb0lxesx', 'RM14.18'], ['mtuhjpm6lulvbd', 'RM10.07']].forEach(function (m) {
+      var mp = prod(m[0]);
+      if (mp && mp.variant === '26# 500ml x1') { mp.variant = '26# 500ml x1 · ' + m[1]; changed = true; }
+    });
+    if (changed) { try { save(); } catch (e) {} renderAll(); }
+    return changed;
+  }
+
+  // Every time the app opens with a signed-in account: FIRST check whether this email was given
+  // viewer access. A viewer always sees the owner's latest data, read-only — even if an older
+  // version of the app once created a copy of their own (that copy is simply ignored, never
+  // touched). An account that is neither the owner of any data nor on the viewer list gets no
+  // access, and nothing is created for it.
+  function pullStateFromCloud(userId, userEmail) {
+    return checkViewerGrant(userEmail).then(function (ownerUserId) {
+      if (ownerUserId && ownerUserId !== 'error' && ownerUserId !== userId) {
+        isViewerMode = true;
+        viewerOwnerUserId = ownerUserId;
+        cloudSyncSuspended = true; // a viewer never writes
+        clearTimeout(cloudPushTimer); cloudPushTimer = null;
+        applyViewerLock();
+        return loadOwnerDataForViewer();
+      }
+      return sb.from('app_state').select('data').eq('user_id', userId).maybeSingle().then(function (res) {
+        if (res.error) { setSyncStatus('offline'); return; }
+        if (res.data && res.data.data) {
+          // Her own data: reconcile with what's on this device (merges instead of overwriting).
+          return Promise.resolve(reconcileWithCloud(userId, res.data.data)).then(function (r) {
+            setTimeout(applyRequestedDataFixes, 0);
+            return r;
+          });
+        }
+        // No cloud data yet but this device already holds a shop's data (first-time setup, or
+        // recovering a lost cloud row): put it up, as before.
+        if ((state.orders && state.orders.length) || (state.products && state.products.length)) {
+          pushStateToCloud();
+          setSyncStatus('synced');
+          return;
+        }
+        if (ownerUserId === 'error') { setSyncStatus('offline'); return; } // couldn't check — do nothing, try again next open
+        // No data anywhere and not on anyone's viewer list: no access. Nothing is created.
+        accountHasNoAccess = true;
+      });
     });
   }
 
@@ -13916,7 +14226,7 @@
   }
 
   function syncPhotosToCloud() {
-    if (!sb || photoSyncInFlight) return;
+    if (!sb || photoSyncInFlight || isViewerMode) return;
     if (!hasPendingPhotos()) return;
     photoSyncInFlight = true;
     sb.auth.getUser().then(function (res) {
@@ -13961,6 +14271,7 @@
   var backupInFlight = false;
 
   function maybeRunAutoBackup(userId) {
+    if (isViewerMode) return;
     if (!sb || backupInFlight) return;
     var last = state.lastBackupDate;
     var daysSince = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
@@ -14085,7 +14396,16 @@
         pullStateFromCloud(session.user.id, session.user.email).catch(function () {
           setSyncStatus('offline'); // couldn't reach Supabase — carry on with whatever's in localStorage
         }).then(function () {
-          cloudSyncSuspended = false;
+          if (accountHasNoAccess) {
+            accountHasNoAccess = false;
+            var em = session.user.email || 'this email';
+            sb.auth.signOut().then(function () {
+              showAuthScreen();
+              document.getElementById('auth-error').textContent = em + ' doesn\'t have access yet. Ask the owner to add it under 👁 Viewer access, then sign in again.';
+            });
+            return;
+          }
+          cloudSyncSuspended = isViewerMode; // a viewer stays read-only: never pushes
           showApp();
           syncPhotosToCloud(); // pick up any photo still sitting locally from before this feature existed
           maybeRunAutoBackup(session.user.id); // silent weekly safety-net snapshot, no UI unless it fails
@@ -14111,6 +14431,9 @@
       // (merged safely — see reconcileWithCloud), so the two don't drift apart.
       if (document.visibilityState === 'visible') refreshFromCloudIfChanged();
     });
+    setInterval(function () {
+      if (isViewerMode && document.visibilityState === 'visible') loadOwnerDataForViewer();
+    }, 60 * 1000);
   } else {
     // Supabase script failed to load (e.g. offline on first-ever visit, or the CDN was blocked)
     // — fall back to local-only instead of leaving her stuck on an auth screen whose button has
