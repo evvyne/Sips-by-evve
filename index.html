@@ -9871,6 +9871,56 @@
   // Fills in both {link} and {buyerName} — buyerName is always the person who placed/paid for
   // the order, even on a gift order where the delivery recipient (o.recipientName) is someone
   // else, since that's who she's actually messaging.
+  // One shipped message per customer: the order she tapped plus every other order of the same
+  // customer that's already shipped, has a tracking number, and whose message hasn't been sent
+  // yet (split parcels included). Each tracking link appears once, one per line.
+  function combinedShipment(order, onlyParcelId) {
+    var picks = [], seen = {};
+    function addOrder(o, isTapped) {
+      if (o.parcels && o.parcels.length) {
+        o.parcels.forEach(function (p) {
+          if (isTapped && onlyParcelId && p.id !== onlyParcelId && p.trackingMessageSent) return;
+          if (!isTapped && p.trackingMessageSent) return;
+          var l = trackingLinkFor(p.courier, p.trackingNumber);
+          if (l && !seen[l]) { seen[l] = true; picks.push({ order: o, parcel: p, link: l }); }
+        });
+      } else {
+        if (!isTapped && o.trackingMessageSent) return;
+        var l = shippingTrackingLink(o);
+        if (l && !seen[l]) { seen[l] = true; picks.push({ order: o, parcel: null, link: l }); }
+        else if (l && seen[l]) picks.push({ order: o, parcel: null, link: null }); // same parcel, still mark it
+      }
+    }
+    addOrder(order, true);
+    state.orders.forEach(function (o) {
+      if (o.id === order.id || o.pickup || o.status !== 'shipped' || !sameCustomer(order, o)) return;
+      addOrder(o, false);
+    });
+    return { links: picks.filter(function (x) { return x.link; }).map(function (x) { return x.link; }), picks: picks };
+  }
+  function copyCombinedShippedMessage(order, onlyParcelId, toastLabel) {
+    var c = combinedShipment(order, onlyParcelId);
+    if (!c.links.length) { alert('Pick a courier and enter the tracking number first.'); return null; }
+    var msg = buildShippedMessage(order, c.links.join('\n'));
+    window.__lastCopiedText = msg;
+    var afterCopy = function () {
+      if (c.links.length > 1) {
+        showCopiedToast(c.links.length + ' parcels in one message — copied');
+        if (confirm(c.links.length + ' parcels for ' + (order.buyerName || 'this customer') + ' are in this one message.\n\nMark them all as ✅ Sent to customer?')) {
+          c.picks.forEach(function (x) { if (x.parcel) x.parcel.trackingMessageSent = true; else x.order.trackingMessageSent = true; });
+          save(); renderAll();
+        }
+      } else showCopiedToast(toastLabel || 'Copied!');
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(msg).then(afterCopy).catch(function () { copyTextWithToast(msg, toastLabel); });
+        return msg;
+      }
+    } catch (e) {}
+    copyTextWithToast(msg, toastLabel);
+    return msg;
+  }
   function buildShippedMessage(order, link) {
     return (state.shippedMessageTemplate || DEFAULT_SHIPPED_MESSAGE_TEMPLATE)
       .split('{link}').join(link)
@@ -10287,11 +10337,9 @@
         m.trackingMessageSent = false;
         if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'shipped');
       });
-      var msg = buildShippedMessage(to, shippingTrackingLink(to));
-      window.__lastCopiedText = msg;
       save();
       renderAll();
-      copyTextWithToast(msg, 'Saved — shipped message copied');
+      copyCombinedShippedMessage(to, null, 'Saved — shipped message copied');
       return;
     }
     if (t.id === 'btn-pd-edit-ask-template') { editingAskTemplate = true; renderShipping(); return; }
@@ -10481,15 +10529,11 @@
       var pmOrder = state.orders.find(function (o) { return o.id === pmOrderId; });
       var pmParcel = pmOrder && (pmOrder.parcels || []).find(function (p) { return p.id === pmParcelId; });
       if (pmParcel) {
-        var pmLink = trackingLinkFor(pmParcel.courier, pmParcel.trackingNumber);
-        if (!pmLink) {
+        if (!trackingLinkFor(pmParcel.courier, pmParcel.trackingNumber)) {
           alert('Pick a courier and enter the tracking number first.');
           return;
         }
-        var pmMessage = buildShippedMessage(pmOrder, pmLink);
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(pmMessage).then(function () { showCopiedToast('Copied!'); }).catch(function () {});
-        }
+        copyCombinedShippedMessage(pmOrder, pmParcel.id, 'Copied!');
       }
       return;
     }
@@ -10588,15 +10632,11 @@
       var cmOrderId = e.target.getAttribute('data-order-id');
       var cmOrder = state.orders.find(function (o) { return o.id === cmOrderId; });
       if (cmOrder) {
-        var link = shippingTrackingLink(cmOrder);
-        if (!link) {
+        if (!shippingTrackingLink(cmOrder)) {
           alert('Pick a courier and enter the tracking number first.');
           return;
         }
-        var message = buildShippedMessage(cmOrder, link);
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(message).then(function () { showCopiedToast('Copied!'); }).catch(function () {});
-        }
+        copyCombinedShippedMessage(cmOrder, null, 'Copied!');
       }
       return;
     }
@@ -13510,7 +13550,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-05e';
+  var APP_VERSION = '2026-10-06a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
