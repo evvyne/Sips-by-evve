@@ -69,6 +69,10 @@
   .todo-tag-auto { background: #eef4ff; color: var(--blue); }
   .todo-tag-old { background: #fef3c7; color: #92400e; }
   .todo-tag-rep { background: #f1f5f9; color: var(--muted); }
+  .todo-tag-cust { background: #eef4ff; color: var(--blue); }
+  .todo-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; text-decoration: none; }
+  .remind-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; background: #fdf3dc; color: #854f0b; padding: 3px 10px; border-radius: 10px; margin: 6px 6px 0 0; }
+  .remind-pill button { background: none; border: none; color: inherit; cursor: pointer; padding: 0; font-size: 12px; }
   .todo-section { font-size: 12px; color: var(--muted); margin: 16px 0 2px; font-weight: 600; }
   .todo-delete { margin-left: auto; color: var(--muted); font-size: 13px; }
   .todo-tag + .todo-delete { margin-left: 6px; }
@@ -1353,6 +1357,7 @@
     // out the photo that was already saved locally, seconds after she made it.
     // Automatic housekeeping (tidying old data on load, noting a backup time) is NOT an edit —
     // it must never make an old copy on another device look "newer" than her real work.
+    if (typeof triggerStockReminders === 'function') triggerStockReminders();
     if (!(opts && opts.keepStamp)) state.updatedAt = Date.now();
     try {
       try {
@@ -2252,6 +2257,8 @@
         '<div class="muted" style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">Margin ' + money(margin) + '</div>'
       : '<div>' + money(p.cost * p.stock) + '</div>' +
         '<div class="muted" style="font-size:11px;">per unit ' + moneyPrecise(p.cost) + '</div>';
+    var waitingN = waitingCountFor(p.id);
+    if (waitingN) nameBlockHtml += '<div><span class="remind-pill" style="margin:3px 0 0;">🔔 ' + waitingN + ' customer' + (waitingN === 1 ? '' : 's') + ' waiting</span></div>';
     var row = '<tr>' +
       '<td><div style="display:flex; align-items:center; gap:8px;">' + thumb +
       '<div>' + nameBlockHtml + sourceLineHtml(p) + '</div></div></td>' +
@@ -4697,10 +4704,118 @@
     return false;
   }
   // Her own items that belong on `day`, each with its done-state for that day.
+  // ---------- Customer reminders ("tell her when X is back", "remind him on Friday").
+  // Stored as To-do items carrying the customer's name/WhatsApp/TikTok. A "when back in stock"
+  // reminder has no date until that product's stock goes up; then it lands on that day's To-do
+  // and stays until ticked.
+  function reminderContactLine(c) {
+    return [c.name || '', c.whatsapp ? 'WhatsApp ' + c.whatsapp : '', c.handle ? 'TikTok ' + (String(c.handle).charAt(0) === '@' ? c.handle : '@' + c.handle) : ''].filter(Boolean).join(' · ');
+  }
+  function triggerStockReminders() {
+    (state.todos || []).forEach(function (t) {
+      if (!t.waitProductId || t.date || t.done) return;
+      var p = state.products.find(function (x) { return x.id === t.waitProductId; });
+      if (!p) return;
+      var now = Number(p.stock) || 0;
+      var base = Number(t.waitBaseStock) || 0;
+      if (now > base) t.date = todayISO();
+      else if (now < base) t.waitBaseStock = now; // sold down meanwhile — any restock from here counts
+    });
+  }
+  function openRemindersFor(c) {
+    var probe = { buyerName: c.name, buyerWhatsapp: c.whatsapp };
+    return (state.todos || []).filter(function (t) {
+      return t.customer && !t.done && sameCustomer(probe, { buyerName: t.customer.name, buyerWhatsapp: t.customer.whatsapp });
+    });
+  }
+  function reminderPillsHtml(c) {
+    return openRemindersFor(c).map(function (t) {
+      var p = t.waitProductId && state.products.find(function (x) { return x.id === t.waitProductId; });
+      var when = t.waitProductId && !t.date ? (p ? 'when ' + p.name + ' is back' : 'when back in stock') : (t.date ? formatDate(t.date) : '');
+      return '<span class="remind-pill">🔔 ' + escapeHtml(t.text) + (when ? ' · ' + escapeHtml(when) : '') +
+        ' <button type="button" data-remove-reminder="' + t.id + '" title="Remove reminder" aria-label="Remove reminder">✕</button></span>';
+    }).join('');
+  }
+  function waitingCountFor(productId) {
+    return (state.todos || []).filter(function (t) { return t.waitProductId === productId && !t.date && !t.done; }).length;
+  }
+  var reminderDraft = null;
+  function openReminderForm(cust) {
+    reminderDraft = { name: cust.name || '', whatsapp: cust.whatsapp || '', handle: cust.handle || '' };
+    var old = document.getElementById('remind-overlay'); if (old) old.remove();
+    var products = state.products.filter(function (p) { return p.type !== 'Others'; })
+      .slice().sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var ov = document.createElement('div');
+    ov.id = 'remind-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9997; display:flex; align-items:center; justify-content:center; padding:16px;';
+    ov.innerHTML = '<div class="card" style="width:100%; max-width:420px; margin:0;">' +
+      '<div style="font-weight:600; margin-bottom:2px;">🔔 Remind me</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:10px;">' + escapeHtml(reminderContactLine(reminderDraft)) + '</div>' +
+      '<label class="field-label">Remind me to</label>' +
+      '<input id="rm-text" placeholder="Tell her Stitch LA is back" style="width:100%;">' +
+      '<label class="field-label" style="margin-top:10px;">When</label>' +
+      '<label class="checkbox-row" style="font-size:13px;"><input type="radio" name="rm-when" value="date" checked> On a date</label>' +
+      '<input type="date" id="rm-date" value="' + todayISO() + '" style="margin:4px 0 8px 24px; width:auto;">' +
+      '<label class="checkbox-row" style="font-size:13px;"><input type="radio" name="rm-when" value="stock"> When this is back in stock</label>' +
+      '<select id="rm-product" style="margin:4px 0 0 24px; width:calc(100% - 24px);"><option value="">Pick the item…</option>' +
+        products.map(function (p) { return '<option value="' + p.id + '">' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : '')) + ' (' + p.stock + (p.unit || '') + ' left)</option>'; }).join('') +
+      '</select>' +
+      '<div id="rm-error" style="color:var(--red); font-size:12px; min-height:16px; margin-top:6px;"></div>' +
+      '<div style="display:flex; gap:8px;"><button type="button" class="btn btn-primary btn-small" id="btn-rm-save">Save reminder</button><button type="button" class="btn btn-secondary btn-small" id="btn-rm-cancel">Cancel</button></div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('change', function (e) {
+      if (e.target.id === 'rm-product') {
+        ov.querySelector('input[name="rm-when"][value="stock"]').checked = true;
+        var tx = document.getElementById('rm-text');
+        var pp = state.products.find(function (x) { return x.id === e.target.value; });
+        if (pp && !tx.value.trim()) tx.value = 'Tell ' + (reminderDraft.name || 'them') + ' ' + pp.name + ' is back in stock';
+      }
+      if (e.target.id === 'rm-date') ov.querySelector('input[name="rm-when"][value="date"]').checked = true;
+    });
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.id === 'btn-rm-cancel') { ov.remove(); return; }
+      if (e.target.id !== 'btn-rm-save') return;
+      var err = document.getElementById('rm-error');
+      var text = document.getElementById('rm-text').value.trim();
+      var when = ov.querySelector('input[name="rm-when"]:checked').value;
+      var item = { id: uid(), text: text, date: null, repeat: '', done: false, doneOn: null, doneDates: {}, customer: reminderDraft, createdAt: todayISO() };
+      if (when === 'stock') {
+        var pid = document.getElementById('rm-product').value;
+        var pr = state.products.find(function (x) { return x.id === pid; });
+        if (!pr) { err.textContent = 'Pick the item she is waiting for.'; return; }
+        if (!text) item.text = 'Tell ' + (reminderDraft.name || 'them') + ' ' + pr.name + ' is back in stock';
+        item.waitProductId = pr.id;
+        item.waitBaseStock = Number(pr.stock) || 0;
+      } else {
+        var d = document.getElementById('rm-date').value;
+        if (!d) { err.textContent = 'Pick a date.'; return; }
+        if (!text) { err.textContent = 'Write what to remind you about.'; return; }
+        item.date = d;
+      }
+      if (!state.todos) state.todos = [];
+      state.todos.push(item);
+      save();
+      ov.remove();
+      renderAll();
+      showCopiedToast('Reminder saved');
+    });
+    setTimeout(function () { var tx = document.getElementById('rm-text'); if (tx) tx.focus(); }, 0);
+  }
+  document.addEventListener('click', function (e) {
+    var rm = e.target.closest ? e.target.closest('[data-remove-reminder]') : null;
+    if (!rm) return;
+    var id = rm.getAttribute('data-remove-reminder');
+    if (!confirm('Remove this reminder?')) return;
+    state.todos = (state.todos || []).filter(function (t) { return t.id !== id; });
+    save(); renderAll(); renderRepeatCustomerBanner();
+  });
+
   function todoOwnItems(day) {
     var today = todayISO();
     var out = [];
     (state.todos || []).forEach(function (t) {
+      if (!t.date && !t.repeat) return; // a customer reminder still waiting for a restock
       if (t.repeat) {
         if (todoRepeatsOn(t, day)) out.push({ item: t, done: !!(t.doneDates && t.doneDates[day]), carried: false });
         return;
@@ -4757,11 +4872,12 @@
     var dayLabel = (day === today ? 'Today · ' : (day === todoAddDays(today, 1) ? 'Tomorrow · ' : (day === todoAddDays(today, -1) ? 'Yesterday · ' : ''))) + formatDateLong(day);
     function ownRow(x) {
       var t = x.item;
-      var tag = x.carried ? '<span class="todo-tag todo-tag-old">From ' + escapeHtml(formatDate(t.date)) + '</span>'
+      var tag = t.customer ? '<span class="todo-tag todo-tag-cust">Customer' + (x.carried ? ' · ' + escapeHtml(formatDate(t.date)) : '') + '</span>'
+        : x.carried ? '<span class="todo-tag todo-tag-old">From ' + escapeHtml(formatDate(t.date)) + '</span>'
         : (t.repeat ? '<span class="todo-tag todo-tag-rep">' + todoRepeatLabel(t.repeat) + '</span>' : '');
       return '<div class="todo-row' + (x.done ? ' todo-done' : '') + '">' +
         '<input type="checkbox" class="todo-check" data-todo-id="' + t.id + '"' + (x.done ? ' checked' : '') + '>' +
-        '<span class="todo-text">' + escapeHtml(t.text) + '</span>' + tag +
+        '<span class="todo-text" style="min-width:0;">' + escapeHtml(t.text) + (t.customer ? '<span class="todo-sub">' + escapeHtml(reminderContactLine(t.customer)) + '</span>' : '') + '</span>' + tag +
         '<button type="button" class="btn-text todo-delete" data-todo-delete="' + t.id + '" title="Remove" aria-label="Remove">✕</button>' +
       '</div>';
     }
@@ -4983,6 +5099,25 @@
     return hit ? '<div style="background:#fcebeb; color:#a32d2d; border-radius:6px; padding:8px 10px; margin:-6px 0 8px; font-size:13px; font-weight:600;">⚠ ' + escapeHtml(hit.buyerName || 'This customer') + ' scammed you before (' + escapeHtml(shortDate(hit.date)) + ', ' + money(orderGrossTotal(hit)) + ' never paid). Get payment first.</div>' : '';
   }
   function renderRepeatCustomerBanner() {
+    renderRepeatCustomerBannerCore();
+    renderFormReminderPills();
+  }
+  // Her open reminders for this customer, under the buyer fields of the order form.
+  function renderFormReminderPills() {
+    var wrap = document.getElementById('of-repeat-customer-wrap');
+    if (!wrap) return;
+    var old = document.getElementById('of-remind-pills'); if (old) old.remove();
+    var nm = ((document.getElementById('of-buyer-name') || {}).value || '').trim();
+    var wa = ((document.getElementById('of-buyer-whatsapp') || {}).value || '').trim();
+    if (!nm && !wa) return;
+    var pills = reminderPillsHtml({ name: nm, whatsapp: wa });
+    if (pills) wrap.insertAdjacentHTML('beforeend', '<div id="of-remind-pills" style="margin:-2px 0 8px;">' + pills + '</div>');
+  }
+  ['of-buyer-name', 'of-buyer-whatsapp'].forEach(function (fid) {
+    var fe = document.getElementById(fid);
+    if (fe) fe.addEventListener('change', function () { renderFormReminderPills(); });
+  });
+  function renderRepeatCustomerBannerCore() {
     var wrap = document.getElementById('of-repeat-customer-wrap');
     if (!wrap) return;
     var scamWarn = scamWarningHtml();
@@ -6441,8 +6576,10 @@
           '<span><strong>' + escapeHtml(c.name || 'Unnamed') + (c.orders.some(function (x) { return x.scam; }) ? ' <span class="pill pill-red" style="font-size:10px;">⚠ Scammer</span>' : '') + (c.recipientName && c.recipientName !== c.name ? ' <span class="muted" style="font-weight:400;">(' + escapeHtml(c.recipientName) + ')</span>' : '') + '</strong><br><span class="muted" style="font-size:12px;">' + (c.whatsapp ? escapeHtml(c.whatsapp) : '<span style="color:#b5680a;">No WhatsApp yet' + (c.phone ? ' · ' + escapeHtml(c.phone) : '') + '</span>') + ' &middot; ' + c.orderCount + ' order' + (c.orderCount !== 1 ? 's' : '') + '</span></span>' +
           '<span style="text-align:right;"><strong>' + money(c.totalSpent) + '</strong>' + (c.creditBalance ? '<br><span style="font-size:11px; color:var(--green,#3b6d11);">Credit ' + money(c.creditBalance) + '</span>' : '') + '</span>' +
         '</button>' +
+        (function () { var pills = reminderPillsHtml(c); return pills ? '<div>' + pills + '</div>' : ''; })() +
         '<div style="display:flex; gap:8px; margin-top:10px;">' +
           '<button type="button" class="btn btn-secondary btn-small" data-cust-new-order="' + escapeHtml(c.key) + '" style="flex:1;">+ New order</button>' +
+          '<button type="button" class="btn btn-secondary btn-small" data-cust-remind="' + escapeHtml(c.key) + '">🔔 Remind me</button>' +
           '<button type="button" class="btn btn-secondary btn-small" data-toggle-customer="' + c.key + '">' + (expanded ? 'Hide orders' : 'Past orders') + '</button>' +
         '</div>' +
         (expanded ? '<div style="margin-top:8px;">' + (c.orders.some(function (x) { return x.scam; })
@@ -6518,6 +6655,12 @@
     }
     var custNewOrder = e.target.closest('[data-cust-new-order]');
     if (custNewOrder) { startOrderForCustomer(custNewOrder.getAttribute('data-cust-new-order')); return; }
+    var custRemind = e.target.closest('[data-cust-remind]');
+    if (custRemind) {
+      var rc = customerAggregates().find(function (x) { return x.key === custRemind.getAttribute('data-cust-remind'); });
+      if (rc) openReminderForm({ name: rc.name, whatsapp: rc.whatsapp, handle: rc.handle });
+      return;
+    }
     var goOrderBtn = e.target.closest('[data-cust-go-order]');
     if (goOrderBtn) {
       goToOrder(goOrderBtn.getAttribute('data-cust-go-order'));
@@ -6999,6 +7142,7 @@
         '<div class="oc-menu">' +
           ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button type="button" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button>' : '') +
           '<button type="button" data-edit-order="' + o.id + '">✏️ Edit</button>' +
+          '<button type="button" data-remind-order="' + o.id + '">🔔 Remind me</button>' +
           '<div class="oc-menu-row">Status <select class="order-status-select" data-order-id="' + o.id + '">' + statusOptions + '</select></div>' +
           (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
             ? '<button type="button" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">➕ Add another order</button>'
@@ -7360,6 +7504,12 @@
       return;
     }
     if (e.target.closest && e.target.closest('.oc-menu') && e.target.tagName === 'BUTTON') closeOrderMenus();
+    var remOrdId = e.target.getAttribute && e.target.getAttribute('data-remind-order');
+    if (remOrdId) {
+      var rmo = state.orders.find(function (x) { return x.id === remOrdId; });
+      if (rmo) openReminderForm({ name: rmo.buyerName, whatsapp: rmo.buyerWhatsapp, handle: rmo.buyerHandle });
+      return;
+    }
     var depId = e.target.getAttribute && e.target.getAttribute('data-record-deposit');
     if (depId) {
       var dpo = state.orders.find(function (x) { return x.id === depId; });
@@ -8852,6 +9002,7 @@
           '<div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">' +
             '<span style="font-weight:500;">' + escapeHtml(p.name + (p.variant ? ' — ' + p.variant : (p.theme ? ' — ' + p.theme : ''))) + '</span>' +
             '<span class="pill ' + (out ? 'pill-red' : 'pill-amber') + '" style="font-size:11px;">' + (out ? 'Out of stock' : p.stock + (p.unit || '') + ' left') + '</span>' +
+            (waitingCountFor(p.id) ? '<span class="remind-pill" style="margin:0 0 0 6px;">🔔 ' + waitingCountFor(p.id) + ' waiting</span>' : '') +
           '</div>' +
           '<div class="muted" style="font-size:12px; margin:4px 0 8px;">' + lastText + '</div>' +
           '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
@@ -10190,6 +10341,21 @@
   function packDayTrackCandidates() {
     return onePerParcel(state.orders.filter(function (o) { return !o.pickup && (o.status === 'order shipment' || o.status === 'ready to ship') && !o.trackingNumber && !(o.parcels && o.parcels.length); }));
   }
+  var pdTrackNote = '';
+  // Booked parcels of the same customer still waiting for a tracking number (not this one).
+  function pdPendingSiblings(order) {
+    var mates = parcelMates(order).map(function (m) { return m.id; });
+    return onePerParcel(state.orders.filter(function (o) {
+      return mates.indexOf(o.id) === -1 && !o.pickup && o.status === 'order shipment' && !o.trackingNumber &&
+        !(o.parcels && o.parcels.length) && sameCustomer(order, o);
+    }));
+  }
+  // Same customer's parcels that have a tracking number but no message sent yet.
+  function pdSavedUnsentFor(order) {
+    return onePerParcel(state.orders.filter(function (o) {
+      return o.id !== order.id && !o.pickup && o.status === 'shipped' && o.trackingNumber && !o.trackingMessageSent && sameCustomer(order, o);
+    }));
+  }
   function packDayTrackResultsHtml() {
     var q = packDayTrackQuery.trim().toLowerCase();
     var list = packDayTrackCandidates().filter(function (o) {
@@ -10197,13 +10363,23 @@
       var hay = [o.postcode, o.shipTo, o.recipientName, o.buyerName, o.recipientPhone, o.buyerWhatsapp].join(' ').toLowerCase();
       return hay.indexOf(q) !== -1;
     });
-    if (!list.length) return '<div class="muted" style="font-size:13px; padding:6px 0;">' + (q ? 'No booked parcel matches that.' : 'Nothing booked is waiting for a tracking number.') + '</div>';
-    return list.map(function (o) {
-      return '<div style="padding:8px 0; border-bottom:1px solid var(--border);">' +
+    var note = pdTrackNote ? '<div style="font-size:12px; background:#fdf3dc; color:#854f0b; border-radius:8px; padding:6px 10px; margin:4px 0;">' + escapeHtml(pdTrackNote) + '</div>' : '';
+    if (!list.length) return note + '<div class="muted" style="font-size:13px; padding:6px 0;">' + (q ? 'No booked parcel matches that.' : 'Nothing booked is waiting for a tracking number.') + '</div>';
+    var shownDone = {};
+    return note + list.map(function (o) {
+      // Same customer's parcels already saved but not messaged yet — shown ticked above, so
+      // she can see what's in hand; "Copy now" sends what's saved so far.
+      var done = pdSavedUnsentFor(o).filter(function (d) { if (shownDone[d.id]) return false; shownDone[d.id] = true; return true; });
+      var doneHtml = done.map(function (d) {
+        return '<div style="padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; display:flex; justify-content:space-between; gap:8px;"><span><strong>' + escapeHtml(d.recipientName || d.buyerName || 'Unknown') + '</strong></span><span style="color:var(--green,#3b6d11);">✓ ' + escapeHtml(d.trackingNumber) + '</span></div>';
+      }).join('');
+      var hasSaved = pdSavedUnsentFor(o).length > 0;
+      return doneHtml + '<div style="padding:8px 0; border-bottom:1px solid var(--border);">' +
         '<div style="font-size:14px;"><strong>' + escapeHtml(o.recipientName || o.buyerName || 'Unknown') + '</strong> · ' + escapeHtml((o.shipTo || '') + (o.postcode && (o.shipTo || '').indexOf(o.postcode) === -1 ? ' ' + o.postcode : '')) + '</div>' +
-        '<div style="display:flex; gap:6px; margin-top:6px;">' +
+        '<div style="display:flex; gap:6px; margin-top:6px; align-items:center;">' +
           '<input class="pd-tracking-input" data-order-id="' + o.id + '" placeholder="Tracking no." style="flex:1;">' +
-          '<button type="button" class="btn btn-primary btn-small" data-pd-save-tracking="' + o.id + '">Save + copy message</button>' +
+          '<button type="button" class="btn btn-primary btn-small" data-pd-save-tracking="' + o.id + '">Save</button>' +
+          (hasSaved ? '<button type="button" class="btn-text" data-pd-copy-now="' + o.id + '" style="font-size:12px; white-space:nowrap;">Copy now</button>' : '') +
         '</div></div>';
     }).join('');
   }
@@ -10337,9 +10513,25 @@
         m.trackingMessageSent = false;
         if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'shipped');
       });
+      var stillToEnter = pdPendingSiblings(to).length;
+      if (stillToEnter > 0) {
+        pdTrackNote = 'Saved · ' + (to.buyerName || 'This customer') + ' has ' + stillToEnter + ' more parcel' + (stillToEnter === 1 ? '' : 's') + ' to enter — the message will copy after the last one';
+        save();
+        renderAll();
+        showCopiedToast('Saved');
+        return;
+      }
+      pdTrackNote = '';
       save();
       renderAll();
       copyCombinedShippedMessage(to, null, 'Saved — shipped message copied');
+      return;
+    }
+    var copyNowId = t.getAttribute && t.getAttribute('data-pd-copy-now');
+    if (copyNowId) {
+      var cno = state.orders.find(function (o) { return o.id === copyNowId; });
+      var sib = cno && pdSavedUnsentFor(cno)[0];
+      if (sib) { pdTrackNote = ''; copyCombinedShippedMessage(sib, null, 'Copied'); renderShipping(); }
       return;
     }
     if (t.id === 'btn-pd-edit-ask-template') { editingAskTemplate = true; renderShipping(); return; }
@@ -13550,7 +13742,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-06a';
+  var APP_VERSION = '2026-10-06b';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
