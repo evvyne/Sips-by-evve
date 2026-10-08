@@ -612,6 +612,7 @@
           <label class="field-label">Low stock alert threshold</label>
           <input id="pf-threshold" type="number" min="0" value="2">
         </div>
+        <div style="grid-column: 1 / -1;" id="pf-promo-wrap"></div>
         <div style="grid-column: 1 / -1;">
           <label class="field-label">Photo (optional — helps you recognize sticker designs at a glance)</label>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1960,6 +1961,52 @@
     document.getElementById('pf-duplicate-warning').style.display = 'none';
   });
 
+  // Promo add-on price (e.g. 300ml for RM25 when the order also has a 600ml): set on the product.
+  function renderPromoFormBlock(p) {
+    var wrap = document.getElementById('pf-promo-wrap');
+    if (!wrap) return;
+    var on = !!(p && p.promoOn);
+    var withOpts = state.products.filter(function (x) { return x.type === 'Tumbler' && (!p || x.id !== p.id); })
+      .map(function (x) { return '<option value="' + x.id + '"' + (p && p.promoWithId === x.id ? ' selected' : '') + '>' + escapeHtml(x.name + (x.variant ? ' — ' + x.variant : '')) + '</option>'; }).join('');
+    var first = p ? String(p.name || '').split(/\s+/)[0].toLowerCase() : '';
+    var siblings = p ? state.products.filter(function (x) { return x.id !== p.id && x.type === p.type && first && String(x.name || '').split(/\s+/)[0].toLowerCase() === first; }) : [];
+    wrap.innerHTML = '<details' + (on ? ' open' : '') + '><summary style="cursor:pointer; color:var(--blue); font-size:13px;">Promo add-on price' + (on ? ' · on' : '') + '</summary>' +
+      '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; font-size:13px;">' +
+        '<label class="checkbox-row"><input type="checkbox" id="pf-promo-on"' + (on ? ' checked' : '') + '> Promo price RM</label>' +
+        '<input id="pf-promo-price" type="number" step="0.01" min="0" style="width:80px;" value="' + (p && p.promoPrice != null ? p.promoPrice : '') + '">' +
+        '<span>when the order also has</span>' +
+        '<select id="pf-promo-with" style="width:auto;"><option value="">Pick a tumbler…</option>' + withOpts + '</select>' +
+      '</div>' +
+      '<div class="muted" style="font-size:12px; margin-top:4px;">One promo item per item bought. Untick when the promo ends.</div>' +
+      (siblings.length ? '<div style="font-size:12px; margin-top:6px;">Also set the same promo on: ' + siblings.map(function (x) {
+        return '<label style="margin-right:10px; white-space:nowrap;"><input type="checkbox" class="pf-promo-also" value="' + x.id + '"' + (x.promoOn ? ' checked' : '') + '> ' + escapeHtml(x.name + (x.variant ? ' ' + x.variant : '')) + '</label>';
+      }).join('') + '</div>' : '') +
+    '</details>';
+  }
+  function readPromoForm() {
+    var onEl = document.getElementById('pf-promo-on');
+    if (!onEl) return null;
+    return {
+      promoOn: onEl.checked,
+      promoPrice: Number(document.getElementById('pf-promo-price').value) || 0,
+      promoWithId: document.getElementById('pf-promo-with').value || '',
+      also: Array.from(document.querySelectorAll('.pf-promo-also')).map(function (c) { return { id: c.value, on: c.checked }; })
+    };
+  }
+  function applyPromoForm(p, pr) {
+    if (!p || !pr) return;
+    var valid = pr.promoOn && pr.promoWithId;
+    p.promoOn = !!valid;
+    p.promoPrice = pr.promoPrice;
+    p.promoWithId = pr.promoWithId;
+    pr.also.forEach(function (a) {
+      var x = state.products.find(function (y) { return y.id === a.id; });
+      if (!x) return;
+      if (a.on && valid) { x.promoOn = true; x.promoPrice = pr.promoPrice; x.promoWithId = pr.promoWithId; }
+      else if (!a.on && x.promoOn && x.promoWithId === pr.promoWithId) { x.promoOn = false; }
+    });
+  }
+
   function clearProductForm() {
     resetProductSaveGuard();
     document.getElementById('pf-name').value = '';
@@ -1976,6 +2023,7 @@
     document.getElementById('pf-price').value = '';
     document.getElementById('pf-stock').value = '';
     document.getElementById('pf-threshold').value = 2;
+    renderPromoFormBlock(null);
     document.getElementById('pf-photo-file').value = '';
     pfPhotoData = '';
     hidePhotoPreview();
@@ -2042,6 +2090,7 @@
       sourcePlatform: document.getElementById('pf-source-platform').value.trim(),
       sourceLink: document.getElementById('pf-source-link').value.trim()
     };
+    var promoForm = readPromoForm();
     var newProductId = null;
     var p = null;
     var prevProductSnapshot = null;
@@ -2051,6 +2100,7 @@
       p = state.products.find(function (x) { return x.id === editingProductId; });
       prevProductSnapshot = Object.assign({}, p);
       Object.assign(p, data);
+      applyPromoForm(p, promoForm);
       // A price correction here (she typed the wrong Cost when first creating this product)
       // should also fix the one-and-only "new_inventory" Cost entry that recorded it — but ONLY
       // when that's still the ONLY cost history this product has. Once a real, separate restock
@@ -2167,6 +2217,7 @@
     document.getElementById('pf-price').value = p.price;
     document.getElementById('pf-stock').value = p.stock;
     document.getElementById('pf-threshold').value = p.threshold;
+    renderPromoFormBlock(p);
     pfPhotoData = p.image || '';
     if (pfPhotoData) showPhotoPreview(pfPhotoData); else hidePhotoPreview();
     document.getElementById('pf-also-cost-wrap').style.display = 'none';
@@ -5397,7 +5448,52 @@
     renderDraftItems();
   }
 
+  // Promo add-on price: a product with promoOn gets its promo price on as many units as the order
+  // has of the "with" product (one each), shared across all products tied to the same one. Extra
+  // units are split onto a normal-price line. Lines she priced herself, lines she switched back to
+  // the normal price, and lines from an already-saved order are left alone.
+  function applyPromoPricing() {
+    if (ofKind === 'replacement') return;
+    var allow = {};
+    draftItems.forEach(function (l) { if (l.productId && !l.isGift) allow[l.productId] = (allow[l.productId] || 0) + (Number(l.qty) || 0); });
+    for (var i = 0; i < draftItems.length; i++) {
+      var l = draftItems[i];
+      var p = l.productId && state.products.find(function (x) { return x.id === l.productId; });
+      var sur = Number(l.patternSurcharge) || 0;
+      if (!p) continue;
+      var normal = (Number(p.price) || 0) + sur;
+      if (!p.promoOn || !p.promoWithId || l.isGift) {
+        if (l.promoAuto) { l.unitPrice = normal; l.promoAuto = false; }
+        continue;
+      }
+      if ((l.fromSaved && !l.promoAuto) || l.promoManual || l.promoOptOut) continue;
+      var promo = (Number(p.promoPrice) || 0) + sur;
+      var q = Number(l.qty) || 0;
+      var a = allow[p.promoWithId] || 0;
+      if (q > 0 && a >= q) {
+        l.unitPrice = promo; l.promoAuto = true; l.priceHint = null; allow[p.promoWithId] = a - q;
+      } else if (q > 0 && a > 0) {
+        var rest = q - a;
+        l.qty = a; l.unitPrice = promo; l.promoAuto = true; l.priceHint = null; allow[p.promoWithId] = 0;
+        var extra = Object.assign({}, l, { qty: rest, unitPrice: normal, promoAuto: false, fromSaved: false, priceHint: null, showMore: false });
+        draftItems.splice(i + 1, 0, extra);
+        i++;
+      } else if (l.promoAuto) {
+        l.unitPrice = normal; l.promoAuto = false;
+      }
+    }
+  }
+  function promoTagHtml(line, idx) {
+    if (!line.promoAuto) return '';
+    var p = state.products.find(function (x) { return x.id === line.productId; });
+    var w = p && state.products.find(function (x) { return x.id === p.promoWithId; });
+    var wName = w ? String(w.name).split(/\s+/)[0] : '';
+    return '<span class="pill pill-green" style="font-size:11px; white-space:nowrap;">Promo' + (wName ? ' with ' + escapeHtml(wName) : '') + '</span>' +
+      '<button type="button" class="btn-text" data-promo-normal="' + idx + '" style="font-size:12px; white-space:nowrap;">Use normal price ' + money((Number(p && p.price) || 0) + (Number(line.patternSurcharge) || 0)) + '</button>';
+  }
+
   function renderDraftItems() {
+    applyPromoPricing();
     var container = document.getElementById('order-items');
     container.innerHTML = draftItems.map(function (line, idx) {
       var typeOptions = PRODUCT_TYPES.map(function (t) {
@@ -5449,6 +5545,7 @@
         '<input class="di-qty" type="number" min="1" value="' + line.qty + '" data-idx="' + idx + '" placeholder="Qty">' +
         '<input class="di-price" type="number" step="0.01" min="0" value="' + line.unitPrice + '" data-idx="' + idx + '" placeholder="Unit RM"' + (line.isGift ? ' disabled' : '') + '>' +
         (line.priceHint != null ? '<button type="button" class="btn-text" data-use-std-price="' + idx + '" style="font-size:12px; white-space:nowrap;" title="You typed your own price for this line">Standard ' + money(line.priceHint) + ' — use it</button>' : '') +
+        promoTagHtml(line, idx) +
         '<button type="button" class="btn-text" data-toggle-more="' + idx + '" style="font-size:12px; white-space:nowrap;">⋯ more' + moreBadges + '</button>' +
         '<button class="btn-text danger" data-remove-line="' + idx + '">Remove</button>' +
         moreRow +
@@ -5467,6 +5564,13 @@
     if (idx !== null) {
       draftItems.splice(Number(idx), 1);
       renderDraftItems();
+      return;
+    }
+    var promoNormIdx = e.target.getAttribute('data-promo-normal');
+    if (promoNormIdx !== null) {
+      var pl = draftItems[Number(promoNormIdx)];
+      var pp2 = pl && state.products.find(function (x) { return x.id === pl.productId; });
+      if (pl && pp2) { pl.promoOptOut = true; pl.promoAuto = false; pl.unitPrice = (Number(pp2.price) || 0) + (Number(pl.patternSurcharge) || 0); renderDraftItems(); }
       return;
     }
     var stdIdx = e.target.getAttribute('data-use-std-price');
@@ -5498,6 +5602,8 @@
     } else if (e.target.classList.contains('di-product')) {
       var dLine = draftItems[idx];
       var oldProd = state.products.find(function (x) { return x.id === dLine.productId; });
+      var wasPromo = !!dLine.promoAuto;
+      dLine.promoAuto = false; dLine.promoManual = false; dLine.promoOptOut = false; dLine.fromSaved = false;
       dLine.productId = e.target.value;
       var p = state.products.find(function (x) { return x.id === e.target.value; });
       dLine.priceHint = null;
@@ -5508,7 +5614,7 @@
         var sur = Number(dLine.patternSurcharge) || 0;
         var curP = dLine.unitPrice;
         var newStd = (Number(p.price) || 0) + sur;
-        var wasStd = oldProd && Math.abs((Number(curP) || 0) - ((Number(oldProd.price) || 0) + sur)) < 0.005;
+        var wasStd = wasPromo || (oldProd && Math.abs((Number(curP) || 0) - ((Number(oldProd.price) || 0) + sur)) < 0.005);
         if (curP === '' || curP == null || wasStd) dLine.unitPrice = newStd;
         else if (Math.abs((Number(curP) || 0) - newStd) >= 0.005) dLine.priceHint = newStd;
       }
@@ -5526,10 +5632,11 @@
       renderDraftItems();
     } else if (e.target.classList.contains('di-qty')) {
       draftItems[idx].qty = e.target.value;
-      updateDraftTotal();
+      renderDraftItems();
     } else if (e.target.classList.contains('di-price')) {
       draftItems[idx].unitPrice = e.target.value;
       draftItems[idx].priceHint = null;
+      if (draftItems[idx].promoAuto) { draftItems[idx].promoAuto = false; draftItems[idx].promoManual = true; renderDraftItems(); return; }
       updateDraftTotal();
     } else if (e.target.classList.contains('di-gift')) {
       draftItems[idx].isGift = e.target.checked;
@@ -5832,7 +5939,8 @@
         patternSurcharge: l.pattern !== undefined ? (Number(l.patternSurcharge) || 0) : prevPatternSurcharge,
         isGift: !!l.isGift,
         isDefect: !!l.isDefect,
-        defectNormalPrice: l.isDefect ? (Number(l.defectNormalPrice) || 0) : null
+        defectNormalPrice: l.isDefect ? (Number(l.defectNormalPrice) || 0) : null,
+        promo: !!l.promoAuto
       };
     });
 
@@ -7346,7 +7454,7 @@
     draftItems = order.items.map(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
       if (!p) return null;
-      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice, isGift: !!item.isGift, isDefect: !!item.isDefect, defectNormalPrice: item.isDefect ? item.defectNormalPrice : null, pattern: item.pattern || '', patternSurcharge: Number(item.patternSurcharge) || 0 };
+      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice, isGift: !!item.isGift, isDefect: !!item.isDefect, defectNormalPrice: item.isDefect ? item.defectNormalPrice : null, pattern: item.pattern || '', patternSurcharge: Number(item.patternSurcharge) || 0, fromSaved: true, promoAuto: !!item.promo };
     }).filter(function (l) { return l; });
     if (draftItems.length === 0) draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
     renderDraftItems();
@@ -9053,6 +9161,31 @@
       '</div></div>';
   }
 
+  // Calendar chip: " ×2" when one order has more than one cup to make.
+  function calCupsSuffix(o) {
+    var n = orderTumblerQty(o);
+    return n > 1 ? ' ×' + n : '';
+  }
+  // One line per cup in an order (each Tumbler unit, with the sticker(s) listed after it in the
+  // order), so she can tick cups made one at a time.
+  function orderCupLines(o) {
+    var lines = [];
+    var items = o.items || [];
+    items.forEach(function (it, idx) {
+      if (!isBottleItem(it)) return;
+      var stickers = [];
+      for (var j = idx + 1; j < items.length && !isBottleItem(items[j]); j++) {
+        var sp = state.products.find(function (x) { return x.id === items[j].productId; });
+        if (sp && sp.type === 'Stickers') stickers.push(cleanItemName(items[j].productName));
+      }
+      var qty = Number(it.qty) || 0, made = Math.min(Number(it.madeQty) || 0, qty);
+      for (var k = 0; k < qty; k++) {
+        lines.push({ itemIdx: idx, unit: k, made: k < made, label: cleanItemName(it.productName) + (stickers.length ? ' + ' + stickers.join(', ') : '') });
+      }
+    });
+    return lines;
+  }
+
   function renderSchedule() {
     var notCancelled = state.orders.filter(function (o) { return o.status !== 'cancelled'; });
     // "To make" = still queueing (plus "ready right away" orders). Anything that has already moved
@@ -9081,6 +9214,8 @@
     var isDateFiltered = !!(scheduleFilterFrom || scheduleFilterTo);
 
     function orderRow(o, isDone, queuePos, isImmediateSection) {
+      var cups = orderCupLines(o);
+      var cupsMade = cups.filter(function (c) { return c.made; }).length;
       var itemsSummary = o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ');
       var paidPill = '<span class="pill ' + (o.paid ? 'pill-green' : 'pill-red') + '">' + (o.paid ? 'Paid' : 'Unpaid') + '</span>';
       var queuePill = queuePos ? '<span class="pill pill-gray">#' + queuePos + ' in queue</span>' : (isImmediateSection ? '<span class="pill pill-green">Ready now</span>' : '');
@@ -9090,11 +9225,23 @@
           '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div></div>' +
           '<div class="schedule-controls">' + queuePill + paidPill +
             (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '">') +
-            '<label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); white-space:nowrap;">' +
-              '<input type="checkbox" class="schedule-done-checkbox" data-order-id="' + o.id + '"' + (isDone ? ' checked' : '') + '> Made' +
-            '</label>' +
+            (cups.length > 1 && !isDone
+              ? '<span class="oc-madepill' + (cupsMade >= cups.length ? ' done' : '') + '">' + cupsMade + '/' + cups.length + ' made</span>'
+              : '<label style="display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); white-space:nowrap;">' +
+                  '<input type="checkbox" class="schedule-done-checkbox" data-order-id="' + o.id + '"' + (isDone ? ' checked' : '') + '> Made' +
+                '</label>') +
           '</div>' +
-        '</div></div>';
+        '</div>' +
+        (cups.length > 1 && !isDone
+          ? '<div style="margin-top:8px; border-top:1px solid var(--border);">' + cups.map(function (c) {
+              return '<label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; cursor:pointer;">' +
+                '<input type="checkbox" class="schedule-cup-checkbox" data-order-id="' + o.id + '" data-item-idx="' + c.itemIdx + '" data-unit="' + c.unit + '"' + (c.made ? ' checked' : '') + '>' +
+                '<span style="flex:1;">' + escapeHtml(c.label) + '</span>' +
+                (c.made ? '<span class="pill pill-green" style="font-size:11px;">made</span>' : '<span class="muted" style="font-size:11px;">to make</span>') +
+              '</label>';
+            }).join('') + '</div>'
+          : '') +
+        '</div>';
     }
 
     var html = scheduleFilterBarHtml();
@@ -9175,6 +9322,26 @@
         save();
         renderSchedule();
       }
+    }
+    if (e.target.classList.contains('schedule-cup-checkbox')) {
+      var cupOrder = state.orders.find(function (o) { return o.id === e.target.getAttribute('data-order-id'); });
+      if (!cupOrder) return;
+      var cupItem = (cupOrder.items || [])[Number(e.target.getAttribute('data-item-idx'))];
+      if (!cupItem) return;
+      var unit = Number(e.target.getAttribute('data-unit'));
+      var cupProd = state.products.find(function (x) { return x.id === cupItem.productId; });
+      if (e.target.checked && cupProd && cupProd.type === 'Tumbler' && !cupItem.pattern) {
+        e.target.checked = false;
+        alert('Pick which pattern this Tumbler was made with first (tap the order on the Orders page to open it).');
+        return;
+      }
+      var curMade = Math.min(Number(cupItem.madeQty) || 0, Number(cupItem.qty) || 0);
+      cupItem.madeQty = e.target.checked ? Math.max(curMade, unit + 1) : Math.min(curMade, unit);
+      var sum = orderMadeSummary(cupOrder);
+      if (cupOrder.status === 'queueing' && sum.ordered > 0 && sum.made >= sum.ordered) { advanceOrderOneStep(cupOrder.id); return; }
+      save();
+      renderAll();
+      return;
     }
     if (e.target.classList.contains('schedule-done-checkbox')) {
       // "Made" here is the same as the order card's "Mark as made": it moves the order on to UV
@@ -11208,7 +11375,7 @@
         ? '<div class="cal-chip-row">' +
             dayOrders.slice(0, CAL_CHIP_CAP).map(function (o) {
               var made = !calOrderToMake(o);
-              return '<div class="cal-order-chip' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + (made ? ' (made)' : '') + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + '</div>';
+              return '<div class="cal-order-chip' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + (made ? ' (made)' : '') + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + calCupsSuffix(o) + '</div>';
             }).join('') +
             (dayOrders.length > CAL_CHIP_CAP ? '<div class="muted" style="font-size:10px;">+' + (dayOrders.length - CAL_CHIP_CAP) + ' more</div>' : '') +
           '</div>'
@@ -11224,7 +11391,10 @@
       var blockedTag = isBlocked ? '<span class="cal-blocked-tag">Personal</span>' : '';
       var noteText = (isBlocked && state.blockedDates[dateStr]) ? '<div class="muted" style="font-size:10px;">' + escapeHtml(state.blockedDates[dateStr]) + '</div>' : '';
       cellsHtml += '<div class="' + classes + '" data-cal-day="' + dateStr + '">' +
-        '<div class="cal-daynum">' + d + '</div>' +
+        '<div class="cal-daynum" style="display:flex; justify-content:space-between; align-items:baseline;"><span>' + d + '</span>' + (function () {
+          var used = tumblerQtyScheduledOn(dateStr);
+          return (used && !isBlocked) ? '<span class="muted" style="font-size:10px; font-weight:400;" title="Cups booked / daily limit">' + used + '/' + (state.dailyTumblerCapacity || 5) + '</span>' : '';
+        })() + '</div>' +
         blockedTag +
         noteText +
         chipsHtml +
@@ -11248,7 +11418,7 @@
             '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
               editDayOrders.map(function (o) {
                 var made = !calOrderToMake(o);
-                return '<div class="cal-order-chip cal-order-chip-lg' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + '</div>';
+                return '<div class="cal-order-chip cal-order-chip-lg' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + calCupsSuffix(o) + '</div>';
               }).join('') +
             '</div></div>'
         : '';
@@ -13742,7 +13912,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-06b';
+  var APP_VERSION = '2026-10-08a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
