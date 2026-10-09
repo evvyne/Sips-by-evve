@@ -1140,6 +1140,7 @@
       </div>
     </div>
  <div class="card" id="pay-reminder-editor" style="display:none; margin-bottom:12px;"></div>
+ <div class="card" id="slot-msg-editor" style="display:none; margin-bottom:12px;"></div>
     <div id="order-stage-bar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;"></div>
     <div class="card" id="order-filter-bar" style="padding:12px 14px;">
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
@@ -1383,6 +1384,7 @@
       throw err;
     }
     if (typeof scheduleCloudPush === 'function') scheduleCloudPush();
+    if (typeof checkFreedSlots === 'function') checkFreedSlots();
   }
 
   // Persist the migration immediately — otherwise it only ever lives in memory for this one
@@ -6479,6 +6481,85 @@
     if (state.blockedDates && state.blockedDates.hasOwnProperty(dateStr)) return false;
     return true;
   }
+  // ---------- Freed making slot: when an order leaves a future making day (moved to another date,
+  // cancelled, deleted, fewer cups, or made ahead of its day), offer to pull later orders forward.
+  // Nothing moves unless she ticks it and presses Move. Orders the customer already confirmed
+  // aren't pre-ticked.
+  var slotSnapshot = null, slotOfferSuppressed = false;
+  setTimeout(function () { if (!slotSnapshot) slotSnapshot = takeSlotSnapshot(); }, 0);
+  function takeSlotSnapshot() {
+    var snap = {};
+    state.orders.forEach(function (o) {
+      if (o.status === 'queueing' && o.scheduledDate) snap[o.id] = { date: o.scheduledDate, qty: orderTumblerQty(o) };
+    });
+    return snap;
+  }
+  function resetSlotSnapshot() { slotSnapshot = takeSlotSnapshot(); }
+  function checkFreedSlots() {
+    var prev = slotSnapshot;
+    slotSnapshot = takeSlotSnapshot();
+    if (!prev || slotOfferSuppressed) return;
+    var today = todayISO();
+    var freed = {};
+    Object.keys(prev).forEach(function (id) {
+      var was = prev[id];
+      if (was.date < today || !was.qty) return;
+      var o = state.orders.find(function (x) { return x.id === id; });
+      var gone = 0;
+      if (!o || o.status === 'cancelled') gone = was.qty;
+      else if (o.status === 'queueing' && o.scheduledDate !== was.date) gone = was.qty;
+      else if (o.status === 'queueing') gone = Math.max(0, was.qty - orderTumblerQty(o));
+      else if (was.date > today) gone = was.qty; // made ahead of its day
+      if (gone > 0) freed[was.date] = true;
+    });
+    var dates = Object.keys(freed).sort().filter(function (d) {
+      return isProductionDay(d) && (state.dailyTumblerCapacity || 5) - tumblerQtyScheduledOn(d) > 0 && slotCandidates(d).length > 0;
+    });
+    if (dates.length) setTimeout(function () { offerFillFreedSlot(dates[0]); }, 0);
+  }
+  function slotCandidates(d) {
+    return state.orders.filter(function (o) { return o.status === 'queueing' && o.scheduledDate && o.scheduledDate > d && orderTumblerQty(o) > 0; })
+      .sort(function (a, b) { return a.scheduledDate.localeCompare(b.scheduledDate) || (a.id || '').localeCompare(b.id || ''); });
+  }
+  function offerFillFreedSlot(d) {
+    if (document.getElementById('slot-fill-overlay')) return;
+    var room = (state.dailyTumblerCapacity || 5) - tumblerQtyScheduledOn(d);
+    var cands = slotCandidates(d);
+    if (room <= 0 || !cands.length) return;
+    var left = room;
+    var rows = cands.slice(0, 12).map(function (o) {
+      var n = orderTumblerQty(o), conf = slotState(o) === 'confirmed';
+      var tick = !conf && n <= left;
+      if (tick) left -= n;
+      return '<label style="display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px;">' +
+        '<input type="checkbox" class="slot-fill-pick" value="' + o.id + '"' + (tick ? ' checked' : '') + '>' +
+        '<span style="flex:1;">' + escapeHtml(o.buyerName || 'Order') + (n > 1 ? ' ×' + n : '') + ' · ' + escapeHtml(slotDateLabel(o.scheduledDate)) + ' → ' + escapeHtml(slotDateLabel(d)) + '</span>' +
+        (conf ? '<span class="pill pill-green" style="font-size:11px;">✓ Confirmed</span>' : '') + '</label>';
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'slot-fill-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9997; display:flex; align-items:center; justify-content:center; padding:16px;';
+    ov.innerHTML = '<div class="card" style="width:100%; max-width:440px; margin:0;">' +
+      '<div style="font-weight:600;">📅 ' + escapeHtml(slotDateLabel(d)) + ' has ' + room + ' free slot' + (room === 1 ? '' : 's') + '</div>' +
+      '<div class="muted" style="font-size:12px; margin:2px 0 8px;">Move any later orders up? Their customers will need the new date — use 📅 Copy slot message after.</div>' +
+      rows +
+      '<div style="display:flex; gap:8px; margin-top:10px;"><button type="button" class="btn btn-primary btn-small" id="btn-slot-fill-go">Move</button><button type="button" class="btn btn-secondary btn-small" id="btn-slot-fill-no">No thanks</button></div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.id === 'btn-slot-fill-no') { ov.remove(); return; }
+      if (e.target.id !== 'btn-slot-fill-go') return;
+      var ids = Array.from(ov.querySelectorAll('.slot-fill-pick:checked')).map(function (c) { return c.value; });
+      ov.remove();
+      if (!ids.length) return;
+      ids.forEach(function (id) { var o = state.orders.find(function (x) { return x.id === id; }); if (o) o.scheduledDate = d; });
+      slotOfferSuppressed = true; // the days they leave don't start another round of questions
+      try { save(); } finally { slotOfferSuppressed = false; }
+      renderAll();
+      showCopiedToast(ids.length + ' order' + (ids.length === 1 ? '' : 's') + ' moved to ' + slotDateLabel(d));
+    });
+  }
+
   function nextAvailableProductionDate(tumblerQtyNeeded, fromDateStr) {
     var capacity = Number(state.dailyTumblerCapacity) || 5;
     var d = new Date((fromDateStr || todayISO()) + 'T00:00:00');
@@ -7251,6 +7332,11 @@
           ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button type="button" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button>' : '') +
           '<button type="button" data-edit-order="' + o.id + '">✏️ Edit</button>' +
           '<button type="button" data-remind-order="' + o.id + '">🔔 Remind me</button>' +
+          (o.status === 'queueing' && o.scheduledDate
+            ? '<button type="button" data-slot-copy="' + o.id + '">📅 Copy slot message</button>' +
+              '<button type="button" data-slot-confirm="' + o.id + '">' + (slotState(o) === 'confirmed' ? '↩ Slot not confirmed' : '✓ Slot confirmed') + '</button>' +
+              '<button type="button" data-slot-edit="1">✏️ Edit slot message</button>'
+            : '') +
           '<div class="oc-menu-row">Status <select class="order-status-select" data-order-id="' + o.id + '">' + statusOptions + '</select></div>' +
           (['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1
             ? '<button type="button" data-add-linked-order="' + o.id + '" title="Start a new order for the same buyer, linked so they ship together">➕ Add another order</button>'
@@ -7304,7 +7390,7 @@
             : '<span class="oc-madepill done">✔ Made</span>';
         }
         var dateHtml = o.status === 'queueing' && o.scheduledDate
-          ? '<span class="oc-make">📅 Make ' + escapeHtml(shortDate(o.scheduledDate)) + '</span> · ordered ' + shortDate(o.date)
+          ? '<span class="oc-make">📅 Make ' + escapeHtml(shortDate(o.scheduledDate)) + '</span>' + slotPillHtml(o) + ' · ordered ' + shortDate(o.date)
           : 'Ordered ' + shortDate(o.date);
         rows = '<tr class="order-card">' + chkTd +
           '<td class="oc-date">' + dateHtml + (o.trackingNumber ? ' · ' + escapeHtml(o.trackingNumber) : '') + statusTag + '</td>' +
@@ -7465,6 +7551,72 @@
       wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
+
+  // ---------- Making-slot message: tell a customer her making day and ask if she's free.
+  // Asked / confirmed are remembered for that exact date — changing the date clears both.
+  var DEFAULT_SLOT_MESSAGE = 'Hihi Kakak {buyerName}! 😊\nYour tumbler slot is on {date} ✨\nIs Kakak free on that day? Let me know ya, if not I can arrange another date for you 💕';
+  function slotDateLabel(d) {
+    var dt = new Date(d + 'T00:00:00');
+    var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var mons = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return days[dt.getDay()] + ', ' + dt.getDate() + ' ' + mons[dt.getMonth()];
+  }
+  function slotState(o) {
+    if (!o || o.status !== 'queueing' || !o.scheduledDate || o.slotFor !== o.scheduledDate) return '';
+    return o.slotConfirmed ? 'confirmed' : (o.slotAsked ? 'asked' : '');
+  }
+  function slotPillHtml(o) {
+    var st = slotState(o);
+    if (st === 'confirmed') return ' <span class="pill pill-green" style="font-size:11px;">✓ Confirmed</span>';
+    if (st === 'asked') return ' <span class="pill pill-amber" style="font-size:11px;">📅 Asked</span>';
+    return '';
+  }
+  function slotMessageFor(o) {
+    var items = (o.items || []).filter(isBottleItem).map(function (i) { return (Number(i.qty) > 1 ? i.qty + ' × ' : '') + cleanItemName(i.productName); }).join(' + ');
+    return (state.slotMessageTemplate || DEFAULT_SLOT_MESSAGE)
+      .split('{buyerName}').join(o.buyerName || '')
+      .split('{date}').join(slotDateLabel(o.scheduledDate))
+      .split('{items}').join(items);
+  }
+  function copySlotMessage(id) {
+    var o = state.orders.find(function (x) { return x.id === id; });
+    if (!o) return;
+    if (!o.scheduledDate) { alert('Pick a making date for this order first.'); return; }
+    copyTextWithToast(slotMessageFor(o), 'Slot message copied — paste into WhatsApp');
+    if (o.slotFor !== o.scheduledDate) { o.slotConfirmed = false; }
+    o.slotFor = o.scheduledDate; o.slotAsked = true;
+    save(); renderAll();
+  }
+  function toggleSlotConfirmed(id) {
+    var o = state.orders.find(function (x) { return x.id === id; });
+    if (!o || !o.scheduledDate) return;
+    var on = slotState(o) !== 'confirmed';
+    o.slotFor = o.scheduledDate; o.slotConfirmed = on; if (on) o.slotAsked = true;
+    save(); renderAll();
+  }
+  function renderSlotMsgEditor(open) {
+    var box = document.getElementById('slot-msg-editor');
+    if (!box) return;
+    if (!open) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div style="font-weight:600; margin-bottom:6px;">📅 Slot message</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:6px;">Use {buyerName}, {date} and {items} — they\'re filled in for each order when you copy.</div>' +
+      '<textarea id="slot-msg-template" rows="6" style="width:100%; font-size:13px;">' + escapeHtml(state.slotMessageTemplate || DEFAULT_SLOT_MESSAGE) + '</textarea>' +
+      '<div style="margin-top:8px; display:flex; gap:6px;"><button type="button" class="btn btn-primary btn-small" id="btn-save-slot-msg">Save</button><button type="button" class="btn btn-secondary btn-small" id="btn-cancel-slot-msg">Cancel</button>' +
+      '<button type="button" class="btn-text" id="btn-reset-slot-msg" style="margin-left:auto; font-size:12px;">Reset to default message</button></div>';
+  }
+  document.getElementById('slot-msg-editor').addEventListener('click', function (e) {
+    if (e.target.id === 'btn-save-slot-msg') { state.slotMessageTemplate = document.getElementById('slot-msg-template').value; save(); renderSlotMsgEditor(false); showCopiedToast('Slot message saved'); return; }
+    if (e.target.id === 'btn-cancel-slot-msg') { renderSlotMsgEditor(false); return; }
+    if (e.target.id === 'btn-reset-slot-msg') { document.getElementById('slot-msg-template').value = DEFAULT_SLOT_MESSAGE; }
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-slot-copy],[data-slot-confirm],[data-slot-edit]') : null;
+    if (!t) return;
+    if (t.hasAttribute('data-slot-copy')) copySlotMessage(t.getAttribute('data-slot-copy'));
+    else if (t.hasAttribute('data-slot-confirm')) toggleSlotConfirmed(t.getAttribute('data-slot-confirm'));
+    else if (t.hasAttribute('data-slot-edit')) { if (typeof activatePage === 'function' && !document.getElementById('page-orders').classList.contains('active')) activatePage('orders'); renderSlotMsgEditor(true); window.scrollTo && window.scrollTo(0, 0); }
+  });
 
   var DEFAULT_PAY_REMINDER = 'Hihi Kakak {buyerName}! 😊\nJust a gentle reminder for your order:\n{items}\nTotal: {amount}\n\nKakak can make payment to the QR or this bank account:\n{bankDetails}\n\nOnce done, please send me the receipt ya. Thank you so much! 💕';
   // Earlier default wording — a saved copy that still matches it word for word follows the new default.
@@ -9224,6 +9376,11 @@
           '<div><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.buyerHandle ? ' <span class="muted">' + escapeHtml(o.buyerHandle) + '</span>' : '') + (o.buyerWhatsapp ? ' <span class="muted">WA: ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') + '</div>' +
           '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div></div>' +
           '<div class="schedule-controls">' + queuePill + paidPill +
+            (!isDone && o.status === 'queueing' && o.scheduledDate
+              ? (slotState(o) === 'confirmed' ? '<span class="pill pill-green">✓ Confirmed</span>'
+                : slotState(o) === 'asked' ? '<span class="pill pill-amber">📅 Asked</span><button type="button" class="btn btn-secondary btn-small" data-slot-confirm="' + o.id + '">✓ Confirmed</button>'
+                : '<button type="button" class="btn btn-secondary btn-small" data-slot-copy="' + o.id + '">📅 Copy slot message</button>')
+              : '') +
             (isDone ? '' : '<input type="date" class="schedule-date-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.scheduledDate || '') + '">') +
             (cups.length > 1 && !isDone
               ? '<span class="oc-madepill' + (cupsMade >= cups.length ? ' done' : '') + '">' + cupsMade + '/' + cups.length + ' made</span>'
@@ -11375,7 +11532,7 @@
         ? '<div class="cal-chip-row">' +
             dayOrders.slice(0, CAL_CHIP_CAP).map(function (o) {
               var made = !calOrderToMake(o);
-              return '<div class="cal-order-chip' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + (made ? ' (made)' : '') + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + calCupsSuffix(o) + '</div>';
+              return '<div class="cal-order-chip' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '" title="' + escapeHtml(o.buyerName || 'Order') + (made ? ' (made)' : '') + '">' + (made ? '✔ ' : (slotState(o) === 'confirmed' ? '✓ ' : '')) + escapeHtml(o.buyerName || 'Order') + calCupsSuffix(o) + '</div>';
             }).join('') +
             (dayOrders.length > CAL_CHIP_CAP ? '<div class="muted" style="font-size:10px;">+' + (dayOrders.length - CAL_CHIP_CAP) + ' more</div>' : '') +
           '</div>'
@@ -11418,7 +11575,7 @@
             '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
               editDayOrders.map(function (o) {
                 var made = !calOrderToMake(o);
-                return '<div class="cal-order-chip cal-order-chip-lg' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '">' + (made ? '✔ ' : '') + escapeHtml(o.buyerName || 'Order') + calCupsSuffix(o) + '</div>';
+                return '<div class="cal-order-chip cal-order-chip-lg' + (made ? ' cal-chip-made' : '') + '" data-cal-order="' + o.id + '">' + (made ? '✔ ' : (slotState(o) === 'confirmed' ? '✓ ' : '')) + escapeHtml(o.buyerName || 'Order') + calCupsSuffix(o) + '</div>';
               }).join('') +
             '</div></div>'
         : '';
@@ -13912,7 +14069,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-08a';
+  var APP_VERSION = '2026-10-09b';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
@@ -14052,6 +14209,7 @@
   // kicking off another push.
   function adoptStateLocally(newState) {
     state = newState;
+    if (typeof resetSlotSnapshot === 'function') resetSlotSnapshot(); // a synced copy isn't her moving orders
     setTimeout(updateVersionLine, 0);
     if (!state.blockedDates) state.blockedDates = {};
     if (!state.weeklyBreakDays) state.weeklyBreakDays = [2, 6];
