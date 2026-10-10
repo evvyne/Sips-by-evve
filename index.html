@@ -580,6 +580,11 @@
           <label class="field-label">Selling price (per unit, in RM)</label>
           <input id="pf-price" type="number" step="0.01" min="0">
         </div>
+        <div id="pf-glitter-wrap">
+          <label class="field-label">Full Glitter extra (RM)</label>
+          <input id="pf-glitter-extra" type="number" step="0.01" min="0" placeholder="5 (standard)">
+          <div class="muted" style="font-size:11px; margin-top:3px;">Leave empty for the standard +RM5. Tumblers only.</div>
+        </div>
         <div style="grid-column: 1 / -1;">
           <details>
             <summary style="cursor:pointer; color:var(--blue); font-size:13px;">Paid in a different currency? Convert to RM</summary>
@@ -1270,6 +1275,17 @@
   function tumblerPatternInfo(value) {
     return TUMBLER_PATTERNS.find(function (p) { return p.value === value; }) || null;
   }
+  // A tumbler can have its own Full Glitter extra (600ml fat bottle uses a lot more glitter and
+  // solution: +RM10); every other tumbler keeps the standard +RM5.
+  function patternSurchargeFor(value, productId) {
+    var info = tumblerPatternInfo(value);
+    if (!info) return 0;
+    if (value === 'full_glitter') {
+      var pr = productId && state.products.find(function (x) { return x.id === productId; });
+      if (pr && pr.fullGlitterExtra != null && pr.fullGlitterExtra !== '') return Number(pr.fullGlitterExtra) || 0;
+    }
+    return info.surcharge;
+  }
 
   // Once she's booked a shipment with a courier and has a real tracking number, this builds the
   // actual "track my parcel" URL for whichever courier she picked — she just types the bare
@@ -1825,6 +1841,7 @@
   document.getElementById('pf-type').addEventListener('change', function () {
     var isStickers = this.value === 'Stickers';
     document.getElementById('pf-theme-wrap').style.display = isStickers ? 'block' : 'none';
+    document.getElementById('pf-glitter-wrap').style.display = this.value === 'Tumbler' ? '' : 'none';
     document.getElementById('pf-source-wrap').style.display = isStickers ? 'none' : 'contents';
     if (isStickers) {
       refreshThemeSelect(document.getElementById('pf-theme-select').value);
@@ -2026,6 +2043,8 @@
     document.getElementById('pf-stock').value = '';
     document.getElementById('pf-threshold').value = 2;
     renderPromoFormBlock(null);
+    document.getElementById('pf-glitter-extra').value = '';
+    document.getElementById('pf-glitter-wrap').style.display = '';
     document.getElementById('pf-photo-file').value = '';
     pfPhotoData = '';
     hidePhotoPreview();
@@ -2090,7 +2109,8 @@
       stock: stock,
       threshold: Number(document.getElementById('pf-threshold').value) || 0,
       sourcePlatform: document.getElementById('pf-source-platform').value.trim(),
-      sourceLink: document.getElementById('pf-source-link').value.trim()
+      sourceLink: document.getElementById('pf-source-link').value.trim(),
+      fullGlitterExtra: (type === 'Tumbler' && document.getElementById('pf-glitter-extra').value.trim() !== '') ? Number(document.getElementById('pf-glitter-extra').value) : null
     };
     var promoForm = readPromoForm();
     var newProductId = null;
@@ -2220,6 +2240,8 @@
     document.getElementById('pf-stock').value = p.stock;
     document.getElementById('pf-threshold').value = p.threshold;
     renderPromoFormBlock(p);
+    document.getElementById('pf-glitter-extra').value = (p.fullGlitterExtra != null && p.fullGlitterExtra !== '') ? p.fullGlitterExtra : '';
+    document.getElementById('pf-glitter-wrap').style.display = p.type === 'Tumbler' ? '' : 'none';
     pfPhotoData = p.image || '';
     if (pfPhotoData) showPhotoPreview(pfPhotoData); else hidePhotoPreview();
     document.getElementById('pf-also-cost-wrap').style.display = 'none';
@@ -5540,7 +5562,7 @@
         '</div>' : '';
 
       var patternSelect = (line.type === 'Tumbler' && line.productId)
-        ? '<select class="di-pattern" data-idx="' + idx + '" title="Style">' + patternOptionsHtml(line.pattern || '') + '</select>'
+        ? '<select class="di-pattern" data-idx="' + idx + '" title="Style">' + patternOptionsHtml(line.pattern || '', line.productId) + '</select>'
         : '';
       return '<div class="item-line" data-idx="' + idx + '">' +
         typeSelect + themeSelect + productSelectHtml + patternSelect +
@@ -5614,11 +5636,16 @@
         // (plus its style surcharge), move it to the new product's price. A price she typed
         // herself (a discount, say) is kept, with a one-tap offer of the standard price.
         var sur = Number(dLine.patternSurcharge) || 0;
+        var newSurP = dLine.pattern ? patternSurchargeFor(dLine.pattern, p.id) : 0;
         var curP = dLine.unitPrice;
-        var newStd = (Number(p.price) || 0) + sur;
+        var newStd = (Number(p.price) || 0) + newSurP;
         var wasStd = wasPromo || (oldProd && Math.abs((Number(curP) || 0) - ((Number(oldProd.price) || 0) + sur)) < 0.005);
         if (curP === '' || curP == null || wasStd) dLine.unitPrice = newStd;
-        else if (Math.abs((Number(curP) || 0) - newStd) >= 0.005) dLine.priceHint = newStd;
+        else {
+          if (newSurP !== sur) { dLine.unitPrice = (Number(curP) || 0) - sur + newSurP; }
+          if (Math.abs((Number(dLine.unitPrice) || 0) - newStd) >= 0.005) dLine.priceHint = newStd;
+        }
+        dLine.patternSurcharge = newSurP;
       }
       renderDraftItems();
     } else if (e.target.classList.contains('di-pattern')) {
@@ -5626,8 +5653,7 @@
       // is added/removed, so her own typed price is never overwritten.
       var dl = draftItems[idx];
       var oldSur = Number(dl.patternSurcharge) || 0;
-      var info = tumblerPatternInfo(e.target.value);
-      var newSur = info ? info.surcharge : 0;
+      var newSur = patternSurchargeFor(e.target.value, dl.productId);
       if (dl.unitPrice !== '' && dl.unitPrice != null) dl.unitPrice = (Number(dl.unitPrice) || 0) - oldSur + newSur;
       dl.pattern = e.target.value;
       dl.patternSurcharge = newSur;
@@ -7248,9 +7274,10 @@
     return ({ 'queueing': 'To make', 'uv curing': 'UV curing', 'ready to ship': 'Ready to ship', 'order shipment': 'Booked', 'shipped': 'Shipped', 'delivered': 'Delivered', 'cancelled': 'Cancelled' })[st] || st;
   }
   // Style (pattern) of each bottle, picked right on the card — one small dropdown per bottle.
-  function patternOptionsHtml(current) {
+  function patternOptionsHtml(current, productId) {
     return '<option value="">🎨 Choose style…</option>' + TUMBLER_PATTERNS.map(function (pt) {
-      return '<option value="' + pt.value + '"' + (current === pt.value ? ' selected' : '') + '>' + escapeHtml(pt.label) + (pt.surcharge ? ' (+' + money(pt.surcharge) + ')' : '') + '</option>';
+      var sur = patternSurchargeFor(pt.value, productId);
+      return '<option value="' + pt.value + '"' + (current === pt.value ? ' selected' : '') + '>' + escapeHtml(pt.label) + (sur ? ' (+' + money(sur) + ')' : '') + '</option>';
     }).join('');
   }
   function orderStyleChipsHtml(o) {
@@ -7261,7 +7288,7 @@
     return '<div class="oc-styles">' + bottles.map(function (b) {
       return '<label class="oc-style' + (b.i.pattern ? ' set' : '') + '">' +
         (bottles.length > 1 ? '<span class="oc-style-name">' + escapeHtml(cleanItemName(b.i.productName)) + '</span>' : '') +
-        '<select class="order-item-pattern-select" data-order-id="' + o.id + '" data-item-index="' + b.idx + '">' + patternOptionsHtml(b.i.pattern || '') + '</select></label>';
+        '<select class="order-item-pattern-select" data-order-id="' + o.id + '" data-item-index="' + b.idx + '">' + patternOptionsHtml(b.i.pattern || '', b.i.productId) + '</select></label>';
     }).join('') + '</div>';
   }
   // "Select" on the filter bar shows the tick boxes for changing several orders at once.
@@ -8020,8 +8047,7 @@
         // manually discounted/adjusted the unit price elsewhere — never double-counts or wipes
         // out her own pricing.
         var oldSurcharge = Number(patItem.patternSurcharge) || 0;
-        var newPatternInfo = tumblerPatternInfo(e.target.value);
-        var newSurcharge = newPatternInfo ? newPatternInfo.surcharge : 0;
+        var newSurcharge = patternSurchargeFor(e.target.value, patItem.productId);
         patItem.unitPrice = (Number(patItem.unitPrice) || 0) - oldSurcharge + newSurcharge;
         patItem.pattern = e.target.value;
         patItem.patternSurcharge = newSurcharge;
@@ -14069,7 +14095,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-09b';
+  var APP_VERSION = '2026-10-10a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
