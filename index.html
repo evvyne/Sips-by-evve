@@ -1291,6 +1291,7 @@
   // actual "track my parcel" URL for whichever courier she picked — she just types the bare
   // number, no need to hunt down or paste the tracking site's URL herself.
   var COURIER_TRACKING_URLS = {
+    spx: { label: 'SPX Express', url: function (n) { return 'https://spx.com.my/track?' + encodeURIComponent(n); } },
     jt: { label: 'J&T Express', url: function (n) { return 'https://www.jtexpress.my/tracking/' + encodeURIComponent(n); } },
     poslaju: { label: 'Pos Laju', url: function (n) { return 'https://www.pos.com.my/postal-services/quick-access/?track-trace=' + encodeURIComponent(n); } },
     ninja: { label: 'Ninja Van', url: function (n) { return 'https://www.ninjavan.co/en-my/tracking?id=' + encodeURIComponent(n); } },
@@ -10858,7 +10859,7 @@
       if (!to) return;
       if (!trk) { alert('Type the tracking number first.'); return; }
       parcelMates(to).forEach(function (m) {
-        if (!m.courier) m.courier = 'jt';
+        if (!m.courier) m.courier = 'spx'; // her current courier
         m.trackingNumber = trk;
         m.trackingMessageSent = false;
         if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'shipped');
@@ -14095,7 +14096,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-10a';
+  var APP_VERSION = '2026-10-13a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
