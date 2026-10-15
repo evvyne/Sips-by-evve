@@ -11532,6 +11532,11 @@
       if (o.scheduledDate && (toMake || (showMade && !o.immediate))) {
         if (!ordersByDate[o.scheduledDate]) ordersByDate[o.scheduledDate] = [];
         ordersByDate[o.scheduledDate].push(o);
+      } else if (!o.scheduledDate && !toMake && showMade && !o.immediate && o.madeOn) {
+        // Logged as already made (a past date typed when ordering): shown on the day it was made.
+        // It has no making slot, so it never counts toward that day's limit.
+        if (!ordersByDate[o.madeOn]) ordersByDate[o.madeOn] = [];
+        ordersByDate[o.madeOn].push(o);
       }
       if (showMade && o.immediate && o.date) {
         if (!immediateByDate[o.date]) immediateByDate[o.date] = [];
@@ -14096,7 +14101,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-13a';
+  var APP_VERSION = '2026-10-15a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
