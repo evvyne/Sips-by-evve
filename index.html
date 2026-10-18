@@ -4887,6 +4887,17 @@
     save(); renderAll(); renderRepeatCustomerBanner();
   });
 
+  var todoEditingId = null;
+  function saveTodoEdit() {
+    var inp = document.getElementById('todo-edit-input');
+    if (!inp) { todoEditingId = null; return; }
+    var t = (state.todos || []).find(function (x) { return x.id === inp.getAttribute('data-todo-edit-id'); });
+    var v = inp.value.trim();
+    todoEditingId = null;
+    if (t && v && v !== t.text) { t.text = v; save(); }
+    renderTodo(); renderAll();
+  }
+
   function todoOwnItems(day) {
     var today = todayISO();
     var out = [];
@@ -4953,7 +4964,10 @@
         : (t.repeat ? '<span class="todo-tag todo-tag-rep">' + todoRepeatLabel(t.repeat) + '</span>' : '');
       return '<div class="todo-row' + (x.done ? ' todo-done' : '') + '">' +
         '<input type="checkbox" class="todo-check" data-todo-id="' + t.id + '"' + (x.done ? ' checked' : '') + '>' +
-        '<span class="todo-text" style="min-width:0;">' + escapeHtml(t.text) + (t.customer ? '<span class="todo-sub">' + escapeHtml(reminderContactLine(t.customer)) + '</span>' : '') + '</span>' + tag +
+        (todoEditingId === t.id
+          ? '<span style="flex:1; display:flex; gap:6px; flex-wrap:wrap; min-width:0;"><input id="todo-edit-input" data-todo-edit-id="' + t.id + '" value="' + escapeHtml(t.text) + '" style="flex:1; min-width:140px;">' +
+              '<button type="button" class="btn btn-primary btn-small" id="btn-todo-edit-save">Save</button><button type="button" class="btn btn-secondary btn-small" id="btn-todo-edit-cancel">Cancel</button></span>'
+          : '<span class="todo-text" data-todo-edit="' + t.id + '" title="Tap to edit" style="min-width:0; cursor:text;">' + escapeHtml(t.text) + (t.customer ? '<span class="todo-sub">' + escapeHtml(reminderContactLine(t.customer)) + '</span>' : '') + '</span>' + tag) +
         '<button type="button" class="btn-text todo-delete" data-todo-delete="' + t.id + '" title="Remove" aria-label="Remove">✕</button>' +
       '</div>';
     }
@@ -4988,6 +5002,18 @@
         (showAuto
           ? '<div class="todo-section">Suggested by the app</div>' + (autoOpen.length ? autoOpen.map(autoRow).join('') : '<div class="muted" style="font-size:13px; padding:6px 0;">' + (day < today ? 'Suggestions only show for today and later.' : 'Nothing from orders or shipping.') + '</div>')
           : '') +
+        (function () {
+          if (day !== today) return '';
+          var waiting = (state.todos || []).filter(function (t) { return t.waitProductId && !t.date && !t.done; });
+          if (!waiting.length) return '';
+          return '<div class="todo-section">Waiting for stock</div>' + waiting.map(function (t) {
+            var wp = state.products.find(function (x) { return x.id === t.waitProductId; });
+            return '<div class="todo-row"><span style="width:18px; text-align:center;">🔔</span>' +
+              '<span class="todo-text" style="min-width:0;">' + escapeHtml(t.text) + (t.customer ? '<span class="todo-sub">' + escapeHtml(reminderContactLine(t.customer)) + '</span>' : '') + '</span>' +
+              '<span class="todo-tag todo-tag-old">' + escapeHtml(wp ? wp.name + ' · ' + wp.stock + (wp.unit || '') + ' left' : 'item removed') + '</span>' +
+              '<button type="button" class="btn-text todo-delete" data-todo-delete="' + t.id + '" title="Remove" aria-label="Remove">✕</button></div>';
+          }).join('');
+        })() +
         (doneRows.length
           ? '<button type="button" class="btn-text" id="btn-todo-toggle-done" style="font-size:13px; margin-top:10px;">' + (todoShowDone ? '▾ Hide' : '▸ Show') + ' ' + doneRows.length + ' done</button>' + (todoShowDone ? doneRows.join('') : '')
           : '') +
@@ -4995,6 +5021,11 @@
       '</div>';
     el.innerHTML = html;
   }
+  document.getElementById('todo-content').addEventListener('keydown', function (e) {
+    if (e.target.id !== 'todo-edit-input') return;
+    if (e.key === 'Enter') { e.preventDefault(); saveTodoEdit(); }
+    else if (e.key === 'Escape') { todoEditingId = null; renderTodo(); }
+  });
   function addTodoItem() {
     var input = document.getElementById('todo-new-text');
     var text = input ? input.value.trim() : '';
@@ -5010,6 +5041,16 @@
   }
   document.getElementById('todo-content').addEventListener('click', function (e) {
     var id = e.target.id;
+    if (id === 'btn-todo-edit-save') { saveTodoEdit(); return; }
+    if (id === 'btn-todo-edit-cancel') { todoEditingId = null; renderTodo(); return; }
+    var editEl = e.target.closest ? e.target.closest('[data-todo-edit]') : null;
+    if (editEl) {
+      todoEditingId = editEl.getAttribute('data-todo-edit');
+      renderTodo();
+      var ei = document.getElementById('todo-edit-input');
+      if (ei) { ei.focus(); ei.setSelectionRange && ei.setSelectionRange(ei.value.length, ei.value.length); }
+      return;
+    }
     var today = todayISO();
     if (id === 'todo-filter-prev') { todoViewDate = todoAddDays(todoViewDate || today, -1); renderTodo(); return; }
     if (id === 'todo-filter-next') { todoViewDate = todoAddDays(todoViewDate || today, 1); renderTodo(); return; }
@@ -5563,7 +5604,7 @@
         '</div>' : '';
 
       var patternSelect = (line.type === 'Tumbler' && line.productId)
-        ? '<select class="di-pattern" data-idx="' + idx + '" title="Style">' + patternOptionsHtml(line.pattern || '', line.productId) + '</select>'
+        ? '<select class="di-pattern" data-idx="' + idx + '" title="Style">' + patternOptionsHtml(line.pattern || '', line.productId, line.pattern ? line.patternSurcharge : null) + '</select>'
         : '';
       return '<div class="item-line" data-idx="' + idx + '">' +
         typeSelect + themeSelect + productSelectHtml + patternSelect +
@@ -7275,9 +7316,11 @@
     return ({ 'queueing': 'To make', 'uv curing': 'UV curing', 'ready to ship': 'Ready to ship', 'order shipment': 'Booked', 'shipped': 'Shipped', 'delivered': 'Delivered', 'cancelled': 'Cancelled' })[st] || st;
   }
   // Style (pattern) of each bottle, picked right on the card — one small dropdown per bottle.
-  function patternOptionsHtml(current, productId) {
+  function patternOptionsHtml(current, productId, chargedSurcharge) {
     return '<option value="">🎨 Choose style…</option>' + TUMBLER_PATTERNS.map(function (pt) {
-      var sur = patternSurchargeFor(pt.value, productId);
+      // The chosen style shows what this order was actually charged (an older order keeps its
+      // old extra); the other choices show today's extra for this tumbler.
+      var sur = (current === pt.value && chargedSurcharge != null && current) ? Number(chargedSurcharge) || 0 : patternSurchargeFor(pt.value, productId);
       return '<option value="' + pt.value + '"' + (current === pt.value ? ' selected' : '') + '>' + escapeHtml(pt.label) + (sur ? ' (+' + money(sur) + ')' : '') + '</option>';
     }).join('');
   }
@@ -7289,7 +7332,7 @@
     return '<div class="oc-styles">' + bottles.map(function (b) {
       return '<label class="oc-style' + (b.i.pattern ? ' set' : '') + '">' +
         (bottles.length > 1 ? '<span class="oc-style-name">' + escapeHtml(cleanItemName(b.i.productName)) + '</span>' : '') +
-        '<select class="order-item-pattern-select" data-order-id="' + o.id + '" data-item-index="' + b.idx + '">' + patternOptionsHtml(b.i.pattern || '', b.i.productId) + '</select></label>';
+        '<select class="order-item-pattern-select" data-order-id="' + o.id + '" data-item-index="' + b.idx + '">' + patternOptionsHtml(b.i.pattern || '', b.i.productId, b.i.pattern ? b.i.patternSurcharge : null) + '</select></label>';
     }).join('') + '</div>';
   }
   // "Select" on the filter bar shows the tick boxes for changing several orders at once.
@@ -7396,7 +7439,8 @@
         var patLbl = i.pattern && tumblerPatternInfo(i.pattern) ? tumblerPatternInfo(i.pattern).label : (i.pattern || '');
         return i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + ((patLbl && (isDone || !isBottleItem(i))) ? ' · ' + escapeHtml(patLbl) : '') +
           (o.isReplacement ? ' <span class="muted" style="font-size:12px;">' + ((Number(i.unitPrice) || 0) > 0 ? '(' + money(i.qty * i.unitPrice) + ')' : '(free)') + '</span>' : '') +
-          (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : '');
+          (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : '') +
+          (i.promo ? ' <span class="pill pill-green" style="font-size:10px;">Promo ' + money(i.unitPrice) + '</span>' : '');
       });
       var rows;
       if (isDone) {
@@ -14101,7 +14145,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-15a';
+  var APP_VERSION = '2026-10-19a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
@@ -14695,6 +14739,15 @@
     addWriteOff('fix1005-novx', order('muhh16ri99rtkp'), 'mszwxeis18v00p');
     // 4) The Stitch LA sent with Yati's replacement had no write-off.
     addWriteOff('fix1005-yati-stitch', order('mupc884gmnhphb'), 'mtu5v2qos4sedp');
+    // 6) Lala (9 Oct, 600ml fat bottle, Full Glitter) was charged +RM10, not +RM5.
+    var lalas = state.orders.filter(function (o) { return String(o.buyerName || '').trim().toLowerCase() === 'lala' && o.date === '2026-10-09'; });
+    if (lalas.length === 1) {
+      (lalas[0].items || []).forEach(function (it) {
+        if (it.pattern === 'full_glitter' && Number(it.patternSurcharge) === 5 && /600ml fat bottle/i.test(it.productName || '')) {
+          it.unitPrice = (Number(it.unitPrice) || 0) + 5; it.patternSurcharge = 10; changed = true;
+        }
+      });
+    }
     // 5) Two products both called "Mineral Oil 26# 500ml x1" (bought the same day at different
     // prices) — name each by its price so they can be told apart. Only the variant text changes.
     [['mtuhj3cb0lxesx', 'RM14.18'], ['mtuhjpm6lulvbd', 'RM10.07']].forEach(function (m) {
