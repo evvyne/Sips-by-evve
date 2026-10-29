@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-09-24.1" />
+<meta name="app-version" content="2026-10-30b" />
 <title>❄️ Sips by Evve</title>
 <style>
   :root {
@@ -458,8 +458,8 @@
 </div>
 
 <div id="version-update-banner" style="display:none; position:sticky; top:0; z-index:60; background:var(--amber,#b45309); color:#fff; padding:8px 14px; font-size:13px; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap;">
-  <span>A newer version of this app is available.</span>
-  <button type="button" id="btn-version-reload" style="background:#fff; color:var(--amber,#b45309); border:none; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:500; cursor:pointer;">Reload now</button>
+  <span>✨ A new version of the app is ready.</span>
+  <button type="button" id="btn-version-reload" style="background:#fff; color:var(--amber,#b45309); border:none; border-radius:6px; padding:4px 10px; font-size:13px; font-weight:500; cursor:pointer;">Reload</button>
 </div>
 
 <header>
@@ -4936,11 +4936,18 @@
     var readyWithAddr = state.orders.filter(function (o) { return o.status === 'ready to ship' && !!o.shipTo; }).length;
     var tomorrow = todoAddDays(day, 1);
     if (todoPackDays().indexOf(todoWeekday(tomorrow)) !== -1 && readyWithAddr > 0) {
-      out.push({ key: 'book', text: 'Book J&T for ' + formatDateLong(tomorrow) + ' pack day (' + readyWithAddr + ' parcel' + (readyWithAddr === 1 ? '' : 's') + ')', tag: 'From shipping' });
+      out.push({ key: 'book', text: 'Book ' + (courierShort(state.lastCourier || 'spx') || 'courier') + ' for ' + formatDateLong(tomorrow) + ' pack day (' + readyWithAddr + ' parcel' + (readyWithAddr === 1 ? '' : 's') + ')', tag: 'From shipping' });
     }
     var toPack = state.orders.filter(function (o) { return o.status === 'order shipment' || o.status === 'ready to ship'; }).length;
     if (todoPackDays().indexOf(todoWeekday(day)) !== -1 && toPack > 0) {
       out.push({ key: 'pack', text: 'Pack ' + toPack + ' parcel' + (toPack === 1 ? '' : 's'), tag: 'From shipping' });
+    }
+    if (day === today) {
+      var weekAgo = todoAddDays(today, -7);
+      var longShipped = state.orders.filter(function (o) { return o.status === 'shipped' && !o.pickup && (o.shippedOn || o.date || today) <= weekAgo; });
+      if (longShipped.length) {
+        out.push({ key: 'deliver', text: 'Mark ' + longShipped.length + ' parcel' + (longShipped.length === 1 ? '' : 's') + ' delivered? Shipped over a week ago — ' + longShipped.map(function (o) { return o.buyerName || 'Unknown'; }).join(', '), tag: 'From shipping' });
+      }
     }
     var doneMap = (state.todoAutoDone && state.todoAutoDone[day]) || {};
     out.forEach(function (a) { a.done = !!doneMap[a.key]; });
@@ -6297,6 +6304,7 @@
       pendingPackagingChoiceOrderId = null;
     }
     if (newStatus === 'delivered' && order.status !== 'delivered') order.deliveredOn = todayISO();
+    if (newStatus === 'shipped' && order.status !== 'shipped') order.shippedOn = todayISO();
     order.status = newStatus;
   }
 
@@ -7465,7 +7473,7 @@
           ? '<span class="oc-make">📅 Make ' + escapeHtml(shortDate(o.scheduledDate)) + '</span>' + slotPillHtml(o) + ' · ordered ' + shortDate(o.date)
           : 'Ordered ' + shortDate(o.date);
         rows = '<tr class="order-card">' + chkTd +
-          '<td class="oc-date">' + dateHtml + (o.trackingNumber ? ' · ' + escapeHtml(o.trackingNumber) : '') + statusTag + '</td>' +
+          '<td class="oc-date">' + dateHtml + (o.trackingNumber ? ' · <button type="button" class="btn-text" data-copy-tracking="' + o.id + '" title="Tap to copy the tracking number" style="font-size:inherit; padding:0;">' + escapeHtml((o.courier ? courierShort(o.courier) + ' · ' : '') + o.trackingNumber) + ' 📋</button>' : '') + statusTag + '</td>' +
           '<td class="oc-buyer"><div style="font-weight:600;">' + buyerInner + '</div></td>' +
           '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (itemLines.length ? itemLines.join('<br>') : 'No items') + '</button>' +
             orderStyleChipsHtml(o) +
@@ -9954,6 +9962,16 @@
     delete o.shipGroupId;
     var left = state.orders.filter(function (x) { return x.shipGroupId === gid; });
     if (left.length === 1) delete left[0].shipGroupId;
+    // While linked, saving a tracking number gave every order in the parcel the SAME number —
+    // now it's its own parcel, it needs its own number.
+    if (o.trackingNumber && left.some(function (x) { return x.trackingNumber === o.trackingNumber; }) &&
+        confirm((o.buyerName || 'This order') + ' still has the tracking number ' + o.trackingNumber + ' from the parcel it was in.\n\nClear it so you can enter this parcel\'s own number?')) {
+      rememberTracking(o, o.trackingNumber, o.courier);
+      o.trackingNumber = '';
+      o.courier = '';
+      o.trackingMessageSent = false;
+      if (o.status === 'shipped') changeOrderStatusCore(o, 'order shipment');
+    }
     save(); renderAll();
   }
 
@@ -10409,6 +10427,32 @@
   // Once she's picked a courier AND typed the tracking number, this builds the real "track my
   // parcel" link for that courier — used both for the clickable preview link and for filling in
   // {link} in the copy-ready WhatsApp message.
+  // Recognise the courier from how the tracking number looks:
+  //   MY + digits + one letter (MY06614045475A), or SPX…/SPMY…  -> SPX
+  //   12 digits (650883618424), or JT…                         -> J&T
+  //   2 letters + 9 digits + MY (EN123456789MY)                -> Pos Laju
+  //   NV… / NLMY…                                              -> Ninja Van
+  // Anything else -> '' (the caller falls back to the courier she used last).
+  function detectCourier(n) {
+    var t = String(n || '').toUpperCase().replace(/\s+/g, '');
+    if (!t) return '';
+    if (/^MY\d{8,14}[A-Z]$/.test(t) || /^SPX/.test(t) || /^SPMY/.test(t)) return 'spx';
+    if (/^\d{12}$/.test(t) || /^JT/.test(t)) return 'jt';
+    if (/^[A-Z]{2}\d{9}MY$/.test(t)) return 'poslaju';
+    if (/^(NV|NLMY)/.test(t)) return 'ninja';
+    return '';
+  }
+  function courierFor(n) { return detectCourier(n) || state.lastCourier || 'spx'; }
+  // Keeps the last few tracking numbers an order/parcel had, so one that goes missing can be put back.
+  function rememberTracking(obj, oldNum, oldCourier) {
+    if (!obj || !oldNum) return;
+    var h = obj.trackingHistory || [];
+    if (h[0] && h[0].num === oldNum) return;
+    obj.trackingHistory = [{ num: oldNum, courier: oldCourier || '', at: todayISO() }].concat(h).slice(0, 5);
+  }
+  var trackEditStart = {};   // id -> { num, courier } at the first keystroke of an edit
+  var trackFinalizeTimer = {};
+  function courierShort(k) { var c = COURIER_TRACKING_URLS[k]; return c ? c.label.replace(' Express', '') : ''; }
   function trackingLinkFor(courier, trackingNumber) {
     var courierInfo = courier && COURIER_TRACKING_URLS[courier];
     if (!courierInfo || !trackingNumber) return '';
@@ -10417,56 +10461,111 @@
   // Fills in both {link} and {buyerName} — buyerName is always the person who placed/paid for
   // the order, even on a gift order where the delivery recipient (o.recipientName) is someone
   // else, since that's who she's actually messaging.
-  // One shipped message per customer: the order she tapped plus every other order of the same
-  // customer that's already shipped, has a tracking number, and whose message hasn't been sent
-  // yet (split parcels included). Each tracking link appears once, one per line.
-  function combinedShipment(order, onlyParcelId) {
-    var picks = [], seen = {};
-    function addOrder(o, isTapped) {
+  // Shipped message: before copying she sees which tracking numbers go in, can tick/untick them
+  // and change the courier of each. Ticked by default: the parcel she tapped (and orders she
+  // linked with "Ship together", which share its tracking number). Same customer's other shipped
+  // parcels whose message hasn't been sent are listed unticked. Everything copied is marked sent.
+  function shipmentRows(order, onlyParcelId) {
+    var rows = [], byNum = {};
+    function add(o, p, ticked) {
+      var num = p ? p.trackingNumber : o.trackingNumber;
+      if (!num) return;
+      var key = String(num).toUpperCase();
+      if (byNum[key]) { byNum[key].targets.push({ order: o, parcel: p }); if (ticked) byNum[key].checked = true; return; }
+      var row = { number: num, courier: (p ? p.courier : o.courier) || courierFor(num), targets: [{ order: o, parcel: p }], checked: !!ticked };
+      byNum[key] = row; rows.push(row);
+    }
+    function addOrder(o, ticked, onlyUnsent) {
       if (o.parcels && o.parcels.length) {
         o.parcels.forEach(function (p) {
-          if (isTapped && onlyParcelId && p.id !== onlyParcelId && p.trackingMessageSent) return;
-          if (!isTapped && p.trackingMessageSent) return;
-          var l = trackingLinkFor(p.courier, p.trackingNumber);
-          if (l && !seen[l]) { seen[l] = true; picks.push({ order: o, parcel: p, link: l }); }
+          if (onlyUnsent && p.trackingMessageSent) return;
+          add(o, p, ticked && (!onlyParcelId || o.id !== order.id || p.id === onlyParcelId));
         });
       } else {
-        if (!isTapped && o.trackingMessageSent) return;
-        var l = shippingTrackingLink(o);
-        if (l && !seen[l]) { seen[l] = true; picks.push({ order: o, parcel: null, link: l }); }
-        else if (l && seen[l]) picks.push({ order: o, parcel: null, link: null }); // same parcel, still mark it
+        if (onlyUnsent && o.trackingMessageSent) return;
+        add(o, null, ticked);
       }
     }
-    addOrder(order, true);
+    addOrder(order, true, false);
+    shipGroupSiblings(order).forEach(function (o) { if (o.status !== 'cancelled') addOrder(o, true, false); });
     state.orders.forEach(function (o) {
       if (o.id === order.id || o.pickup || o.status !== 'shipped' || !sameCustomer(order, o)) return;
-      addOrder(o, false);
+      if (order.shipGroupId && o.shipGroupId === order.shipGroupId) return;
+      addOrder(o, false, true);
     });
-    return { links: picks.filter(function (x) { return x.link; }).map(function (x) { return x.link; }), picks: picks };
+    return rows;
   }
   function copyCombinedShippedMessage(order, onlyParcelId, toastLabel) {
-    var c = combinedShipment(order, onlyParcelId);
-    if (!c.links.length) { alert('Pick a courier and enter the tracking number first.'); return null; }
-    var msg = buildShippedMessage(order, c.links.join('\n'));
-    window.__lastCopiedText = msg;
-    var afterCopy = function () {
-      if (c.links.length > 1) {
-        showCopiedToast(c.links.length + ' parcels in one message — copied');
-        if (confirm(c.links.length + ' parcels for ' + (order.buyerName || 'this customer') + ' are in this one message.\n\nMark them all as ✅ Sent to customer?')) {
-          c.picks.forEach(function (x) { if (x.parcel) x.parcel.trackingMessageSent = true; else x.order.trackingMessageSent = true; });
-          save(); renderAll();
-        }
-      } else showCopiedToast(toastLabel || 'Copied!');
+    var rows = shipmentRows(order, onlyParcelId);
+    if (!rows.length) { alert('Enter the tracking number first.'); return null; }
+    var old = document.getElementById('ship-copy-overlay'); if (old) old.remove();
+    var courierOpts = function (sel) {
+      return Object.keys(COURIER_TRACKING_URLS).map(function (k) { return '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + escapeHtml(COURIER_TRACKING_URLS[k].label) + '</option>'; }).join('');
     };
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(msg).then(afterCopy).catch(function () { copyTextWithToast(msg, toastLabel); });
-        return msg;
-      }
-    } catch (e) {}
-    copyTextWithToast(msg, toastLabel);
-    return msg;
+    var ov = document.createElement('div');
+    ov.id = 'ship-copy-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9997; display:flex; align-items:center; justify-content:center; padding:16px;';
+    ov.innerHTML = '<div class="card" style="width:100%; max-width:460px; margin:0;">' +
+      '<div style="font-weight:600;">📦 ' + escapeHtml(order.buyerName || 'Customer') + ' — shipped message</div>' +
+      '<div class="muted" style="font-size:12px; margin:2px 0 8px;">Tick the tracking numbers to put in this message, and check each courier.</div>' +
+      rows.map(function (r, i) {
+        return '<div style="display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap;">' +
+          '<input type="checkbox" class="sc-pick" data-row="' + i + '"' + (r.checked ? ' checked' : '') + '>' +
+          '<span style="flex:1; min-width:130px;"><span style="font-family:monospace;">' + escapeHtml(r.number) + '</span>' + (r.checked ? '' : ' <span class="muted" style="font-size:11px;">· earlier parcel, message not sent</span>') + '</span>' +
+          '<select class="sc-courier" data-row="' + i + '" style="width:auto; font-size:13px;">' + courierOpts(r.courier) + '</select>' +
+        '</div>';
+      }).join('') +
+      '<div id="sc-error" style="color:var(--red); font-size:12px; min-height:16px; margin-top:6px;"></div>' +
+      '<div style="display:flex; gap:8px;"><button type="button" class="btn btn-primary btn-small" id="btn-sc-copy">Copy message</button><button type="button" class="btn btn-secondary btn-small" id="btn-sc-cancel">Cancel</button></div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('change', function (e) {
+      var i = e.target.getAttribute('data-row');
+      if (i === null) return;
+      if (e.target.classList.contains('sc-pick')) rows[Number(i)].checked = e.target.checked;
+      if (e.target.classList.contains('sc-courier')) rows[Number(i)].courier = e.target.value;
+    });
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.id === 'btn-sc-cancel') { ov.remove(); return; }
+      if (e.target.id !== 'btn-sc-copy') return;
+      var picked = rows.filter(function (r) { return r.checked; });
+      if (!picked.length) { document.getElementById('sc-error').textContent = 'Tick at least one tracking number.'; return; }
+      var links = picked.map(function (r) { return trackingLinkFor(r.courier, r.number); });
+      var msg = buildShippedMessage(order, links.join('\n'));
+      window.__lastCopiedText = msg;
+      copyTextWithToast(msg, picked.length > 1 ? picked.length + ' parcels in one message — copied' : (toastLabel || 'Copied!'));
+      rows.forEach(function (r) {
+        r.targets.forEach(function (t) {
+          var obj = t.parcel || t.order;
+          if (obj.courier !== r.courier) obj.courier = r.courier;
+          if (r.checked) obj.trackingMessageSent = true;
+        });
+      });
+      state.lastCourier = picked[picked.length - 1].courier;
+      ov.remove();
+      save(); renderAll();
+    });
+    return null;
   }
+  document.addEventListener('click', function (e) {
+    var cp = e.target.closest ? e.target.closest('[data-copy-tracking]') : null;
+    if (cp) {
+      var co = state.orders.find(function (o) { return o.id === cp.getAttribute('data-copy-tracking'); });
+      if (co && co.trackingNumber) copyTextWithToast(co.trackingNumber, 'Tracking number copied');
+      return;
+    }
+    var rb = e.target.closest ? e.target.closest('[data-tracking-restore]') : null;
+    if (rb) {
+      var ro = state.orders.find(function (o) { return o.id === rb.getAttribute('data-tracking-restore'); });
+      if (ro && ro.trackingHistory && ro.trackingHistory[0] && !ro.trackingNumber) {
+        var h0 = ro.trackingHistory[0];
+        ro.trackingNumber = h0.num;
+        ro.courier = h0.courier || courierFor(h0.num);
+        save(); renderAll();
+        showCopiedToast('Tracking number put back');
+      }
+    }
+  });
   function buildShippedMessage(order, link) {
     return (state.shippedMessageTemplate || DEFAULT_SHIPPED_MESSAGE_TEMPLATE)
       .split('{link}').join(link)
@@ -10593,6 +10692,10 @@
         '<input class="ship-tracking-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.trackingNumber || '') + '" placeholder="Tracking number" style="flex:1; min-width:120px;">' +
       '</div>' +
       (link ? '<div style="font-size:12px; margin-bottom:8px; word-break:break-all;"><a href="' + escapeHtml(link) + '" target="_blank" rel="noopener">' + escapeHtml(link) + '</a></div>' : '') +
+      (!o.trackingNumber && o.trackingHistory && o.trackingHistory[0]
+        ? '<div style="font-size:12px; margin-bottom:8px; background:#fdf3dc; color:#854f0b; border-radius:8px; padding:6px 10px;">Previous tracking: <strong>' + escapeHtml(o.trackingHistory[0].num) + '</strong>' + (o.trackingHistory[0].courier ? ' (' + escapeHtml(courierShort(o.trackingHistory[0].courier)) + ')' : '') + ' <button type="button" class="btn-text" data-tracking-restore="' + o.id + '" style="font-size:12px;">Put it back</button></div>'
+        : '') +
+      (o.trackingNumber ? '<button type="button" class="btn btn-secondary btn-small" data-copy-tracking="' + o.id + '" style="margin-right:6px;">📋 Copy number</button>' : '') +
       '<button type="button" class="btn btn-secondary btn-small btn-copy-shipped-message" data-order-id="' + o.id + '">📋 Copy shipped message</button>' +
       // She wanted an easy way to tell, at a glance, whether she's actually sent the tracking
       // link to this customer yet — copying the message doesn't itself confirm it was sent (she
@@ -10737,6 +10840,7 @@
     return onePerParcel(state.orders.filter(function (o) { return !o.pickup && (o.status === 'order shipment' || o.status === 'ready to ship') && !o.trackingNumber && !(o.parcels && o.parcels.length); }));
   }
   var pdTrackNote = '';
+  var pdTrackDrafts = {}; // tracking numbers typed in Pack day but not saved yet — kept across refreshes
   // Booked parcels of the same customer still waiting for a tracking number (not this one).
   function pdPendingSiblings(order) {
     var mates = parcelMates(order).map(function (m) { return m.id; });
@@ -10772,7 +10876,7 @@
       return doneHtml + '<div style="padding:8px 0; border-bottom:1px solid var(--border);">' +
         '<div style="font-size:14px;"><strong>' + escapeHtml(o.recipientName || o.buyerName || 'Unknown') + '</strong> · ' + escapeHtml((o.shipTo || '') + (o.postcode && (o.shipTo || '').indexOf(o.postcode) === -1 ? ' ' + o.postcode : '')) + '</div>' +
         '<div style="display:flex; gap:6px; margin-top:6px; align-items:center;">' +
-          '<input class="pd-tracking-input" data-order-id="' + o.id + '" placeholder="Tracking no." style="flex:1;">' +
+          '<input class="pd-tracking-input" data-order-id="' + o.id + '" placeholder="Tracking no." value="' + escapeHtml(pdTrackDrafts[o.id] || '') + '" style="flex:1;">' +
           '<button type="button" class="btn btn-primary btn-small" data-pd-save-tracking="' + o.id + '">Save</button>' +
           (hasSaved ? '<button type="button" class="btn-text" data-pd-copy-now="' + o.id + '" style="font-size:12px; white-space:nowrap;">Copy now</button>' : '') +
         '</div></div>';
@@ -10856,6 +10960,7 @@
     '</div>';
   }
   document.getElementById('packday-content').addEventListener('input', function (e) {
+    if (e.target.classList.contains('pd-tracking-input')) { pdTrackDrafts[e.target.getAttribute('data-order-id')] = e.target.value; return; }
     if (e.target.id === 'pd-track-search') {
       packDayTrackQuery = e.target.value;
       var box = document.getElementById('pd-track-results');
@@ -10902,13 +11007,14 @@
       var trk = inp ? inp.value.trim() : '';
       if (!to) return;
       if (!trk) { alert('Type the tracking number first.'); return; }
+      delete pdTrackDrafts[saveTrkId];
       parcelMates(to).forEach(function (m) {
-        if (!m.courier) m.courier = 'spx'; // her current courier
+        m.courier = courierFor(trk);
         m.trackingNumber = trk;
         m.trackingMessageSent = false;
         if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'shipped');
       });
-      var stillToEnter = pdPendingSiblings(to).length;
+      var stillToEnter = 0; // parcels are only combined when she linked them with Ship together
       if (stillToEnter > 0) {
         pdTrackNote = 'Saved · ' + (to.buyerName || 'This customer') + ' has ' + stillToEnter + ' more parcel' + (stillToEnter === 1 ? '' : 's') + ' to enter — the message will copy after the last one';
         save();
@@ -11116,8 +11222,8 @@
       var pmOrder = state.orders.find(function (o) { return o.id === pmOrderId; });
       var pmParcel = pmOrder && (pmOrder.parcels || []).find(function (p) { return p.id === pmParcelId; });
       if (pmParcel) {
-        if (!trackingLinkFor(pmParcel.courier, pmParcel.trackingNumber)) {
-          alert('Pick a courier and enter the tracking number first.');
+        if (!pmParcel.trackingNumber) {
+          alert('Enter the tracking number first.');
           return;
         }
         copyCombinedShippedMessage(pmOrder, pmParcel.id, 'Copied!');
@@ -11219,8 +11325,8 @@
       var cmOrderId = e.target.getAttribute('data-order-id');
       var cmOrder = state.orders.find(function (o) { return o.id === cmOrderId; });
       if (cmOrder) {
-        if (!shippingTrackingLink(cmOrder)) {
-          alert('Pick a courier and enter the tracking number first.');
+        if (!cmOrder.trackingNumber) {
+          alert('Enter the tracking number first.');
           return;
         }
         copyCombinedShippedMessage(cmOrder, null, 'Copied!');
@@ -11341,6 +11447,28 @@
   }
 
   document.getElementById('shipping-content').addEventListener('input', function (e) {
+    // Tracking numbers are saved while typing/pasting (no need to leave the box), so switching to
+    // WhatsApp or the courier app and back never loses them. The card only refreshes (and moves
+    // to Shipped) a few seconds after she stops typing, or when she leaves the box.
+    if (e.target.classList.contains('ship-tracking-input') || e.target.classList.contains('parcel-tracking-input')) {
+      var isParcel = e.target.classList.contains('parcel-tracking-input');
+      var tOrder = state.orders.find(function (o) { return o.id === e.target.getAttribute('data-order-id'); });
+      var tObj = tOrder && (isParcel ? (tOrder.parcels || []).find(function (pp) { return pp.id === e.target.getAttribute('data-parcel-id'); }) : tOrder);
+      if (!tObj) return;
+      var tKey = isParcel ? 'p:' + tObj.id : 'o:' + tOrder.id;
+      if (!trackEditStart[tKey]) trackEditStart[tKey] = { num: tObj.trackingNumber || '', courier: tObj.courier || '' };
+      var v = e.target.value.trim();
+      if (tObj.trackingNumber !== v) {
+        tObj.trackingMessageSent = false;
+        if (v && (detectCourier(v) || !tObj.courier)) tObj.courier = courierFor(v);
+        tObj.trackingNumber = v;
+        save();
+      }
+      clearTimeout(trackFinalizeTimer[tKey]);
+      var tgt = e.target;
+      trackFinalizeTimer[tKey] = setTimeout(function () { if (tgt.isConnected) tgt.dispatchEvent(new Event('change', { bubbles: true })); }, 3000);
+      return;
+    }
     if (e.target.id === 'gc-identifier') {
       var gcSuggestWrap = document.getElementById('gc-identifier-suggest');
       if (gcSuggestWrap) gcSuggestWrap.innerHTML = customerAutocompleteHtml(findCustomerMatches(e.target.value, 5), 'gc');
@@ -11418,7 +11546,7 @@
       // Changing the courier means whatever she already told the customer (if anything) is now
       // out of date, so the "sent" tick resets — otherwise she could get a false sense that the
       // customer already has the correct tracking info.
-      if (scOrder) { if (scOrder.courier !== e.target.value) scOrder.trackingMessageSent = false; scOrder.courier = e.target.value; save(); renderShipping(); }
+      if (scOrder) { if (scOrder.courier !== e.target.value) scOrder.trackingMessageSent = false; scOrder.courier = e.target.value; if (e.target.value) state.lastCourier = e.target.value; save(); renderShipping(); }
       return;
     }
     if (e.target.classList.contains('ship-tracking-input')) {
@@ -11426,8 +11554,16 @@
       var stOrder = state.orders.find(function (o) { return o.id === stOrderId; });
       if (stOrder) {
         var newTracking = e.target.value.trim();
-        var hadTracking = !!stOrder.trackingNumber;
-        if (stOrder.trackingNumber !== newTracking) stOrder.trackingMessageSent = false;
+        var stKey = 'o:' + stOrder.id;
+        var stStart = trackEditStart[stKey];
+        delete trackEditStart[stKey]; clearTimeout(trackFinalizeTimer[stKey]);
+        var hadTracking = stStart ? !!stStart.num : !!stOrder.trackingNumber;
+        if (stStart && stStart.num && stStart.num !== newTracking) rememberTracking(stOrder, stStart.num, stStart.courier);
+        else if (!stStart && stOrder.trackingNumber && stOrder.trackingNumber !== newTracking) rememberTracking(stOrder, stOrder.trackingNumber, stOrder.courier);
+        if (stOrder.trackingNumber !== newTracking) {
+          stOrder.trackingMessageSent = false;
+          if (newTracking && (detectCourier(newTracking) || !stOrder.courier)) stOrder.courier = courierFor(newTracking);
+        }
         stOrder.trackingNumber = newTracking;
         if (newTracking && !hadTracking && PRE_SHIP_STATUSES.indexOf(stOrder.status) !== -1) {
           autoAdvanceStatus(stOrder, 'shipped');
@@ -11454,6 +11590,7 @@
       if (pcParcel) {
         if (pcParcel.courier !== e.target.value) pcParcel.trackingMessageSent = false;
         pcParcel.courier = e.target.value;
+        if (e.target.value) state.lastCourier = e.target.value;
         save();
         renderShipping();
       }
@@ -11466,8 +11603,16 @@
       var ptParcel = ptOrder && (ptOrder.parcels || []).find(function (p) { return p.id === ptParcelId; });
       if (ptParcel) {
         var newPtTracking = e.target.value.trim();
-        var parcelHadTracking = !!ptParcel.trackingNumber;
-        if (ptParcel.trackingNumber !== newPtTracking) ptParcel.trackingMessageSent = false;
+        var ptKey = 'p:' + ptParcel.id;
+        var ptStart = trackEditStart[ptKey];
+        delete trackEditStart[ptKey]; clearTimeout(trackFinalizeTimer[ptKey]);
+        var parcelHadTracking = ptStart ? !!ptStart.num : !!ptParcel.trackingNumber;
+        if (ptStart && ptStart.num && ptStart.num !== newPtTracking) rememberTracking(ptParcel, ptStart.num, ptStart.courier);
+        else if (!ptStart && ptParcel.trackingNumber && ptParcel.trackingNumber !== newPtTracking) rememberTracking(ptParcel, ptParcel.trackingNumber, ptParcel.courier);
+        if (ptParcel.trackingNumber !== newPtTracking) {
+          ptParcel.trackingMessageSent = false;
+          if (newPtTracking && (detectCourier(newPtTracking) || !ptParcel.courier)) ptParcel.courier = courierFor(newPtTracking);
+        }
         ptParcel.trackingNumber = newPtTracking;
         // Split order: only counts as shipped once EVERY parcel has its tracking number.
         var allParcelsTracked = (ptOrder.parcels || []).every(function (pp) { return !!pp.trackingNumber; });
@@ -14036,17 +14181,17 @@
   // the one already running; if they differ, a newer file has been deployed, so prompt a reload
   // rather than nagging automatically (a reload mid-typing would lose unsaved form input).
   (function () {
-    var metaTag = document.querySelector('meta[name="app-version"]');
-    var currentVersion = metaTag ? metaTag.getAttribute('content') : '';
+    // The running version is read when checking (APP_VERSION is set further down this file).
     var banner = document.getElementById('version-update-banner');
     var alreadyShown = false;
     function checkForNewVersion() {
+      var currentVersion = (typeof APP_VERSION === 'string') ? APP_VERSION : '';
       if (alreadyShown || !currentVersion) return;
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       fetch(location.pathname + '?_v=' + Date.now(), { cache: 'no-store' })
         .then(function (r) { return r.text(); })
         .then(function (text) {
-          var match = text.match(/<meta\s+name="app-version"\s+content="([^"]+)"/);
+          var match = text.match(new RegExp('var APP_' + 'VERSION = \'([0-9a-z.-]+)\''));
           var fetchedVersion = match ? match[1] : null;
           if (fetchedVersion && fetchedVersion !== currentVersion && !alreadyShown) {
             alreadyShown = true;
@@ -14145,7 +14290,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-19a';
+  var APP_VERSION = '2026-10-30b';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
