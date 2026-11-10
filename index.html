@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-10-30b" />
+<meta name="app-version" content="2026-11-10a" />
 <title>❄️ Sips by Evve</title>
 <style>
   :root {
@@ -14290,7 +14290,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-10-30b';
+  var APP_VERSION = '2026-11-10a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
@@ -14903,6 +14903,65 @@
     return changed;
   }
 
+  // ---------- One-time: bring the stickers from the online catalogue that this app doesn't have yet
+  // (Nov 2026). Code only (she names them later), the catalogue's own photo (small preview), the
+  // catalogue's stock count, NO price and NO cost (nothing is added to Costs). Existing stickers are
+  // never changed — except the uncoded "Harry Potter Laser", which is the catalogue's HP001 and only
+  // gets that code. Shown as a list she confirms first; nothing happens if she presses Not now.
+  var CATALOGUE_IMPORT_2026_11 = [["A011",1,"Disney___Pixar______________/wm-1793619563623-image.jpg"],["A012",1,"Disney___Pixar______________/wm-1793619560225-image.jpg"],["AN001",5,"Others_____/wm-1793523571428-image.jpg"],["AN002",4,"Others_____/wm-1793523577351-image.jpg"],["AN003",3,"Others_____/wm-1793523594836-image.jpg"],["AN004",3,"Others_____/wm-1793523600746-image.jpg"],["AN005",5,"Others_____/wm-1793619571726-image.jpg"],["AN006",5,"Others_____/wm-1793623103462-image.jpg"],["AN007",5,"Others_____/wm-1793623110900-image.jpg"],["AN008",5,"Others_____/wm-1793623113769-image.jpg"],["AN009",5,"Others_____/wm-1793623130121-image.jpg"],["AN010",5,"Others_____/wm-1793623144216-image.jpg"],["AN011",5,"Others_____/wm-1793623170145-image.jpg"],["AN012",1,"Others_____/wm-1793620448707-image.jpg"],["AN013",1,"Others_____/wm-1793620449806-image.jpg"],["AN014",0,"Others_____/wm-1793620453661-image.jpg"],["AN015",1,"Others_____/wm-1793620454943-image.jpg"],["AN016",1,"Others_____/wm-1793620471817-image.jpg"],["AN017",2,"Others_____/wm-1793623176504-image.jpg"],["AN018",1,"Others_____/wm-1793623180909-image.jpg"],["AN019",1,"Others_____/wm-1793623197398-image.jpg"],["B005",5,"Disney___Pixar______________/wm-1793623204466-image.jpg"],["B006",5,"Disney___Pixar______________/wm-1793623207509-image.jpg"],["B007",5,"Disney___Pixar______________/wm-1793623211795-image.jpg"],["B008",5,"Disney___Pixar______________/wm-1793623213898-image.jpg"],["B009",5,"Disney___Pixar______________/wm-1793623214948-image.jpg"],["BTS001",1,"Star_____/wm-1793623218225-image.jpg"],["BTS002",0,"Star_____/wm-1793623222611-image.jpg"],["BTS003",1,"Star_____/wm-1793623223827-image.jpg"],["CR001",5,"For_Him______/wm-1793620937171-image.jpg"],["CR002",3,"For_Him______/wm-1793620941166-image.jpg"],["CT026",5,"Others_____/1789994783066-image.png"],["DC001",1,"Movies_____/wm-1793623227523-image.jpg"],["DG001",4,"Themes_____/wm-1793622223372-image.jpg"],["DG002",5,"Themes_____/wm-1793622222389-image.jpg"],["FR001",5,"Themes_____/wm-1793621981883-image.jpg"],["FR002",4,"Themes_____/wm-1793621955185-image.jpg"],["FR003",1,"Themes_____/wm-1793621893206-image.jpg"],["FR004",1,"Themes_____/wm-1793621894035-image.jpg"],["FR005",1,"Themes_____/wm-1793621902591-image.jpg"],["FR006",0,"Themes_____/wm-1793621908998-image.jpg"],["FR007",1,"Themes_____/wm-1793621922690-image.jpg"],["FR008",1,"Themes_____/wm-1793621928538-image.jpg"],["FR009",1,"Themes_____/wm-1793621936065-image.jpg"],["FR010",0,"Themes_____/wm-1793621942379-image.jpg"],["FR011",0,"Themes_____/wm-1793622021277-image.jpg"],["HN001",2,"Popmart_______/wm-1793623241964-image.jpg"],["HP001",0,"Movies_____/opt-1791725659651-1789994628507-image.jpg"],["HR001",2,"Themes_____/wm-1793623247110-image.jpg"],["HR002",2,"Themes_____/wm-1793623249768-image.jpg"],["HR003",1,"Themes_____/wm-1793621320751-image.jpg"],["HR004",0,"Themes_____/wm-1793621335525-image.jpg"],["HR005",1,"Themes_____/wm-1793621373397-image.jpg"],["HR006",1,"Themes_____/wm-1793621372544-image.jpg"],["HR007",1,"Themes_____/wm-1793621439167-image.jpg"],["HR008",1,"Themes_____/wm-1793621523190-image.jpg"],["HR009",1,"Themes_____/wm-1793621547055-image.jpg"],["M001",0,"Popmart_______/opt-1791725682146-1789571869463-image.jpg"],["M004",5,"Popmart_______/wm-1793622360548-image.jpg"],["M005",5,"Popmart_______/wm-1793622355276-image.jpg"],["M006",4,"Popmart_______/wm-1793622349316-image.jpg"],["M007",5,"Popmart_______/wm-1793622343356-image.jpg"],["M008",5,"Popmart_______/wm-1793622331358-image.jpg"],["M009",1,"Popmart_______/wm-1793622334085-image.jpg"],["M010",1,"Popmart_______/wm-1793622337649-image.jpg"],["M011",1,"Popmart_______/wm-1793622314703-image.jpg"],["M012",2,"Popmart_______/wm-1793622313782-image.jpg"],["MC001",5,"Others_____/wm-1793621791377-image.jpg"],["MC002",5,"Others_____/wm-1793621792282-image.jpg"],["MC003",2,"Others_____/wm-1793621714460-image.jpg"],["ML001",1,"Popmart_______/wm-1793621238744-image.jpg"],["OC001",5,"Themes_____/wm-1793523603783-image.jpg"],["OC002",5,"Themes_____/wm-1793622096816-image.jpg"],["OC003",5,"Themes_____/wm-1793622111460-image.jpg"],["OC004",5,"Themes_____/wm-1793622120373-image.jpg"],["OC005",5,"Themes_____/wm-1793622180127-image.jpg"],["OC006",5,"Themes_____/wm-1793622179063-image.jpg"],["PP004",2,"Others_____/wm-1793623258298-image.jpg"],["R002",1,"Anime_____/wm-1793621147838-image.jpg"],["S003",2,"Anime_____/wm-1793623263647-image.jpg"],["S004",2,"Anime_____/wm-1793623269759-image.jpg"],["S005",2,"Anime_____/wm-1793623278557-image.jpg"],["SD001",1,"Anime_____/wm-1793621097076-image.jpg"],["SP004",1,"Others_____/wm-1793621197738-image.jpg"],["SP005",0,"Others_____/wm-1793621218115-image.jpg"],["T002",1,"Anime_____/wm-1793621029801-image.jpg"],["T003",3,"Anime_____/wm-1793621117216-image.jpg"],["T004",1,"Anime_____/wm-1793621133393-image.jpg"],["TR001",2,"Anime_____/wm-1793623288718-image.jpg"],["WE001",3,"Movies_____/wm-1793621488189-image.jpg"],["Y006",1,"Others_____/wm-1793621570068-image.jpg"],["Y007",1,"Others_____/wm-1793621607264-image.jpg"],["Y008",1,"Others_____/wm-1793621629630-image.jpg"],["Z018",4,"Others_____/wm-1793523608359-image.jpg"],["Z019",5,"Others_____/wm-1793523608502-image.jpg"],["Z020",5,"Others_____/wm-1793622520064-image.jpg"],["Z021",5,"Others_____/wm-1793622520519-image.jpg"],["Z022",1,"Others_____/wm-1793620526126-image.jpg"],["Z023",1,"Others_____/wm-1793620515203-image.jpg"],["Z024",1,"Others_____/wm-1793620514274-image.jpg"],["Z025",2,"Others_____/wm-1793620540018-image.jpg"],["Z026",3,"Others_____/wm-1793620724314-image.jpg"],["Z027",2,"Others_____/wm-1793620752439-image.jpg"],["Z028",2,"Others_____/wm-1793621845290-image.jpg"]];
+  var CATALOGUE_THEMES = {"A":"A - Princess","B":"B - Winnie the Pooh","CT":"CT - Cartoons","HP":"HP - Harry Potter","M":"M - Twinkle","PP":"PP - Powerpuff Girls","R":"R - Demon Slayer","S":"S - Shinchan","SP":"SP - Snoopy","T":"T - Huntrix","Y":"Y - Brands","Z":"Z - Cute Stuff","AN":"AN - Animals","FR":"FR - Fairy","HR":"HR - Horror / Halloween","OC":"OC - Ocean","BTS":"BTS - BTS","MC":"MC - Monchhichi","CR":"CR - Cars","DG":"DG - Dreamy Girls","DC":"DC - DC Comics","HN":"HN - Hirono","ML":"ML - Molly","SD":"SD - Slam Dunk","TR":"TR - Totoro","WE":"WE - Wednesday"};
+  var CATALOGUE_THUMB_BASE = 'https://heeatmscxouwevoonpti.supabase.co/storage/v1/object/public/stickers/thumbs/';
+  function catalogueImportPending() {
+    var have = {};
+    state.products.forEach(function (p) { if (p.sku) have[String(p.sku).toUpperCase()] = true; });
+    var hpLaser = state.products.find(function (p) { return p.type === 'Stickers' && !p.sku && /harry potter laser/i.test(p.name || ''); });
+    var rows = CATALOGUE_IMPORT_2026_11.filter(function (r) { return !have[r[0]] && !(r[0] === 'HP001' && hpLaser); });
+    return { rows: rows, hpLaser: (!have.HP001 && hpLaser) ? hpLaser : null };
+  }
+  function offerCatalogueImport() {
+    if (isViewerMode || state.catalogueImport202611 === 'done' || document.getElementById('cat-import-overlay')) return;
+    var pend = catalogueImportPending();
+    if (!pend.rows.length && !pend.hpLaser) { state.catalogueImport202611 = 'done'; return; }
+    var byTheme = {};
+    pend.rows.forEach(function (r) { var th = CATALOGUE_THEMES[r[0].replace(/\d+$/, '')] || 'Other'; (byTheme[th] = byTheme[th] || []).push(r); });
+    var existingThemes = {};
+    state.products.forEach(function (p) { if (p.theme) existingThemes[p.theme] = true; });
+    var ov = document.createElement('div');
+    ov.id = 'cat-import-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9997; display:flex; align-items:center; justify-content:center; padding:16px;';
+    ov.innerHTML = '<div class="card" style="width:100%; max-width:560px; margin:0; max-height:86vh; display:flex; flex-direction:column;">' +
+      '<div style="font-weight:600;">📥 Add ' + pend.rows.length + ' stickers from your catalogue</div>' +
+      '<div class="muted" style="font-size:12px; margin:2px 0 8px;">Code as the name, catalogue photo, catalogue stock count. No price, no cost. Your existing stickers stay as they are.' +
+        (pend.hpLaser ? ' "Harry Potter Laser" gets the code HP001.' : '') + '</div>' +
+      '<div style="overflow:auto; flex:1; border-top:1px solid var(--border);">' +
+        Object.keys(byTheme).sort().map(function (th) {
+          return '<div style="font-size:12px; font-weight:600; margin:10px 0 4px;">' + escapeHtml(th) + (existingThemes[th] ? '' : ' <span class="pill pill-blue" style="font-size:10px;">new group</span>') + '</div>' +
+            '<div style="display:flex; flex-wrap:wrap; gap:6px;">' + byTheme[th].map(function (r) {
+              return '<div style="width:64px; text-align:center; font-size:11px;"><img src="' + CATALOGUE_THUMB_BASE + r[2] + '" alt="" loading="lazy" style="width:56px; height:56px; object-fit:cover; border-radius:6px; background:#f3f3f3;"><div>' + escapeHtml(r[0]) + '</div><div class="muted">' + r[1] + ' left</div></div>';
+            }).join('') + '</div>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex; gap:8px; margin-top:10px;"><button type="button" class="btn btn-primary btn-small" id="btn-cat-import-go">Add ' + pend.rows.length + ' stickers</button><button type="button" class="btn btn-secondary btn-small" id="btn-cat-import-later">Not now</button></div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) {
+      if (e.target.id === 'btn-cat-import-later') { ov.remove(); return; }
+      if (e.target.id !== 'btn-cat-import-go') return;
+      var again = catalogueImportPending(); // re-check right before adding (no duplicates)
+      again.rows.forEach(function (r) {
+        var id = uid();
+        state.products.push({ id: id, sku: r[0], name: r[0], type: 'Stickers', theme: CATALOGUE_THEMES[r[0].replace(/\d+$/, '')] || '', image: CATALOGUE_THUMB_BASE + r[2],
+          cost: 0, price: 0, stock: Number(r[1]) || 0, threshold: 0, variant: '', sourceLink: '', sourcePlatform: '' });
+        if (Number(r[1]) > 0) logStock(id, Number(r[1]), 'correction', 'Added from catalogue');
+      });
+      if (again.hpLaser) again.hpLaser.sku = 'HP001';
+      state.catalogueImport202611 = 'done';
+      ov.remove();
+      save(); renderAll();
+      showCopiedToast(again.rows.length + ' stickers added from the catalogue');
+    });
+  }
+
   // Every time the app opens with a signed-in account: FIRST check whether this email was given
   // viewer access. A viewer always sees the owner's latest data, read-only — even if an older
   // version of the app once created a copy of their own (that copy is simply ignored, never
@@ -14924,6 +14983,7 @@
           // Her own data: reconcile with what's on this device (merges instead of overwriting).
           return Promise.resolve(reconcileWithCloud(userId, res.data.data)).then(function (r) {
             setTimeout(applyRequestedDataFixes, 0);
+            setTimeout(offerCatalogueImport, 1200);
             return r;
           });
         }
