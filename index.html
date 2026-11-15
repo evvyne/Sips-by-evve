@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-11-10a" />
+<meta name="app-version" content="2026-11-15b" />
 <title>❄️ Sips by Evve</title>
 <style>
   :root {
@@ -322,6 +322,19 @@
   .item-line .di-qty { flex: 0 0 70px; width: 70px; }
   .item-line .di-price { flex: 0 0 100px; width: 100px; }
   .item-line-more { flex: 1 0 100%; display: flex; gap: 8px; margin-top: -2px; }
+  .cup-card { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }
+  .cup-card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-size: 14px; }
+  .cup-card .item-line { margin-bottom: 6px; }
+  .di-lbl { flex: 0 0 58px; font-size: 12px; color: var(--muted); }
+  .di-sub { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .di-sticker-search { flex: 1 1 130px; min-width: 110px; }
+  @media (max-width: 600px) { .cup-card .item-line > .di-lbl, .cup-card .di-sub > .di-lbl:first-child { flex: 1 0 100%; margin-bottom: -4px; } }
+  .di-sugg { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+  .di-sugg button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 3px 8px 3px 3px; font-size: 12px; cursor: pointer; color: inherit; }
+  .di-sugg img, .di-thumb { width: 30px; height: 30px; object-fit: cover; border-radius: 5px; background: #f3f3f3; }
+  .sp-warn { background: #fdf3dc; color: #854f0b; border-radius: 8px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
+  .sp-ok { background: #e3f1d8; color: #3b6d11; border-radius: 8px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
+  .sp-bad { background: #fcebeb; color: #a32d2d; border-radius: 8px; padding: 6px 10px; font-size: 12px; margin-top: 6px; }
   .total-line { text-align: right; font-size: 14px; font-weight: 600; margin-top: 10px; }
   .order-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
   .order-edit-grid .field-block { font-size: 13px; }
@@ -536,6 +549,7 @@
       <h1>Inventory</h1>
       <button class="btn btn-primary" id="btn-add-product">+ Add product</button>
     </div>
+    <div id="patterns-settings" style="margin-bottom:12px;"></div>
     <div class="card" id="product-form-wrap" style="display:none; margin-bottom:16px;">
       <div class="form-grid">
         <div>
@@ -582,8 +596,8 @@
         </div>
         <div id="pf-glitter-wrap">
           <label class="field-label">Full Glitter extra (RM)</label>
-          <input id="pf-glitter-extra" type="number" step="0.01" min="0" placeholder="5 (standard)">
-          <div class="muted" style="font-size:11px; margin-top:3px;">Leave empty for the standard +RM5. Tumblers only.</div>
+          <input id="pf-glitter-extra" type="number" step="0.01" min="0" placeholder="standard">
+          <div class="muted" style="font-size:11px; margin-top:3px;">Leave empty to use the standard Full Glitter price (see 🎨 Patterns). Tumblers only.</div>
         </div>
         <div style="grid-column: 1 / -1;">
           <details>
@@ -617,6 +631,11 @@
           <label class="field-label">Low stock alert threshold</label>
           <input id="pf-threshold" type="number" min="0" value="2">
         </div>
+        <div id="pf-catno-wrap">
+          <label class="field-label">Catalogue no. <span class="muted">(01–08, for pasted orders)</span></label>
+          <input id="pf-catalogue-no" placeholder="e.g. 04" autocomplete="off">
+        </div>
+        <div style="grid-column: 1 / -1;" id="pf-lids-wrap"></div>
         <div style="grid-column: 1 / -1;" id="pf-promo-wrap"></div>
         <div style="grid-column: 1 / -1;">
           <label class="field-label">Photo (optional — helps you recognize sticker designs at a glance)</label>
@@ -1008,6 +1027,15 @@
       <h2 id="order-form-title" style="font-size:15px; font-weight:600; margin:0 0 14px;">New order</h2>
       <!-- Quick order: just what she knows right after a live — who, what, how much, paid? Everything
            else (dates, status, shipping money, notes, address) sits under "More options". -->
+      <details id="of-smart-paste-wrap" style="margin:0 0 12px;">
+        <summary style="cursor:pointer; font-size:14px; color:var(--blue); font-weight:500;">📋 Paste a catalogue order (fills the form for you)</summary>
+        <textarea id="of-smart-paste" rows="5" placeholder="Paste the whole WhatsApp order message here — Hi! I'd like to order 🐳 …" style="width:100%; margin-top:8px;"></textarea>
+        <div style="display:flex; gap:8px; margin-top:6px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary btn-small" id="btn-smart-paste-fill">Fill the form</button>
+          <span class="muted" style="font-size:12px;">Nothing is saved until you check it and press Save order.</span>
+        </div>
+      </details>
+      <div id="of-smart-paste-result"></div>
       <div class="form-grid">
         <div>
           <label class="field-label">Buyer name</label>
@@ -1022,12 +1050,23 @@
           <input id="of-buyer-whatsapp" placeholder="+60123456789 or @username" autocomplete="off">
           <div id="of-whatsapp-suggest"></div>
         </div>
+        <div>
+          <label class="field-label">Order no <span class="muted">(from the catalogue, optional)</span></label>
+          <input id="of-order-no" placeholder="e.g. 1103K01" autocomplete="off">
+        </div>
         <div id="of-repeat-customer-wrap" style="grid-column: 1 / -1;"></div>
       </div>
 
-      <div class="form-section-title">Items</div>
+      <div class="form-section-title">Cups &amp; items</div>
       <div id="order-items"></div>
-      <button class="btn btn-secondary btn-small" id="btn-add-item" style="margin-bottom:14px;">+ Add item</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+        <button type="button" class="btn btn-secondary btn-small" id="btn-add-cup">+ Add another cup</button>
+        <button class="btn-text" id="btn-add-item" style="font-size:13px;">+ Other item</button>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="field-label">📝 Order notes 备注</label>
+        <textarea id="of-order-notes" rows="2" style="width:100%;" placeholder="e.g. birthday gift, wants pink glitter, decided on live…"></textarea>
+      </div>
 
       <div class="of-kind-row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:4px 0 12px;">
         <div class="of-kind" id="of-kind">
@@ -1088,7 +1127,7 @@
       <div class="muted" id="of-production-hint" style="font-size:12px; margin-top:6px;"></div>
 
       <details id="of-more-options" style="margin:12px 0;">
-        <summary style="cursor:pointer; font-size:14px; color:var(--blue); font-weight:500;">More: address, discount, shipping, notes</summary>
+        <summary style="cursor:pointer; font-size:14px; color:var(--blue); font-weight:500;">More: address, discount, shipping</summary>
         <div style="padding-top:12px;">
           <div class="form-grid">
             <div>
@@ -1132,8 +1171,8 @@
             <div><label class="field-label">Postcode</label><input id="of-postcode"></div>
           </div>
 
-          <div style="margin-top:12px;">
-            <label class="field-label">Notes</label>
+          <div style="display:none;">
+            <label class="field-label">Shipping notes <span class="muted">(for packing / the courier)</span></label>
             <input id="of-notes">
           </div>
         </div>
@@ -1265,21 +1304,40 @@
   // time) — purely for her own clarity on which pattern went out to which customer. Only
   // "full_glitter" carries a price surcharge; the rest are free style choices. Keyed by a
   // stable value (not the label) so relabeling later doesn't silently break saved orders.
-  var TUMBLER_PATTERNS = [
+  // The standard list; she can change names/prices, add or hide patterns in Inventory → 🎨 Patterns
+  // (saved as state.patterns). Each pattern can have a special price for one tumbler, or be
+  // "not available" for it (special[productId] = number | 'na').
+  var DEFAULT_PATTERNS = [
     { value: 'normal_cateye', label: 'Normal Cateye', surcharge: 0 },
     { value: 'swirl_cateye', label: 'Swirl Flow Cateye', surcharge: 0 },
-    { value: 'full_glitter', label: 'Full Glitter', surcharge: 5 },
+    { value: 'lava', label: 'Lava', surcharge: 0 },
+    { value: 'full_glitter', label: 'Full Glitter', surcharge: 10 },
+    { value: 'uv_colour', label: 'UV Colour Changing', surcharge: 7 },
+    { value: 'milkshake', label: 'Milkshake', surcharge: 15 },
     { value: 'dual_lava', label: 'Dual Lava', surcharge: 0 },
     { value: 'single_lava', label: 'Single Lava', surcharge: 0 }
   ];
+  var TUMBLER_PATTERNS = DEFAULT_PATTERNS.map(function (p) { return Object.assign({}, p); });
+  function syncPatterns() {
+    var src = (typeof state !== 'undefined' && state && Array.isArray(state.patterns) && state.patterns.length) ? state.patterns : DEFAULT_PATTERNS;
+    TUMBLER_PATTERNS = src.filter(function (p) { return p && p.value; }).map(function (p) {
+      return { value: p.value, label: p.label || p.value, surcharge: Number(p.surcharge) || 0, hidden: !!p.hidden, special: p.special || {} };
+    });
+  }
   function tumblerPatternInfo(value) {
     return TUMBLER_PATTERNS.find(function (p) { return p.value === value; }) || null;
   }
-  // A tumbler can have its own Full Glitter extra (600ml fat bottle uses a lot more glitter and
-  // solution: +RM10); every other tumbler keeps the standard +RM5.
+  function patternUnavailableFor(value, productId) {
+    var info = tumblerPatternInfo(value);
+    return !!(info && productId && info.special && info.special[productId] === 'na');
+  }
+  // The extra for a pattern on a given tumbler: that tumbler's special price if one is set
+  // (🎨 Patterns), else the tumbler's own Full Glitter extra (older setting), else the standard.
   function patternSurchargeFor(value, productId) {
     var info = tumblerPatternInfo(value);
     if (!info) return 0;
+    var sp = productId && info.special ? info.special[productId] : null;
+    if (sp != null && sp !== '' && sp !== 'na') return Number(sp) || 0;
     if (value === 'full_glitter') {
       var pr = productId && state.products.find(function (x) { return x.id === productId; });
       if (pr && pr.fullGlitterExtra != null && pr.fullGlitterExtra !== '') return Number(pr.fullGlitterExtra) || 0;
@@ -1315,6 +1373,7 @@
   }
 
   var state = loadState();
+  syncPatterns();
   if (!state.blockedDates) state.blockedDates = {};
   // Her weekly recurring pack/rest days (default Tue + Sat, per her own schedule) — kept separate
   // from blockedDates, which is for one-off exceptions (a specific day off, a holiday). Used to
@@ -2044,6 +2103,8 @@
     document.getElementById('pf-stock').value = '';
     document.getElementById('pf-threshold').value = 2;
     renderPromoFormBlock(null);
+    renderLidsFormBlock(null);
+    document.getElementById('pf-catalogue-no').value = '';
     document.getElementById('pf-glitter-extra').value = '';
     document.getElementById('pf-glitter-wrap').style.display = '';
     document.getElementById('pf-photo-file').value = '';
@@ -2111,7 +2172,9 @@
       threshold: Number(document.getElementById('pf-threshold').value) || 0,
       sourcePlatform: document.getElementById('pf-source-platform').value.trim(),
       sourceLink: document.getElementById('pf-source-link').value.trim(),
-      fullGlitterExtra: (type === 'Tumbler' && document.getElementById('pf-glitter-extra').value.trim() !== '') ? Number(document.getElementById('pf-glitter-extra').value) : null
+      fullGlitterExtra: (type === 'Tumbler' && document.getElementById('pf-glitter-extra').value.trim() !== '') ? Number(document.getElementById('pf-glitter-extra').value) : null,
+      catalogueNo: type === 'Tumbler' ? document.getElementById('pf-catalogue-no').value.trim() : '',
+      lids: type === 'Tumbler' ? readLidsForm() : []
     };
     var promoForm = readPromoForm();
     var newProductId = null;
@@ -2241,6 +2304,8 @@
     document.getElementById('pf-stock').value = p.stock;
     document.getElementById('pf-threshold').value = p.threshold;
     renderPromoFormBlock(p);
+    renderLidsFormBlock(p);
+    document.getElementById('pf-catalogue-no').value = p.catalogueNo || '';
     document.getElementById('pf-glitter-extra').value = (p.fullGlitterExtra != null && p.fullGlitterExtra !== '') ? p.fullGlitterExtra : '';
     document.getElementById('pf-glitter-wrap').style.display = p.type === 'Tumbler' ? '' : 'none';
     pfPhotoData = p.image || '';
@@ -2333,6 +2398,7 @@
         '<div class="muted" style="color:' + (margin >= 0 ? 'var(--green)' : 'var(--red)') + ';">Margin ' + money(margin) + '</div>'
       : '<div>' + money(p.cost * p.stock) + '</div>' +
         '<div class="muted" style="font-size:11px;">per unit ' + moneyPrecise(p.cost) + '</div>';
+    nameBlockHtml += lidsSummaryHtml(p);
     var waitingN = waitingCountFor(p.id);
     if (waitingN) nameBlockHtml += '<div><span class="remind-pill" style="margin:3px 0 0;">🔔 ' + waitingN + ' customer' + (waitingN === 1 ? '' : 's') + ' waiting</span></div>';
     var row = '<tr>' +
@@ -2868,7 +2934,82 @@
 
   var INVENTORY_FILTERABLE_TYPES = { 'Tumbler': true, 'Add ons': true, 'Others': true };
 
+  // ---------- 🎨 Patterns: names, extra price, hidden, and special prices per tumbler.
+  var patternsOpen = false, patternsDraft = null, patternsSpecialOpen = {};
+  function renderPatternsSettings() {
+    var box = document.getElementById('patterns-settings');
+    if (!box) return;
+    if (!patternsOpen) {
+      box.innerHTML = '<button type="button" class="btn-text" id="btn-patterns-open" style="font-size:13px;">🎨 Patterns &amp; prices (' + TUMBLER_PATTERNS.filter(function (p) { return !p.hidden; }).length + ')</button>';
+      return;
+    }
+    if (!patternsDraft) patternsDraft = TUMBLER_PATTERNS.map(function (p) { return { value: p.value, label: p.label, surcharge: p.surcharge, hidden: !!p.hidden, special: Object.assign({}, p.special || {}) }; });
+    var tumblers = state.products.filter(function (p) { return p.type === 'Tumbler'; });
+    box.innerHTML = '<div class="card">' +
+      '<div style="font-weight:600; margin-bottom:2px;">🎨 Patterns &amp; prices</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px;">The extra is added to the tumbler price. Orders already saved keep what they were charged.</div>' +
+      patternsDraft.map(function (pt, i) {
+        var nSpecial = Object.keys(pt.special || {}).filter(function (k) { return pt.special[k] !== '' && pt.special[k] != null; }).length;
+        return '<div style="padding:8px 0; border-top:1px solid var(--border);">' +
+          '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+            '<input class="pt-label" data-i="' + i + '" value="' + escapeHtml(pt.label) + '" style="flex:1; min-width:140px;">' +
+            '<span style="font-size:13px;">+RM</span><input class="pt-sur" data-i="' + i + '" type="number" min="0" step="0.01" value="' + (Number(pt.surcharge) || 0) + '" style="width:80px;">' +
+            '<label style="font-size:12px; white-space:nowrap;"><input type="checkbox" class="pt-hidden" data-i="' + i + '"' + (pt.hidden ? ' checked' : '') + '> Hidden</label>' +
+            '<button type="button" class="btn-text" data-pt-special="' + i + '" style="font-size:12px;">' + (patternsSpecialOpen[i] ? '▾' : '▸') + ' Special prices' + (nSpecial ? ' (' + nSpecial + ')' : '') + '</button>' +
+          '</div>' +
+          (patternsSpecialOpen[i] ? '<div style="margin:6px 0 0 8px; font-size:13px;">' + (tumblers.length ? tumblers.map(function (t) {
+            var sv = pt.special ? pt.special[t.id] : '';
+            return '<div style="display:flex; gap:8px; align-items:center; padding:3px 0; flex-wrap:wrap;"><span style="flex:1; min-width:140px;">' + escapeHtml(t.name + (t.variant ? ' ' + t.variant : '')) + '</span>' +
+              '<span>+RM</span><input class="pt-sp" data-i="' + i + '" data-pid="' + t.id + '" type="number" min="0" step="0.01" placeholder="standard" value="' + (sv != null && sv !== '' && sv !== 'na' ? sv : '') + '" style="width:90px;"' + (sv === 'na' ? ' disabled' : '') + '>' +
+              '<label style="font-size:12px; white-space:nowrap;"><input type="checkbox" class="pt-na" data-i="' + i + '" data-pid="' + t.id + '"' + (sv === 'na' ? ' checked' : '') + '> Not available</label></div>';
+          }).join('') : '<span class="muted">No tumblers yet.</span>') + '</div>' : '') +
+        '</div>';
+      }).join('') +
+      '<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;"><button type="button" class="btn btn-secondary btn-small" id="btn-pt-add">+ Add pattern</button>' +
+        '<span style="flex:1;"></span><button type="button" class="btn btn-primary btn-small" id="btn-pt-save">Save patterns</button><button type="button" class="btn btn-secondary btn-small" id="btn-pt-cancel">Cancel</button></div>' +
+    '</div>';
+  }
+  (function () {
+    var box = document.getElementById('patterns-settings');
+    if (!box) return;
+    function readDraft() {
+      Array.from(box.querySelectorAll('.pt-label')).forEach(function (el) { patternsDraft[Number(el.getAttribute('data-i'))].label = el.value.trim(); });
+      Array.from(box.querySelectorAll('.pt-sur')).forEach(function (el) { patternsDraft[Number(el.getAttribute('data-i'))].surcharge = Number(el.value) || 0; });
+      Array.from(box.querySelectorAll('.pt-hidden')).forEach(function (el) { patternsDraft[Number(el.getAttribute('data-i'))].hidden = el.checked; });
+      Array.from(box.querySelectorAll('.pt-sp')).forEach(function (el) {
+        var d = patternsDraft[Number(el.getAttribute('data-i'))], pid = el.getAttribute('data-pid');
+        if (d.special[pid] === 'na') return;
+        if (el.value.trim() === '') delete d.special[pid]; else d.special[pid] = Number(el.value) || 0;
+      });
+    }
+    box.addEventListener('click', function (e) {
+      if (e.target.id === 'btn-patterns-open') { patternsOpen = true; patternsDraft = null; renderPatternsSettings(); return; }
+      if (!patternsDraft) return;
+      var sp = e.target.getAttribute('data-pt-special');
+      if (sp !== null) { readDraft(); patternsSpecialOpen[sp] = !patternsSpecialOpen[sp]; renderPatternsSettings(); return; }
+      if (e.target.id === 'btn-pt-add') { readDraft(); patternsDraft.push({ value: 'p_' + uid(), label: 'New pattern', surcharge: 0, hidden: false, special: {} }); renderPatternsSettings(); return; }
+      if (e.target.id === 'btn-pt-cancel') { patternsOpen = false; patternsDraft = null; patternsSpecialOpen = {}; renderPatternsSettings(); return; }
+      if (e.target.id === 'btn-pt-save') {
+        readDraft();
+        if (patternsDraft.some(function (d) { return !d.label; })) { alert('Every pattern needs a name.'); return; }
+        state.patterns = patternsDraft.map(function (d) { return { value: d.value, label: d.label, surcharge: d.surcharge, hidden: d.hidden, special: d.special }; });
+        syncPatterns();
+        patternsOpen = false; patternsDraft = null; patternsSpecialOpen = {};
+        save(); renderAll();
+        showCopiedToast('Patterns saved');
+      }
+    });
+    box.addEventListener('change', function (e) {
+      if (!patternsDraft || !e.target.classList.contains('pt-na')) return;
+      readDraft();
+      var d = patternsDraft[Number(e.target.getAttribute('data-i'))], pid = e.target.getAttribute('data-pid');
+      if (e.target.checked) d.special[pid] = 'na'; else delete d.special[pid];
+      renderPatternsSettings();
+    });
+  })();
+
   function renderInventory() {
+    renderPatternsSettings();
     var container = document.getElementById('inventory-content');
     if (state.products.length === 0) {
       container.innerHTML = '<div class="card"><div class="empty">No products yet. Add your tumbler, each sticker code, and any other supplies above.</div></div>';
@@ -5512,6 +5653,11 @@
     document.getElementById('of-shipping-cost').value = '';
     document.getElementById('of-discount').value = 0;
     document.getElementById('of-notes').value = '';
+    document.getElementById('of-order-notes').value = '';
+    document.getElementById('of-order-no').value = '';
+    document.getElementById('of-smart-paste').value = '';
+    document.getElementById('of-smart-paste-result').innerHTML = '';
+    document.getElementById('of-smart-paste-wrap').open = false;
     var repeatWrap = document.getElementById('of-repeat-customer-wrap');
     if (repeatWrap) repeatWrap.innerHTML = '';
     var waSuggestWrap = document.getElementById('of-whatsapp-suggest');
@@ -5568,11 +5714,30 @@
   function renderDraftItems() {
     applyPromoPricing();
     var container = document.getElementById('order-items');
-    container.innerHTML = draftItems.map(function (line, idx) {
+    var lineHtmls = draftItems.map(function (line, idx) {
       var typeOptions = PRODUCT_TYPES.map(function (t) {
         return '<option value="' + t + '"' + (t === line.type ? ' selected' : '') + '>' + t + '</option>';
       }).join('');
-      var typeSelect = '<select class="di-type" data-idx="' + idx + '"><option value="">Type…</option>' + typeOptions + '</select>';
+      // Once a line has a type it sits in its cup card with a plain label; the type box is only
+      // shown for a blank "other item" line.
+      var typeSelect = '<select class="di-type" data-idx="' + idx + '"' + (line.type ? ' style="display:none;"' : '') + '><option value="">Type…</option>' + typeOptions + '</select>' +
+        (line.type ? '<span class="di-lbl">' + (line.type === 'Tumbler' ? 'Cup' : line.type === 'Stickers' ? 'Sticker' : line.type === 'Add ons' ? 'Add-on' : 'Item') + '</span>' : '');
+      var lineProd = line.productId ? state.products.find(function (x) { return x.id === line.productId; }) : null;
+      var stickerSearch = line.type === 'Stickers'
+        ? (lineProd && lineProd.image ? '<img class="di-thumb" src="' + lineProd.image + '" alt="">' : '') +
+          (lineProd ? '<strong style="font-size:13px; white-space:nowrap;">' + escapeHtml((lineProd.sku && lineProd.sku !== lineProd.name ? lineProd.sku + ' · ' : '') + lineProd.name) + '</strong>' : '') +
+          '<input class="di-sticker-search" data-idx="' + idx + '" placeholder="' + (lineProd ? 'Type a code to change' : 'Code or name, e.g. AN003') + '" autocomplete="off">' +
+          (lineProd && !line.browse ? '<button type="button" class="btn-text" data-browse-line="' + idx + '" style="font-size:12px; white-space:nowrap;">Browse</button>' : '')
+        : '';
+      // A chosen sticker shows as its code + photo; the theme/sticker menus stay in the page
+      // (hidden) and come back with "Browse".
+      var hideStickerMenus = line.type === 'Stickers' && lineProd && !line.browse;
+      var lidList = (line.type === 'Tumbler' && lineProd) ? productLids(lineProd) : [];
+      if (lidList.length === 1 && !line.lid) line.lid = lidList[0].name;
+      var lidSelect = lidList.length
+        ? '<span class="di-lbl" style="flex:0 0 auto;">Lid</span><select class="di-lid" data-idx="' + idx + '" style="flex:0 1 150px;">' + (lidList.length > 1 ? '<option value="">Choose lid…</option>' : '') +
+            lidList.map(function (l) { return '<option value="' + escapeHtml(l.name) + '"' + (l.name === line.lid ? ' selected' : '') + '>' + escapeHtml(l.name) + ' (' + (Number(l.stock) || 0) + ' left)</option>'; }).join('') + '</select>'
+        : '';
 
       var themeSelect = '';
       if (line.type === 'Stickers') {
@@ -5613,22 +5778,265 @@
       var patternSelect = (line.type === 'Tumbler' && line.productId)
         ? '<select class="di-pattern" data-idx="' + idx + '" title="Style">' + patternOptionsHtml(line.pattern || '', line.productId, line.pattern ? line.patternSurcharge : null) + '</select>'
         : '';
+      if (hideStickerMenus) {
+        themeSelect = themeSelect.replace('<select class="di-theme"', '<select style="display:none;" class="di-theme"');
+        productSelectHtml = productSelectHtml.replace('<select class="di-product"', '<select style="display:none;" class="di-product"');
+      }
       return '<div class="item-line" data-idx="' + idx + '">' +
-        typeSelect + themeSelect + productSelectHtml + patternSelect +
+        typeSelect + stickerSearch + themeSelect + productSelectHtml +
+        (hideStickerMenus ? '<span style="flex:1;"></span>' : '') +
         '<input class="di-qty" type="number" min="1" value="' + line.qty + '" data-idx="' + idx + '" placeholder="Qty">' +
         '<input class="di-price" type="number" step="0.01" min="0" value="' + line.unitPrice + '" data-idx="' + idx + '" placeholder="Unit RM"' + (line.isGift ? ' disabled' : '') + '>' +
         (line.priceHint != null ? '<button type="button" class="btn-text" data-use-std-price="' + idx + '" style="font-size:12px; white-space:nowrap;" title="You typed your own price for this line">Standard ' + money(line.priceHint) + ' — use it</button>' : '') +
         promoTagHtml(line, idx) +
         '<button type="button" class="btn-text" data-toggle-more="' + idx + '" style="font-size:12px; white-space:nowrap;">⋯ more' + moreBadges + '</button>' +
         '<button class="btn-text danger" data-remove-line="' + idx + '">Remove</button>' +
+        ((patternSelect || lidSelect) ? '<div class="di-sub"><span class="di-lbl">Pattern</span>' + patternSelect + lidSelect + '</div>' : '') +
+        (line.type === 'Stickers' ? '<div class="di-sugg" data-sugg-for="' + idx + '"></div>' : '') +
         moreRow +
         '</div>';
+    });
+    // One card per cup: a Tumbler line starts a card and the lines after it (its stickers and
+    // add-ons) belong to it, until the next Tumbler. Lines before any Tumbler sit on their own.
+    var cards = [], cur = null;
+    draftItems.forEach(function (line, idx) {
+      if (line.type === 'Tumbler' || !cur) { cur = { isCup: line.type === 'Tumbler', idxs: [] }; cards.push(cur); }
+      cur.idxs.push(idx);
+    });
+    var cupNo = 0;
+    container.innerHTML = cards.map(function (c) {
+      var sub = c.idxs.reduce(function (t, i) { return t + (Number(draftItems[i].qty) || 0) * (Number(draftItems[i].unitPrice) || 0); }, 0);
+      var last = c.idxs[c.idxs.length - 1];
+      if (c.isCup) cupNo++;
+      return '<div class="cup-card">' +
+        '<div class="cup-card-head"><strong>' + (c.isCup ? '🥤 Cup ' + cupNo : 'Other items') + '</strong><span class="muted">' + money(sub) + '</span></div>' +
+        c.idxs.map(function (i) { return lineHtmls[i]; }).join('') +
+        '<div style="display:flex; gap:12px; flex-wrap:wrap;">' +
+          '<button type="button" class="btn-text" data-add-in-card="' + last + '" data-add-type="Stickers" style="font-size:13px;">+ Sticker</button>' +
+          '<button type="button" class="btn-text" data-add-in-card="' + last + '" data-add-type="Add ons" style="font-size:13px;">+ Add-on</button>' +
+        '</div>' +
+      '</div>';
     }).join('');
     updateDraftTotal();
+  }
+  // Stickers by code or name, best matches first.
+  function stickerSearchResults(q, limit) {
+    q = String(q || '').trim().toLowerCase();
+    if (!q) return [];
+    var out = state.products.filter(function (p) { return p.type === 'Stickers'; }).map(function (p) {
+      var sku = String(p.sku || '').toLowerCase(), nm = String(p.name || '').toLowerCase();
+      var score = sku === q ? 0 : sku.indexOf(q) === 0 ? 1 : nm.indexOf(q) === 0 ? 2 : (sku.indexOf(q) !== -1 || nm.indexOf(q) !== -1 || String(p.theme || '').toLowerCase().indexOf(q) !== -1) ? 3 : 9;
+      return { p: p, score: score };
+    }).filter(function (x) { return x.score < 9; });
+    out.sort(function (a, b) { return a.score - b.score || String(a.p.sku || '').localeCompare(String(b.p.sku || '')); });
+    return out.slice(0, limit || 8).map(function (x) { return x.p; });
+  }
+  // The first sticker of a cup is included in the cup's price; any more are extra.
+  function stickerDefaultPrice(idx, p) {
+    for (var i = idx - 1; i >= 0; i--) {
+      if (draftItems[i].type === 'Tumbler') break;
+      if (draftItems[i].type === 'Stickers' && draftItems[i].productId) return Number(p.price) || ADDON_STICKER_PRICE;
+    }
+    var hasCup = false;
+    for (var j = idx - 1; j >= 0; j--) { if (draftItems[j].type === 'Tumbler') { hasCup = true; break; } }
+    return hasCup ? 0 : (Number(p.price) || ADDON_STICKER_PRICE);
+  }
+  function setDraftSticker(idx, p) {
+    var l = draftItems[idx];
+    if (!l || !p) return;
+    l.type = 'Stickers'; l.theme = p.theme || ''; l.productId = p.id; l.priceHint = null;
+    if (ofKind !== 'replacement' && !l.isGift) l.unitPrice = stickerDefaultPrice(idx, p);
+    if (l.unitPrice === '' || l.unitPrice == null) l.unitPrice = 0;
   }
 
   document.getElementById('btn-add-item').addEventListener('click', function () {
     draftItems.push({ type: '', theme: '', productId: '', qty: 1, unitPrice: '' });
+    renderDraftItems();
+  });
+  document.getElementById('order-items').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || !e.target.classList.contains('di-sticker-search')) return;
+    e.preventDefault();
+    var first = stickerSearchResults(e.target.value, 1)[0];
+    if (first) { setDraftSticker(Number(e.target.getAttribute('data-idx')), first); renderDraftItems(); }
+  });
+
+  // ---------- Smart paste: read the order message the catalogue writes for WhatsApp and fill the
+  // form. Nothing is saved — she checks every line, then presses Save order herself.
+  function parseCatalogueOrder(text) {
+    var res = { orderNo: '', bottles: [], delivery: '', total: null, tiktok: '', name: '', found: false };
+    var cur = null;
+    function newBottle() { cur = { tumblerText: '', tumblerNo: '', tumblerName: '', tumblerPrice: null, colour: '', sticker: '', extras: [], pattern: '', patternExtra: null, promo: null, addons: [], nameOn: '' }; res.bottles.push(cur); }
+    function code(v) { var m = String(v).trim().match(/^([A-Za-z]{1,4}\s?\d{2,4})\b/); return (m ? m[1].replace(/\s/g, '') : String(v).trim()).toUpperCase(); }
+    function pat(v) {
+      v = String(v).trim();
+      if (!v || v.charAt(0) === '(') return { name: '', extra: null };
+      var m = v.match(/^(.*?)\s*\(\+\s*RM\s*([\d.]+)\)\s*$/i);
+      return m ? { name: m[1].trim(), extra: Number(m[2]) } : { name: v, extra: null };
+    }
+    String(text || '').split(/\r?\n/).forEach(function (raw) {
+      var l = raw.trim(), m;
+      if (!l || /^📷/.test(l) || /^https?:\/\//i.test(l)) return;
+      if ((m = l.match(/^Order no:\s*(.+)$/i))) { res.orderNo = m[1].trim(); return; }
+      if ((m = l.match(/^Date:\s*(.+)$/i))) {
+        // "15 Nov 2026, 9:42 PM" -> 2026-11-15 (the day the customer sent the order)
+        var dm = m[1].match(/(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\.?,?\s+(\d{4})/);
+        var mi = dm ? ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(dm[2].toLowerCase()) : -1;
+        if (mi !== -1) res.date = dm[3] + '-' + String(mi + 1).padStart(2, '0') + '-' + String(Number(dm[1])).padStart(2, '0');
+        return;
+      }
+      if (/Bottle\s+\d+/i.test(l) && !/:/.test(l)) { newBottle(); return; }
+      if ((m = l.match(/^Tumbler:\s*(.+)$/i))) {
+        if (!cur || cur.tumblerText) newBottle();
+        cur.tumblerText = m[1].trim(); res.found = true;
+        var t = cur.tumblerText.match(/^(\d+)\s*[·.\-]\s*(.+?)\s*(?:\(RM\s*([\d.]+)\))?\s*$/i);
+        if (t) { cur.tumblerNo = t[1]; cur.tumblerName = t[2]; cur.tumblerPrice = t[3] != null ? Number(t[3]) : null; }
+        else { var t2 = cur.tumblerText.match(/^(.+?)\s*\(RM\s*([\d.]+)\)\s*$/i); cur.tumblerName = t2 ? t2[1] : cur.tumblerText; cur.tumblerPrice = t2 ? Number(t2[2]) : null; }
+        return;
+      }
+      if (!cur && /^(Colour|Sticker|Extra sticker|Pattern|Add-ons|Name on tumbler|.*Promo)/i.test(l)) newBottle();
+      if ((m = l.match(/^Colou?r:\s*(.+)$/i))) { cur.colour = m[1].trim(); return; }
+      if ((m = l.match(/^Sticker:\s*(.+)$/i))) { if (m[1].trim().charAt(0) !== '(') cur.sticker = code(m[1]); res.found = true; return; }
+      if ((m = l.match(/^Extra sticker:\s*(.+)$/i))) {
+        if (m[1].trim().charAt(0) === '(') return;
+        var ex = m[1].match(/\(\+\s*RM\s*([\d.]+)\)/i);
+        cur.extras.push({ code: code(m[1]), price: ex ? Number(ex[1]) : null }); return;
+      }
+      if ((m = l.match(/^Pattern:\s*(.+)$/i))) { var pp = pat(m[1]); cur.pattern = pp.name; cur.patternExtra = pp.extra; return; }
+      if ((m = l.match(/Promo bottle:\s*(.+)$/i))) {
+        var pb = m[1].match(/^(.*?)\s*\(\+\s*RM\s*([\d.]+)\)\s*$/i);
+        cur.promo = { name: pb ? pb[1].trim() : m[1].trim(), price: pb ? Number(pb[2]) : null, sticker: '', pattern: '', patternExtra: null }; return;
+      }
+      if ((m = l.match(/^Promo sticker:\s*(.+)$/i))) { if (cur.promo && m[1].trim().charAt(0) !== '(') cur.promo.sticker = code(m[1]); return; }
+      if ((m = l.match(/^Promo pattern:\s*(.+)$/i))) { if (cur.promo) { var pq = pat(m[1]); cur.promo.pattern = pq.name; cur.promo.patternExtra = pq.extra; } return; }
+      if ((m = l.match(/^Add-ons:\s*(.+)$/i))) {
+        m[1].split(/\)\s*,\s*/).forEach(function (part) {
+          var a = part.match(/^(.*?)\s*\((.*?)\)?$/);
+          var nm = a ? a[1].trim() : part.trim(), lab = a ? a[2] : '';
+          var pr = String(lab).match(/RM\s*([\d.]+)/i);
+          if (nm) cur.addons.push({ name: nm, price: pr ? Number(pr[1]) : null });
+        });
+        return;
+      }
+      if ((m = l.match(/^Name on tumbler:\s*(.+)$/i))) { if (m[1].trim().charAt(0) !== '(') cur.nameOn = m[1].trim(); return; }
+      if ((m = l.match(/^Delivery:\s*(.+)$/i))) { res.delivery = m[1].trim(); return; }
+      if ((m = l.match(/^Total:\s*RM\s*([\d.,]+)/i))) { res.total = Number(m[1].replace(/,/g, '')); return; }
+      if ((m = l.match(/^TikTok handle:\s*(.*)$/i))) { res.tiktok = m[1].trim(); return; }
+      if ((m = l.match(/^Name:\s*(.*)$/i))) { res.name = m[1].trim(); return; }
+    });
+    return res;
+  }
+  function matchPatternByLabel(name) {
+    var n = String(name || '').trim().toLowerCase();
+    if (!n) return null;
+    var best = null;
+    TUMBLER_PATTERNS.forEach(function (pt) {
+      var lab = pt.label.toLowerCase();
+      if (n === lab || n.indexOf(lab) === 0 || lab.indexOf(n) === 0) { if (!best || lab.length > best.label.length) best = pt; }
+    });
+    return best;
+  }
+  function fillFormFromCatalogueOrder() {
+    var box = document.getElementById('of-smart-paste-result');
+    if (editingOrderId) { box.innerHTML = '<div class="sp-bad">This fills a NEW order — close this one first, then press + New order.</div>'; return; }
+    var parsed = parseCatalogueOrder(document.getElementById('of-smart-paste').value);
+    if (!parsed.found) { box.innerHTML = '<div class="sp-bad">Couldn\'t find an order in that text. Paste the whole message, starting from "Hi! I\'d like to order".</div>'; return; }
+    var warn = [], lines = [], notes = [];
+    var tumblers = state.products.filter(function (p) { return p.type === 'Tumbler'; });
+    function findTumbler(no, name) {
+      var n = String(no || '').replace(/^0+/, '');
+      var byNo = n ? tumblers.filter(function (p) { return String(p.catalogueNo || '').replace(/^0+/, '') === n; }) : [];
+      if (byNo.length === 1) return byNo[0];
+      var nm = String(name || '').toLowerCase();
+      var byName = nm ? tumblers.filter(function (p) { var pn = p.name.toLowerCase(); return pn === nm || nm.indexOf(pn) !== -1 || pn.indexOf(nm) !== -1; }) : [];
+      return byName.length === 1 ? byName[0] : null;
+    }
+    function stickerLine(c, price, where) {
+      var sp = state.products.find(function (p) { return p.type === 'Stickers' && String(p.sku || '').toUpperCase() === c; });
+      if (!sp) { warn.push(where + ': sticker ' + c + ' isn\'t in your Inventory — pick it yourself.'); lines.push({ type: 'Stickers', theme: '', productId: '', qty: 1, unitPrice: price }); return; }
+      if ((Number(sp.stock) || 0) <= 0) warn.push(where + ': sticker ' + c + ' shows 0 in stock.');
+      lines.push({ type: 'Stickers', theme: sp.theme || '', productId: sp.id, qty: 1, unitPrice: price });
+    }
+    function cupLine(prod, basePrice, patName, patExtra, colour, where) {
+      var pt = matchPatternByLabel(patName);
+      if (patName && !pt) warn.push(where + ': pattern "' + patName + '" isn\'t in your 🎨 Patterns list — choose it yourself.');
+      var sur = pt ? (patExtra != null ? patExtra : patternSurchargeFor(pt.value, prod && prod.id)) : 0;
+      var line = { type: 'Tumbler', theme: '', productId: prod ? prod.id : '', qty: 1, unitPrice: (basePrice != null ? basePrice : (prod ? Number(prod.price) || 0 : 0)) + sur, pattern: pt ? pt.value : '', patternSurcharge: sur, promoManual: true };
+      if (prod && colour) {
+        var cn = function (v) { return String(v).toLowerCase().replace(/\blid\b/g, '').replace(/\s+/g, ' ').trim(); };
+        var lid = productLids(prod).find(function (l) { return cn(l.name) === cn(colour); });
+        if (lid) line.lid = lid.name; else notes.push(where + ' colour: ' + colour);
+      } else if (colour) notes.push(where + ' colour: ' + colour);
+      if (prod && (Number(prod.stock) || 0) <= 0) warn.push(where + ': ' + prod.name + ' shows 0 in stock.');
+      lines.push(line);
+    }
+    parsed.bottles.forEach(function (b, bi) {
+      var where = parsed.bottles.length > 1 ? 'Bottle ' + (bi + 1) : 'Tumbler';
+      var prod = findTumbler(b.tumblerNo, b.tumblerName);
+      if (!prod) warn.push(where + ': couldn\'t tell which cup "' + (b.tumblerText || '?') + '" is — pick it (set its Catalogue no. in Inventory → Edit so it\'s automatic next time).');
+      cupLine(prod, b.tumblerPrice, b.pattern, b.patternExtra, b.colour, where);
+      if (b.sticker) stickerLine(b.sticker, 0, where);
+      b.extras.forEach(function (x) { stickerLine(x.code, x.price != null ? x.price : ADDON_STICKER_PRICE, where + ' extra sticker'); });
+      b.addons.forEach(function (a) {
+        var an = a.name.toLowerCase();
+        var cands = state.products.filter(function (p) { return p.type === 'Add ons' && (an.indexOf(p.name.toLowerCase().replace(/\s*[\d.]+\s*cm.*$/, '').trim()) !== -1 || (/name/.test(an) && p.name.toLowerCase() === 'name')); });
+        if (cands.length === 1) lines.push({ type: 'Add ons', theme: '', productId: cands[0].id, qty: 1, unitPrice: a.price != null ? a.price : Number(cands[0].price) || 0 });
+        else { lines.push({ type: 'Add ons', theme: '', productId: '', qty: 1, unitPrice: a.price != null ? a.price : '' }); warn.push(where + ': add-on "' + a.name + '" — pick which item it is.'); }
+      });
+      if (b.nameOn) notes.push((parsed.bottles.length > 1 ? where + ' — n' : 'N') + 'ame on tumbler: ' + b.nameOn);
+      if (b.promo) {
+        var pp = findTumbler('', b.promo.name);
+        if (!pp) warn.push(where + ' promo bottle "' + b.promo.name + '": pick which cup / colour it is.');
+        cupLine(pp, b.promo.price, b.promo.pattern, b.promo.patternExtra, '', where + ' promo bottle');
+        if (b.promo.sticker) stickerLine(b.promo.sticker, 0, where + ' promo bottle');
+      }
+    });
+    draftItems = lines.length ? lines : [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
+    if (parsed.name) document.getElementById('of-buyer-name').value = parsed.name;
+    if (parsed.tiktok) document.getElementById('of-buyer-handle').value = parsed.tiktok;
+    if (parsed.orderNo) document.getElementById('of-order-no').value = parsed.orderNo;
+    if (parsed.date) document.getElementById('of-date').value = parsed.date;
+    if (notes.length) { var on = document.getElementById('of-order-notes'); on.value = (on.value.trim() ? on.value.trim() + '\n' : '') + notes.join('\n'); }
+    if (parsed.delivery) {
+      var east = /east|sabah|sarawak|labuan/i.test(parsed.delivery);
+      var fee = /free/i.test(parsed.delivery) ? 0 : Number((parsed.delivery.match(/RM\s*([\d.]+)/i) || [])[1]) || 0;
+      document.getElementById('of-shipping-zone').value = east ? 'east_malaysia' : 'west_malaysia';
+      document.getElementById('of-shipping').value = fee ? fee : '';
+    } else warn.push('No delivery area in the message — check the shipping zone under More.');
+    renderDraftItems();
+    renderFormReminderPills();
+    var itemsTotal = draftItems.reduce(function (t, l) { return t + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0); }, 0);
+    var formTotal = itemsTotal + (Number(document.getElementById('of-shipping').value) || 0) - (Number(document.getElementById('of-discount').value) || 0);
+    var html = '';
+    if (parsed.total != null) {
+      html += Math.abs(formTotal - parsed.total) < 0.005
+        ? '<div class="sp-ok">✓ Total matches the catalogue: ' + money(parsed.total) + '</div>'
+        : '<div class="sp-bad">Total doesn\'t match — catalogue says ' + money(parsed.total) + ', this form adds up to ' + money(formTotal) + ' (' + (formTotal > parsed.total ? '+' : '−') + money(Math.abs(formTotal - parsed.total)) + '). Check the prices below.</div>';
+    }
+    if (warn.length) html += '<div class="sp-warn"><strong>Please check:</strong><br>' + warn.map(escapeHtml).join('<br>') + '</div>';
+    // Same TikTok handle / name as an earlier order: offer her details, never fill the address by itself.
+    var norm = function (v) { return String(v || '').replace(/^@/, '').trim().toLowerCase(); };
+    var prev = state.orders.slice().reverse().find(function (o) {
+      return o.buyerWhatsapp && ((parsed.tiktok && norm(o.buyerHandle) === norm(parsed.tiktok)) || (parsed.name && norm(o.buyerName) === norm(parsed.name)));
+    });
+    if (prev && !document.getElementById('of-buyer-whatsapp').value.trim()) {
+      html += '<div class="sp-warn">Looks like a returning customer: <strong>' + escapeHtml(prev.buyerName || '') + '</strong> · WhatsApp ' + escapeHtml(prev.buyerWhatsapp) +
+        ' <button type="button" class="btn-text" id="btn-sp-use-customer" data-wa="' + escapeHtml(prev.buyerWhatsapp) + '" style="font-size:12px;">Yes, use her WhatsApp</button><br><span style="font-size:11px;">Her last address is only filled in if you then press "Use last address".</span></div>';
+    }
+    box.innerHTML = html || '<div class="sp-ok">✓ Filled in. Check everything, then press Save order.</div>';
+    document.getElementById('of-smart-paste-wrap').open = false;
+  }
+  document.getElementById('btn-smart-paste-fill').addEventListener('click', fillFormFromCatalogueOrder);
+  document.getElementById('of-smart-paste-result').addEventListener('click', function (e) {
+    if (e.target.id !== 'btn-sp-use-customer') return;
+    document.getElementById('of-buyer-whatsapp').value = e.target.getAttribute('data-wa');
+    e.target.parentNode.remove();
+    renderRepeatCustomerBanner();
+  });
+
+  document.getElementById('btn-add-cup').addEventListener('click', function () {
+    // A blank first line is turned into the cup instead of leaving an empty row above it.
+    if (draftItems.length === 1 && !draftItems[0].type && !draftItems[0].productId) draftItems[0].type = 'Tumbler';
+    else draftItems.push({ type: 'Tumbler', theme: '', productId: '', qty: 1, unitPrice: '' });
     renderDraftItems();
   });
 
@@ -5636,6 +6044,22 @@
     var idx = e.target.getAttribute('data-remove-line');
     if (idx !== null) {
       draftItems.splice(Number(idx), 1);
+      renderDraftItems();
+      return;
+    }
+    var browseIdx = e.target.getAttribute('data-browse-line');
+    if (browseIdx !== null) { draftItems[Number(browseIdx)].browse = true; renderDraftItems(); return; }
+    var addIn = e.target.getAttribute('data-add-in-card');
+    if (addIn !== null) {
+      draftItems.splice(Number(addIn) + 1, 0, { type: e.target.getAttribute('data-add-type'), theme: '', productId: '', qty: 1, unitPrice: '' });
+      renderDraftItems();
+      var ns = document.querySelector('.di-sticker-search[data-idx="' + (Number(addIn) + 1) + '"]');
+      if (ns) ns.focus();
+      return;
+    }
+    var pickBtn = e.target.closest ? e.target.closest('[data-pick-sticker]') : null;
+    if (pickBtn) {
+      setDraftSticker(Number(pickBtn.getAttribute('data-pick-idx')), state.products.find(function (x) { return x.id === pickBtn.getAttribute('data-pick-sticker'); }));
       renderDraftItems();
       return;
     }
@@ -5677,6 +6101,7 @@
       var oldProd = state.products.find(function (x) { return x.id === dLine.productId; });
       var wasPromo = !!dLine.promoAuto;
       dLine.promoAuto = false; dLine.promoManual = false; dLine.promoOptOut = false; dLine.fromSaved = false;
+      dLine.lid = '';
       dLine.productId = e.target.value;
       var p = state.products.find(function (x) { return x.id === e.target.value; });
       dLine.priceHint = null;
@@ -5697,6 +6122,8 @@
         dLine.patternSurcharge = newSurP;
       }
       renderDraftItems();
+    } else if (e.target.classList.contains('di-lid')) {
+      draftItems[idx].lid = e.target.value;
     } else if (e.target.classList.contains('di-pattern')) {
       // Same pricing rule as on the order card: only the style's surcharge (Full Glitter +RM5)
       // is added/removed, so her own typed price is never overwritten.
@@ -5737,6 +6164,15 @@
     var idx = e.target.getAttribute('data-idx');
     if (idx === null) return;
     idx = Number(idx);
+    if (e.target.classList.contains('di-sticker-search')) {
+      var box = document.querySelector('.di-sugg[data-sugg-for="' + idx + '"]');
+      var found = stickerSearchResults(e.target.value, 8);
+      if (box) box.innerHTML = found.map(function (p) {
+        return '<button type="button" data-pick-sticker="' + p.id + '" data-pick-idx="' + idx + '">' + (p.image ? '<img src="' + p.image + '" alt="">' : '') +
+          '<span>' + escapeHtml((p.sku ? p.sku + ' · ' : '') + p.name) + ' <span class="muted">(' + p.stock + ' left)</span></span></button>';
+      }).join('') || (e.target.value.trim() ? '<span class="muted" style="font-size:12px;">No sticker matches that.</span>' : '');
+      return;
+    }
     if (e.target.classList.contains('di-qty')) draftItems[idx].qty = e.target.value;
     if (e.target.classList.contains('di-price')) draftItems[idx].unitPrice = e.target.value;
     updateDraftTotal();
@@ -5978,6 +6414,8 @@
     var shippingCostActual = shippingCostEntered ? (Number(shippingCostRaw) || 0) : 0;
     var discount = Number(document.getElementById('of-discount').value) || 0;
     var notes = document.getElementById('of-notes').value.trim();
+    var orderNotes = document.getElementById('of-order-notes').value.trim();
+    var orderNo = document.getElementById('of-order-no').value.trim();
     var paidChecked = document.getElementById('of-paid').checked;
     var depositIn = Math.round((Number(document.getElementById('of-deposit').value) || 0) * 100) / 100;
     var shipInfo = {
@@ -6017,7 +6455,8 @@
         isGift: !!l.isGift,
         isDefect: !!l.isDefect,
         defectNormalPrice: l.isDefect ? (Number(l.defectNormalPrice) || 0) : null,
-        promo: !!l.promoAuto
+        promo: !!l.promoAuto,
+        lid: (p && p.type === 'Tumbler') ? (l.lid || '') : ''
       };
     });
 
@@ -6051,6 +6490,8 @@
         // clobbers what she already filled in over there.
         order.discount = discount;
         order.notes = notes;
+        order.orderNotes = orderNotes;
+        order.orderNo = orderNo;
         order.items = newItems;
         if (order.scheduledDate !== productionDate) order.customerNotified = false; // date moved — you'll need to notify again
         order.scheduledDate = productionDate;
@@ -6100,6 +6541,8 @@
         productionDone: false,
         discount: discount,
         notes: notes,
+        orderNotes: orderNotes,
+        orderNo: orderNo,
         items: newItems,
         addOns: [],
         parcels: []
@@ -6188,6 +6631,40 @@
     document.getElementById('order-form-wrap').style.display = 'block';
   });
 
+  // ---------- Lids: each tumbler can list its lids (they arrive with the cup), each with its own count.
+  function productLids(p) { return (p && Array.isArray(p.lids)) ? p.lids.filter(function (l) { return l && l.name; }) : []; }
+  function productLid(p, name) { return productLids(p).find(function (l) { return l.name === name; }) || null; }
+  function lidsSummaryHtml(p) {
+    var lids = productLids(p);
+    if (!lids.length) return '';
+    var sum = lids.reduce(function (t, l) { return t + (Number(l.stock) || 0); }, 0);
+    return '<div class="muted" style="font-size:11px;">Lids: ' + lids.map(function (l) { return escapeHtml(l.name) + ' ' + (Number(l.stock) || 0); }).join(' · ') +
+      (sum !== (Number(p.stock) || 0) ? ' <span style="color:var(--red);">⚠ lids add up to ' + sum + ', cup stock is ' + p.stock + ' — fix in Edit</span>' : '') + '</div>';
+  }
+  function renderLidsFormBlock(p) {
+    var wrap = document.getElementById('pf-lids-wrap');
+    if (!wrap) return;
+    var lids = productLids(p);
+    wrap.innerHTML = '<details' + (lids.length ? ' open' : '') + '><summary style="cursor:pointer; color:var(--blue); font-size:13px;">Lids 杯盖' + (lids.length ? ' · ' + lids.length : '') + '</summary>' +
+      '<div class="muted" style="font-size:12px; margin:6px 0;">One line per lid this cup comes with, each with how many you have. They should add up to the cup\'s stock.</div>' +
+      '<div id="pf-lids-rows">' + (lids.length ? lids : [{ name: '', stock: '' }]).map(function (l) { return lidRowHtml(l); }).join('') + '</div>' +
+      '<button type="button" class="btn-text" id="btn-pf-add-lid" style="font-size:13px;">+ Add a lid</button></details>';
+  }
+  function lidRowHtml(l) {
+    return '<div class="pf-lid-row" style="display:flex; gap:8px; margin-bottom:6px;"><input class="pf-lid-name" placeholder="e.g. White" value="' + escapeHtml(l.name || '') + '" style="flex:1;">' +
+      '<input class="pf-lid-stock" type="number" min="0" placeholder="How many" value="' + (l.stock === '' || l.stock == null ? '' : l.stock) + '" style="width:110px;"></div>';
+  }
+  function readLidsForm() {
+    return Array.from(document.querySelectorAll('#pf-lids-rows .pf-lid-row')).map(function (r) {
+      return { name: r.querySelector('.pf-lid-name').value.trim(), stock: Number(r.querySelector('.pf-lid-stock').value) || 0 };
+    }).filter(function (l) { return l.name; });
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.id !== 'btn-pf-add-lid') return;
+    var rows = document.getElementById('pf-lids-rows');
+    if (rows) rows.insertAdjacentHTML('beforeend', lidRowHtml({ name: '', stock: '' }));
+  });
+
   function restoreStock(order) {
     var who = order.buyerName ? ('Order: ' + order.buyerName) : 'Order';
     order.items.forEach(function (item) {
@@ -6196,6 +6673,8 @@
         var back = Math.max(0, (Number(item.qty) || 0) - (Number(item.stockShort) || 0)); // only what was actually taken out
         if (back) { p.stock += back; logStock(p.id, back, 'order_restore', who); }
         delete item.stockShort;
+        if (item.lid && item.lidTaken) { var lidB = productLid(p, item.lid); if (lidB) lidB.stock = (Number(lidB.stock) || 0) + Number(item.lidTaken); }
+        delete item.lidTaken;
       }
     });
     (order.addOns || []).forEach(function (a) {
@@ -6212,6 +6691,9 @@
         // How many of this line weren't in stock when the order was saved (stock can't go below 0).
         var shortBy = Math.max(0, (Number(item.qty) || 0) - (before - p.stock));
         if (shortBy) item.stockShort = shortBy; else delete item.stockShort;
+        // The lid she picked comes out of that lid's own count too.
+        var lidD = item.lid ? productLid(p, item.lid) : null;
+        if (lidD) { var lb = Number(lidD.stock) || 0; lidD.stock = Math.max(0, lb - (Number(item.qty) || 0)); item.lidTaken = lb - lidD.stock; } else delete item.lidTaken;
       }
     });
     (order.addOns || []).forEach(function (a) {
@@ -7325,7 +7807,9 @@
   }
   // Style (pattern) of each bottle, picked right on the card — one small dropdown per bottle.
   function patternOptionsHtml(current, productId, chargedSurcharge) {
-    return '<option value="">🎨 Choose style…</option>' + TUMBLER_PATTERNS.map(function (pt) {
+    return '<option value="">🎨 Choose style…</option>' + TUMBLER_PATTERNS.filter(function (pt) {
+      return current === pt.value || (!pt.hidden && !patternUnavailableFor(pt.value, productId));
+    }).map(function (pt) {
       // The chosen style shows what this order was actually charged (an older order keeps its
       // old extra); the other choices show today's extra for this tumbler.
       var sur = (current === pt.value && chargedSurcharge != null && current) ? Number(chargedSurcharge) || 0 : patternSurchargeFor(pt.value, productId);
@@ -7369,7 +7853,7 @@
       if (orderFilterType === 'replacement' && !o.isReplacement) return false;
       if (orderSearchText) {
         var needle = orderSearchText.toLowerCase();
-        var hay = ((o.buyerName || '') + ' ' + (o.buyerWhatsapp || '') + ' ' + (o.buyerHandle || '')).toLowerCase();
+        var hay = ((o.buyerName || '') + ' ' + (o.buyerWhatsapp || '') + ' ' + (o.buyerHandle || '') + ' ' + (o.orderNo || '')).toLowerCase();
         if (hay.indexOf(needle) === -1) return false;
       }
       return true;
@@ -7430,7 +7914,8 @@
       var buyerInner = (escapeHtml(o.buyerName) || '—') +
         (o.buyerHandle ? ' <span class="oc-sub">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') +
         (o.buyerWhatsapp ? ' <span class="oc-sub">· ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') +
-        (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 Replacement</span>' : '');
+        (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 Replacement</span>' : '') +
+        (o.orderNo ? ' <span class="oc-sub">#' + escapeHtml(o.orderNo) + '</span>' : '');
       var totalHtml;
       if (o.scam) totalHtml = '<s style="color:var(--muted); font-weight:400;">' + money(orderGrossTotal(o)) + '</s><span class="oc-extra" style="color:var(--red);">never paid</span>';
       else if (o.isReplacement && total <= 0) totalHtml = '<span style="font-weight:500; color:var(--muted);">Free replacement</span>';
@@ -7445,7 +7930,7 @@
       var statusTag = orderStage === 'all' ? '<span class="oc-status-tag">' + escapeHtml(orderStatusLabel(o.status)) + '</span>' : '';
       var itemLines = (o.items || []).map(function (i) {
         var patLbl = i.pattern && tumblerPatternInfo(i.pattern) ? tumblerPatternInfo(i.pattern).label : (i.pattern || '');
-        return i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + ((patLbl && (isDone || !isBottleItem(i))) ? ' · ' + escapeHtml(patLbl) : '') +
+        return i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + ((patLbl && (isDone || !isBottleItem(i))) ? ' · ' + escapeHtml(patLbl) : '') + (i.lid ? ' · ' + escapeHtml(i.lid) + ' lid' : '') +
           (o.isReplacement ? ' <span class="muted" style="font-size:12px;">' + ((Number(i.unitPrice) || 0) > 0 ? '(' + money(i.qty * i.unitPrice) + ')' : '(free)') + '</span>' : '') +
           (i.isGift ? ' <span style="font-size:11px; background:var(--bg-accent,#e6f1fb); color:var(--text-accent,#185fa5); padding:1px 5px; border-radius:6px;">🎁 gift</span>' : '') +
           (i.promo ? ' <span class="pill pill-green" style="font-size:10px;">Promo ' + money(i.unitPrice) + '</span>' : '');
@@ -7476,6 +7961,7 @@
           '<td class="oc-date">' + dateHtml + (o.trackingNumber ? ' · <button type="button" class="btn-text" data-copy-tracking="' + o.id + '" title="Tap to copy the tracking number" style="font-size:inherit; padding:0;">' + escapeHtml((o.courier ? courierShort(o.courier) + ' · ' : '') + o.trackingNumber) + ' 📋</button>' : '') + statusTag + '</td>' +
           '<td class="oc-buyer"><div style="font-weight:600;">' + buyerInner + '</div></td>' +
           '<td class="oc-items"><button class="btn-text" data-toggle-order="' + o.id + '" style="text-align:left; font-weight:400; color:inherit; line-height:1.5;">' + (itemLines.length ? itemLines.join('<br>') : 'No items') + '</button>' +
+            (o.orderNotes ? '<div style="font-size:12px; margin-top:4px; background:#fdf8e6; border-radius:6px; padding:3px 8px; white-space:pre-wrap;">📝 ' + escapeHtml(o.orderNotes) + '</div>' : '') +
             orderStyleChipsHtml(o) +
             (o.status === 'cancelled' ? '' : o.pickup ? '<div class="oc-addr pickup"><button type="button" class="oc-addr-btn" data-toggle-pickup="' + o.id + '">🤝 Customer picks up · <u>Ship instead</u></button></div>' : (addrEdit.ctx === 'oc' && addrEdit.id === o.id
               ? addressEditorHtml(o, 'oc')
@@ -7565,7 +8051,8 @@
             return '<div class="row-line" style="align-items:center;"><span>' + catalogThumb + i.qty + ' × ' + escapeHtml(cleanItemName(i.productName)) + defectTag + patternTag + '</span>' +
               '<span style="display:flex; align-items:center;">' + ((o.isReplacement && !(Number(i.unitPrice) > 0)) ? '<span class="muted">free</span>' : money(i.qty * i.unitPrice)) + madeControl + patternControl + photoControl + defectControl + '</span></div>';
           }).join('') +
-          (o.notes ? '<div class="muted" style="padding-top:6px;">Note: ' + escapeHtml(o.notes) + '</div>' : '') +
+          (o.orderNotes ? '<div style="padding-top:6px; white-space:pre-wrap;">📝 ' + escapeHtml(o.orderNotes) + '</div>' : '') +
+          (o.notes ? '<div class="muted" style="padding-top:6px;">Shipping note: ' + escapeHtml(o.notes) + '</div>' : '') +
           '</div>' +
           renderOrderDetailsBlock(o) +
           '<div class="od-sec"><div class="od-sec-title">Add-ons</div>' + renderAddOnsSection(o) + '</div>' +
@@ -7600,6 +8087,8 @@
     document.getElementById('of-shipping-cost').value = isShippingFieldEntered(order.shippingCostEntered, order.shippingCostActual) ? (order.shippingCostActual || 0) : '';
     document.getElementById('of-discount').value = order.discount || 0;
     document.getElementById('of-notes').value = order.notes || '';
+    document.getElementById('of-order-notes').value = order.orderNotes || '';
+    document.getElementById('of-order-no').value = order.orderNo || '';
     document.getElementById('of-paid').checked = !!order.paid;
     document.getElementById('of-deposit').value = depositOf(order) ? depositOf(order) : '';
     document.getElementById('of-ship-paste').value = '';
@@ -7620,7 +8109,7 @@
     draftItems = order.items.map(function (item) {
       var p = state.products.find(function (x) { return x.id === item.productId; });
       if (!p) return null;
-      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice, isGift: !!item.isGift, isDefect: !!item.isDefect, defectNormalPrice: item.isDefect ? item.defectNormalPrice : null, pattern: item.pattern || '', patternSurcharge: Number(item.patternSurcharge) || 0, fromSaved: true, promoAuto: !!item.promo };
+      return { type: p.type, theme: p.theme || '', productId: p.id, qty: item.qty, unitPrice: item.unitPrice, isGift: !!item.isGift, isDefect: !!item.isDefect, defectNormalPrice: item.isDefect ? item.defectNormalPrice : null, pattern: item.pattern || '', patternSurcharge: Number(item.patternSurcharge) || 0, fromSaved: true, promoAuto: !!item.promo, lid: item.lid || '' };
     }).filter(function (l) { return l; });
     if (draftItems.length === 0) draftItems = [{ type: '', theme: '', productId: '', qty: 1, unitPrice: '' }];
     renderDraftItems();
@@ -9411,7 +9900,7 @@
       }
       var qty = Number(it.qty) || 0, made = Math.min(Number(it.madeQty) || 0, qty);
       for (var k = 0; k < qty; k++) {
-        lines.push({ itemIdx: idx, unit: k, made: k < made, label: cleanItemName(it.productName) + (stickers.length ? ' + ' + stickers.join(', ') : '') });
+        lines.push({ itemIdx: idx, unit: k, made: k < made, label: cleanItemName(it.productName) + (it.lid ? ' (' + it.lid + ' lid)' : '') + (stickers.length ? ' + ' + stickers.join(', ') : '') });
       }
     });
     return lines;
@@ -9447,13 +9936,14 @@
     function orderRow(o, isDone, queuePos, isImmediateSection) {
       var cups = orderCupLines(o);
       var cupsMade = cups.filter(function (c) { return c.made; }).length;
-      var itemsSummary = o.items.map(function (i) { return i.productName + ' ×' + i.qty; }).join(', ');
+      var itemsSummary = o.items.map(function (i) { return i.productName + (i.lid ? ' (' + i.lid + ' lid)' : '') + ' ×' + i.qty; }).join(', ');
       var paidPill = '<span class="pill ' + (o.paid ? 'pill-green' : 'pill-red') + '">' + (o.paid ? 'Paid' : 'Unpaid') + '</span>';
       var queuePill = queuePos ? '<span class="pill pill-gray">#' + queuePos + ' in queue</span>' : (isImmediateSection ? '<span class="pill pill-green">Ready now</span>' : '');
       return '<div class="card" style="margin-bottom:8px; padding:12px 14px;' + (isDone ? ' opacity:0.6;' : '') + '">' +
         '<div class="schedule-row">' +
           '<div><div style="font-weight:500;">' + (escapeHtml(o.buyerName) || 'Unknown buyer') + (o.buyerHandle ? ' <span class="muted">' + escapeHtml(o.buyerHandle) + '</span>' : '') + (o.buyerWhatsapp ? ' <span class="muted">WA: ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') + '</div>' +
-          '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div></div>' +
+          '<div class="muted" style="margin-top:2px;">' + escapeHtml(itemsSummary) + '</div>' +
+          (o.orderNotes ? '<div style="font-size:12px; margin-top:3px; white-space:pre-wrap;">📝 ' + escapeHtml(o.orderNotes) + '</div>' : '') + '</div>' +
           '<div class="schedule-controls">' + queuePill + paidPill +
             (!isDone && o.status === 'queueing' && o.scheduledDate
               ? (slotState(o) === 'confirmed' ? '<span class="pill pill-green">✓ Confirmed</span>'
@@ -10855,6 +11345,31 @@
       return o.id !== order.id && !o.pickup && o.status === 'shipped' && o.trackingNumber && !o.trackingMessageSent && sameCustomer(order, o);
     }));
   }
+  // What's inside a parcel, in a line: cups (with pattern + lid), sticker codes, add-ons.
+  function parcelContentsText(o) {
+    return parcelMates(o).map(function (m) {
+      return (m.items || []).map(function (i) {
+        var p = state.products.find(function (x) { return x.id === i.productId; });
+        var nm = (p && p.type === 'Stickers' && p.sku) ? p.sku : cleanItemName(i.productName);
+        var pat = i.pattern && tumblerPatternInfo(i.pattern) ? tumblerPatternInfo(i.pattern).label : '';
+        var bits = [pat, i.lid ? i.lid + ' lid' : ''].filter(Boolean).join(', ');
+        return (Number(i.qty) > 1 ? i.qty + ' × ' : '') + nm + (bits ? ' (' + bits + ')' : '');
+      }).concat((m.addOns || []).map(function (a) { return (Number(a.qty) > 1 ? a.qty + ' × ' : '') + cleanItemName(a.productName); })).join(' + ');
+    }).filter(Boolean).join('  |  ');
+  }
+  function shipNoteBoxHtml(o) {
+    return '<input class="ship-note-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.notes || '') + '" placeholder="Shipping note (packing / courier)…" style="width:100%; font-size:13px; margin-top:6px;">';
+  }
+  document.addEventListener('change', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('ship-note-input')) return;
+    var no = state.orders.find(function (o) { return o.id === e.target.getAttribute('data-order-id'); });
+    if (!no) return;
+    var v = e.target.value.trim();
+    parcelMates(no).forEach(function (m) { m.notes = v; }); // one parcel, one note
+    save();
+    showCopiedToast('Shipping note saved');
+  });
+  var pdCombineFor = null;
   function packDayTrackResultsHtml() {
     var q = packDayTrackQuery.trim().toLowerCase();
     var list = packDayTrackCandidates().filter(function (o) {
@@ -10901,6 +11416,22 @@
             '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Balance ' + money(unpaidAmountFor(o)) + ' not paid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + ' ' + eastMalaysiaTagHtml(o) + '</div></div>' +
           '<div class="pd-row-steps">' + step(!!o.shipTo, 'Address') + step(booked || hasTracking, 'Booked') + step(hasTracking, 'Tracking') + '</div>' +
         '</div>' +
+        '<div style="font-size:13px; margin-top:4px;">🥤 ' + escapeHtml(parcelContentsText(o) || 'No items') + '</div>' +
+        parcelMates(o).filter(function (m) { return m.orderNotes; }).map(function (m) { return '<div style="font-size:12px; margin-top:3px; background:#fdf8e6; border-radius:6px; padding:3px 8px; white-space:pre-wrap;">📝 ' + escapeHtml(m.orderNotes) + '</div>'; }).join('') +
+        shipNoteBoxHtml(o) +
+        (function () {
+          var mates = parcelMates(o), cands = shipTogetherCandidates(o);
+          var html = '<div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; font-size:13px;">' +
+            (cands.length ? '<button type="button" class="btn-text" data-pd-combine="' + o.id + '" style="font-size:13px;">🔗 Combine with another order…</button>' : '') +
+            (mates.length > 1 ? mates.map(function (m) { return '<button type="button" class="btn-text" data-pd-separate="' + m.id + '" style="font-size:13px;">✂ Send ' + escapeHtml(cleanItemName((m.items[0] || {}).productName || 'order')) + ' separately</button>'; }).join('') : '') +
+          '</div>';
+          if (pdCombineFor === o.id && cands.length) {
+            html += '<div style="margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;"><div class="muted" style="font-size:12px; margin-bottom:4px;">Put in the same parcel as:</div>' +
+              cands.map(function (c) { return '<div style="padding:3px 0;"><button type="button" class="btn btn-secondary btn-small" data-pd-combine-a="' + o.id + '" data-pd-combine-b="' + c.id + '">🔗 ' + escapeHtml(c.buyerName || '') + ' · ' + escapeHtml(parcelContentsText(c)) + ' <span class="muted">(' + escapeHtml(orderStatusLabel(c.status)) + ')</span></button></div>'; }).join('') +
+              '<button type="button" class="btn-text" data-pd-combine="" style="font-size:12px;">Cancel</button></div>';
+          }
+          return html;
+        })() +
         (!o.shipTo && !editing ? '<div class="pd-row-actions"><button type="button" class="btn btn-secondary btn-small" data-pd-addr="' + o.id + '">📍 Add address</button>' +
           '<button type="button" class="btn-text" data-pd-ask-address="' + o.id + '" style="font-size:12px;">📋 Ask for address</button></div>' : '') +
         (editing ? addressEditorHtml(o, 'pd') : '') +
@@ -11028,6 +11559,11 @@
       copyCombinedShippedMessage(to, null, 'Saved — shipped message copied');
       return;
     }
+    if (t.hasAttribute && t.hasAttribute('data-pd-combine')) { var cf = t.getAttribute('data-pd-combine'); pdCombineFor = (cf && pdCombineFor !== cf) ? cf : null; renderShipping(); return; }
+    var combA = t.getAttribute && t.getAttribute('data-pd-combine-a');
+    if (combA) { pdCombineFor = null; linkShipTogether(combA, t.getAttribute('data-pd-combine-b')); showCopiedToast('Combined into one parcel'); return; }
+    var sepId = t.getAttribute && t.getAttribute('data-pd-separate');
+    if (sepId) { if (confirm('Send this order in its own parcel?')) unlinkShipTogether(sepId); return; }
     var copyNowId = t.getAttribute && t.getAttribute('data-pd-copy-now');
     if (copyNowId) {
       var cno = state.orders.find(function (o) { return o.id === copyNowId; });
@@ -11174,6 +11710,8 @@
             o.parcels.map(function (parcel, pIdx) { return parcelTrackingHtml(o, parcel, pIdx, o.parcels.length, isOrderShipment || isShipped); }).join('')
           : (splittingOrderId === o.id ? splitEditorHtml(o) : shippingItemBoxesHtml(o))) +
         shippingAddressBlockHtml(o) +
+        (o.orderNotes ? '<div style="font-size:12px; margin-top:6px; background:#fdf8e6; border-radius:6px; padding:3px 8px; white-space:pre-wrap;">📝 ' + escapeHtml(o.orderNotes) + '</div>' : '') +
+        shipNoteBoxHtml(o) +
         '<div class="muted" style="font-size:12px; margin-top:4px;">' + shippingZoneLabel(o.shippingZone) + (o.shippingWeight ? ' · ' + o.shippingWeight + 'kg' : '') + '</div>' +
         shippingCostInlineHtml(o) +
         (shipTogetherFor === o.id ? shipTogetherPickerHtml(o) : '') +
@@ -14290,7 +14828,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-11-10a';
+  var APP_VERSION = '2026-11-15b';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
@@ -14430,6 +14968,7 @@
   // kicking off another push.
   function adoptStateLocally(newState) {
     state = newState;
+    syncPatterns();
     if (typeof resetSlotSnapshot === 'function') resetSlotSnapshot(); // a synced copy isn't her moving orders
     setTimeout(updateVersionLine, 0);
     if (!state.blockedDates) state.blockedDates = {};
@@ -14884,6 +15423,20 @@
     addWriteOff('fix1005-novx', order('muhh16ri99rtkp'), 'mszwxeis18v00p');
     // 4) The Stitch LA sent with Yati's replacement had no write-off.
     addWriteOff('fix1005-yati-stitch', order('mupc884gmnhphb'), 'mtu5v2qos4sedp');
+    // 7) Nov 2026: catalogue numbers for pasted orders, the 470ml price, and the one 600ml fat
+    // bottle on hand — done once only, so later sales and edits are never overridden.
+    if (!state.dataFix20261115) {
+      var catNos = { '470ml bamboo and clear': '01', '720ml transparent': '02', '600ml fat bottle': '03', '500ml kids bottle': '04', '700ml boba tumbler': '05', '600ml stainless steel': '06', 'stainless steel bottle with handle': '07', '1200ml glow in the dark': '08' };
+      state.products.forEach(function (pr) {
+        if (pr.type !== 'Tumbler') return;
+        var key = String(pr.name || '').trim().toLowerCase();
+        if (catNos[key] && !pr.catalogueNo) pr.catalogueNo = catNos[key];
+        if (key === '470ml bamboo and clear' && !(Number(pr.price) > 0)) pr.price = 65;
+        if (key === '600ml fat bottle' && (Number(pr.stock) || 0) === 0) { pr.stock = 1; logStock(pr.id, 1, 'correction', 'Recount — 1 on hand'); }
+      });
+      state.dataFix20261115 = true;
+      changed = true;
+    }
     // 6) Lala (9 Oct, 600ml fat bottle, Full Glitter) was charged +RM10, not +RM5.
     var lalas = state.orders.filter(function (o) { return String(o.buyerName || '').trim().toLowerCase() === 'lala' && o.date === '2026-10-09'; });
     if (lalas.length === 1) {
@@ -14958,8 +15511,49 @@
       state.catalogueImport202611 = 'done';
       ov.remove();
       save(); renderAll();
-      showCopiedToast(again.rows.length + ' stickers added from the catalogue');
+      showCopiedToast(again.rows.length + ' stickers added — copying their photos…');
+      setTimeout(copyCatalogueLinkedPhotos, 300);
     });
+  }
+  // Copies every photo that still points at the catalogue into this app's own Supabase
+  // (product-photos, same place as her other photos), one at a time, then uses that copy.
+  // Straight from the catalogue to Supabase — never stored on the device in between, so it
+  // can't fill up the browser's storage. Anything not copied yet (offline, app closed early)
+  // keeps working from the catalogue link and is picked up again the next time the app opens.
+  var catalogueCopyRunning = false;
+  function copyCatalogueLinkedPhotos() {
+    if (!sb || isViewerMode || catalogueCopyRunning) return;
+    var todo = state.products.filter(function (p) { return p.image && p.image.indexOf(CATALOGUE_THUMB_BASE) === 0; });
+    if (!todo.length) return;
+    catalogueCopyRunning = true;
+    sb.auth.getUser().then(function (res) {
+      var user = res.data && res.data.user;
+      if (!user) { catalogueCopyRunning = false; return; }
+      var done = 0, failed = 0;
+      var chain = Promise.resolve();
+      todo.forEach(function (p) {
+        chain = chain.then(function () {
+          var src = p.image;
+          return fetch(src).then(function (r) { if (!r.ok) throw new Error('download'); return r.blob(); }).then(function (blob) {
+            var ext = /png/i.test(blob.type) ? 'png' : 'jpg';
+            var path = user.id + '/' + p.id + '.' + ext;
+            return sb.storage.from(PHOTO_BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || 'image/jpeg' }).then(function (up) {
+              if (up.error) throw up.error;
+              var pub = sb.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+              var url = pub && pub.data && pub.data.publicUrl;
+              if (!url) throw new Error('url');
+              var cur = state.products.find(function (x) { return x.id === p.id; });
+              if (cur && cur.image === src) { cur.image = url; done++; if (done % 10 === 0) { save(); } }
+            });
+          }).catch(function () { failed++; });
+        });
+      });
+      return chain.then(function () {
+        catalogueCopyRunning = false;
+        if (done) { save(); renderAll(); }
+        if (done || failed) showCopiedToast(done + ' photo' + (done === 1 ? '' : 's') + ' copied to your Supabase' + (failed ? ' · ' + failed + ' will retry next time' : ''));
+      });
+    }).catch(function () { catalogueCopyRunning = false; });
   }
 
   // Every time the app opens with a signed-in account: FIRST check whether this email was given
@@ -14984,6 +15578,7 @@
           return Promise.resolve(reconcileWithCloud(userId, res.data.data)).then(function (r) {
             setTimeout(applyRequestedDataFixes, 0);
             setTimeout(offerCatalogueImport, 1200);
+            setTimeout(copyCatalogueLinkedPhotos, 2500); // finish copying any photos still linked to the catalogue
             return r;
           });
         }
