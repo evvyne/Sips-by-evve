@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-11-15b" />
+<meta name="app-version" content="2026-11-15d" />
 <title>❄️ Sips by Evve</title>
 <style>
   :root {
@@ -6013,24 +6013,56 @@
         : '<div class="sp-bad">Total doesn\'t match — catalogue says ' + money(parsed.total) + ', this form adds up to ' + money(formTotal) + ' (' + (formTotal > parsed.total ? '+' : '−') + money(Math.abs(formTotal - parsed.total)) + '). Check the prices below.</div>';
     }
     if (warn.length) html += '<div class="sp-warn"><strong>Please check:</strong><br>' + warn.map(escapeHtml).join('<br>') + '</div>';
-    // Same TikTok handle / name as an earlier order: offer her details, never fill the address by itself.
-    var norm = function (v) { return String(v || '').replace(/^@/, '').trim().toLowerCase(); };
-    var prev = state.orders.slice().reverse().find(function (o) {
-      return o.buyerWhatsapp && ((parsed.tiktok && norm(o.buyerHandle) === norm(parsed.tiktok)) || (parsed.name && norm(o.buyerName) === norm(parsed.name)));
-    });
-    if (prev && !document.getElementById('of-buyer-whatsapp').value.trim()) {
-      html += '<div class="sp-warn">Looks like a returning customer: <strong>' + escapeHtml(prev.buyerName || '') + '</strong> · WhatsApp ' + escapeHtml(prev.buyerWhatsapp) +
-        ' <button type="button" class="btn-text" id="btn-sp-use-customer" data-wa="' + escapeHtml(prev.buyerWhatsapp) + '" style="font-size:12px;">Yes, use her WhatsApp</button><br><span style="font-size:11px;">Her last address is only filled in if you then press "Use last address".</span></div>';
+    // Existing customer? Matched on the TikTok handle (against the handle or the WhatsApp username
+    // she saved before). Then her name / TikTok / WhatsApp are filled in exactly the way SHE saved
+    // them — the name typed in the catalogue never replaces hers. A new customer keeps the pasted
+    // name + TikTok and the WhatsApp box stays empty for her to fill. The address is never filled
+    // by itself ("Use last address" does that). A match on the name alone only asks.
+    var norm = function (v) { return String(v || '').replace(/^@/, '').replace(/\s+/g, ' ').trim().toLowerCase(); };
+    var newest = state.orders.slice().sort(function (a, b) { return String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || '')); });
+    var th = norm(parsed.tiktok);
+    var byHandle = th ? newest.find(function (o) { return norm(o.buyerHandle) === th || norm(o.buyerWhatsapp) === th; }) : null;
+    var byName = (!byHandle && parsed.name) ? newest.find(function (o) { return norm(o.buyerName) === norm(parsed.name); }) : null;
+    document.getElementById('of-buyer-whatsapp').value = '';
+    spPasted = { name: parsed.name || '', handle: parsed.tiktok || '' };
+    spCustomer = byHandle || byName || null;
+    if (byHandle) {
+      fillSavedCustomer(byHandle);
+      html += '<div class="sp-ok">Existing customer — filled in the way you saved her: <strong>' + escapeHtml(byHandle.buyerName || '') + '</strong>' +
+        (byHandle.buyerWhatsapp ? ' · WhatsApp ' + escapeHtml(byHandle.buyerWhatsapp) : '') +
+        (norm(byHandle.buyerName) !== norm(parsed.name) && parsed.name ? ' <span style="font-size:11px;">(catalogue name: ' + escapeHtml(parsed.name) + ')</span>' : '') +
+        ' <button type="button" class="btn-text" id="btn-sp-not-her" style="font-size:12px;">Not her — new customer</button></div>';
+    } else if (byName) {
+      html += '<div class="sp-warn">Same name as an earlier customer: <strong>' + escapeHtml(byName.buyerName || '') + '</strong>' + (byName.buyerHandle ? ' (' + escapeHtml(byName.buyerHandle) + ')' : '') + (byName.buyerWhatsapp ? ' · WhatsApp ' + escapeHtml(byName.buyerWhatsapp) : '') +
+        ' <button type="button" class="btn-text" id="btn-sp-use-customer" style="font-size:12px;">Yes, same person — use her details</button></div>';
+    } else {
+      html += '<div class="sp-warn">New customer — add her WhatsApp yourself.</div>';
     }
+    renderRepeatCustomerBanner();
     box.innerHTML = html || '<div class="sp-ok">✓ Filled in. Check everything, then press Save order.</div>';
     document.getElementById('of-smart-paste-wrap').open = false;
   }
   document.getElementById('btn-smart-paste-fill').addEventListener('click', fillFormFromCatalogueOrder);
+  var spCustomer = null, spPasted = null;
+  function fillSavedCustomer(o) {
+    document.getElementById('of-buyer-name').value = o.buyerName || '';
+    document.getElementById('of-buyer-handle').value = o.buyerHandle || '';
+    document.getElementById('of-buyer-whatsapp').value = o.buyerWhatsapp || '';
+  }
   document.getElementById('of-smart-paste-result').addEventListener('click', function (e) {
-    if (e.target.id !== 'btn-sp-use-customer') return;
-    document.getElementById('of-buyer-whatsapp').value = e.target.getAttribute('data-wa');
-    e.target.parentNode.remove();
-    renderRepeatCustomerBanner();
+    if (e.target.id === 'btn-sp-use-customer' && spCustomer) {
+      fillSavedCustomer(spCustomer);
+      e.target.parentNode.className = 'sp-ok';
+      e.target.parentNode.innerHTML = 'Existing customer — filled in the way you saved her: <strong>' + escapeHtml(spCustomer.buyerName || '') + '</strong>';
+      renderRepeatCustomerBanner();
+    } else if (e.target.id === 'btn-sp-not-her' && spPasted) {
+      document.getElementById('of-buyer-name').value = spPasted.name;
+      document.getElementById('of-buyer-handle').value = spPasted.handle;
+      document.getElementById('of-buyer-whatsapp').value = '';
+      e.target.parentNode.className = 'sp-warn';
+      e.target.parentNode.textContent = 'New customer — add her WhatsApp yourself.';
+      renderRepeatCustomerBanner();
+    }
   });
 
   document.getElementById('btn-add-cup').addEventListener('click', function () {
@@ -11357,17 +11389,42 @@
       }).concat((m.addOns || []).map(function (a) { return (Number(a.qty) > 1 ? a.qty + ' × ' : '') + cleanItemName(a.productName); })).join(' + ');
     }).filter(Boolean).join('  |  ');
   }
+  // Shipping note: nothing shown until she adds one from the ⋯ menu; then it's a line of text
+  // with Edit. The box only appears while she's typing it.
+  var shipNoteEditFor = null;
   function shipNoteBoxHtml(o) {
-    return '<input class="ship-note-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.notes || '') + '" placeholder="Shipping note (packing / courier)…" style="width:100%; font-size:13px; margin-top:6px;">';
+    if (shipNoteEditFor === o.id) {
+      return '<div style="display:flex; gap:6px; margin-top:6px;"><input class="ship-note-input" data-order-id="' + o.id + '" value="' + escapeHtml(o.notes || '') + '" placeholder="Shipping note (packing / courier)…" style="flex:1; font-size:13px;">' +
+        '<button type="button" class="btn btn-primary btn-small" data-ship-note-save="' + o.id + '">Save</button><button type="button" class="btn btn-secondary btn-small" data-ship-note-edit="">Cancel</button></div>';
+    }
+    return o.notes ? '<div style="font-size:12px; margin-top:4px;">🚚 ' + escapeHtml(o.notes) + ' <button type="button" class="btn-text" data-ship-note-edit="' + o.id + '" style="font-size:12px;">Edit</button></div>' : '';
   }
-  document.addEventListener('change', function (e) {
-    if (!e.target.classList || !e.target.classList.contains('ship-note-input')) return;
-    var no = state.orders.find(function (o) { return o.id === e.target.getAttribute('data-order-id'); });
+  function saveShipNote(id, value) {
+    var no = state.orders.find(function (o) { return o.id === id; });
     if (!no) return;
-    var v = e.target.value.trim();
+    var v = String(value || '').trim();
     parcelMates(no).forEach(function (m) { m.notes = v; }); // one parcel, one note
-    save();
-    showCopiedToast('Shipping note saved');
+    shipNoteEditFor = null;
+    save(); renderShipping();
+    showCopiedToast(v ? 'Shipping note saved' : 'Shipping note removed');
+  }
+  document.addEventListener('click', function (e) {
+    var ed = e.target.closest ? e.target.closest('[data-ship-note-edit]') : null;
+    if (ed) {
+      shipNoteEditFor = ed.getAttribute('data-ship-note-edit') || null;
+      closeOrderMenus();
+      renderShipping();
+      var inp = shipNoteEditFor && document.querySelector('.ship-note-input[data-order-id="' + shipNoteEditFor + '"]');
+      if (inp) inp.focus();
+      return;
+    }
+    var sv = e.target.closest ? e.target.closest('[data-ship-note-save]') : null;
+    if (sv) { var bx = document.querySelector('.ship-note-input[data-order-id="' + sv.getAttribute('data-ship-note-save') + '"]'); saveShipNote(sv.getAttribute('data-ship-note-save'), bx ? bx.value : ''); return; }
+    var pm = e.target.closest ? e.target.closest('[data-pd-more]') : null;
+    if (pm) { var w = pm.parentNode; closeOrderMenus(w); w.classList.toggle('open'); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('ship-note-input')) { e.preventDefault(); saveShipNote(e.target.getAttribute('data-order-id'), e.target.value); }
   });
   var pdCombineFor = null;
   function packDayTrackResultsHtml() {
@@ -11414,23 +11471,23 @@
             (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') +
             (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
             '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Balance ' + money(unpaidAmountFor(o)) + ' not paid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + ' ' + eastMalaysiaTagHtml(o) + '</div></div>' +
-          '<div class="pd-row-steps">' + step(!!o.shipTo, 'Address') + step(booked || hasTracking, 'Booked') + step(hasTracking, 'Tracking') + '</div>' +
+          '<div class="pd-row-steps">' + step(!!o.shipTo, 'Address') + step(booked || hasTracking, 'Booked') + step(hasTracking, 'Tracking') +
+            '<div class="oc-more"><button type="button" class="oc-more-btn" data-pd-more="' + o.id + '" aria-label="More">⋯</button><div class="oc-menu">' +
+              '<button type="button" data-ship-note-edit="' + o.id + '">📝 ' + (o.notes ? 'Edit shipping note' : 'Add shipping note') + '</button>' +
+              (shipTogetherCandidates(o).length ? '<button type="button" data-pd-combine="' + o.id + '">🔗 Combine with another order…</button>' : '') +
+              (parcelMates(o).length > 1 ? parcelMates(o).map(function (m) { return '<button type="button" data-pd-separate="' + m.id + '">✂ Send ' + escapeHtml(cleanItemName((m.items[0] || {}).productName || 'order')) + ' separately</button>'; }).join('') : '') +
+            '</div></div>' +
+          '</div>' +
         '</div>' +
         '<div style="font-size:13px; margin-top:4px;">🥤 ' + escapeHtml(parcelContentsText(o) || 'No items') + '</div>' +
         parcelMates(o).filter(function (m) { return m.orderNotes; }).map(function (m) { return '<div style="font-size:12px; margin-top:3px; background:#fdf8e6; border-radius:6px; padding:3px 8px; white-space:pre-wrap;">📝 ' + escapeHtml(m.orderNotes) + '</div>'; }).join('') +
         shipNoteBoxHtml(o) +
         (function () {
-          var mates = parcelMates(o), cands = shipTogetherCandidates(o);
-          var html = '<div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; font-size:13px;">' +
-            (cands.length ? '<button type="button" class="btn-text" data-pd-combine="' + o.id + '" style="font-size:13px;">🔗 Combine with another order…</button>' : '') +
-            (mates.length > 1 ? mates.map(function (m) { return '<button type="button" class="btn-text" data-pd-separate="' + m.id + '" style="font-size:13px;">✂ Send ' + escapeHtml(cleanItemName((m.items[0] || {}).productName || 'order')) + ' separately</button>'; }).join('') : '') +
-          '</div>';
-          if (pdCombineFor === o.id && cands.length) {
-            html += '<div style="margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;"><div class="muted" style="font-size:12px; margin-bottom:4px;">Put in the same parcel as:</div>' +
-              cands.map(function (c) { return '<div style="padding:3px 0;"><button type="button" class="btn btn-secondary btn-small" data-pd-combine-a="' + o.id + '" data-pd-combine-b="' + c.id + '">🔗 ' + escapeHtml(c.buyerName || '') + ' · ' + escapeHtml(parcelContentsText(c)) + ' <span class="muted">(' + escapeHtml(orderStatusLabel(c.status)) + ')</span></button></div>'; }).join('') +
-              '<button type="button" class="btn-text" data-pd-combine="" style="font-size:12px;">Cancel</button></div>';
-          }
-          return html;
+          var cands = shipTogetherCandidates(o);
+          if (pdCombineFor !== o.id || !cands.length) return '';
+          return '<div style="margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;"><div class="muted" style="font-size:12px; margin-bottom:4px;">Put in the same parcel as:</div>' +
+            cands.map(function (c) { return '<div style="padding:3px 0;"><button type="button" class="btn btn-secondary btn-small" data-pd-combine-a="' + o.id + '" data-pd-combine-b="' + c.id + '">🔗 ' + escapeHtml(c.buyerName || '') + ' · ' + escapeHtml(parcelContentsText(c)) + ' <span class="muted">(' + escapeHtml(orderStatusLabel(c.status)) + ')</span></button></div>'; }).join('') +
+            '<button type="button" class="btn-text" data-pd-combine="" style="font-size:12px;">Cancel</button></div>';
         })() +
         (!o.shipTo && !editing ? '<div class="pd-row-actions"><button type="button" class="btn btn-secondary btn-small" data-pd-addr="' + o.id + '">📍 Add address</button>' +
           '<button type="button" class="btn-text" data-pd-ask-address="' + o.id + '" style="font-size:12px;">📋 Ask for address</button></div>' : '') +
@@ -11688,6 +11745,7 @@
         '<button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button>' +
         '<div class="oc-menu">' +
           '<button type="button" data-toggle-pickup="' + o.id + '">' + (o.pickup ? '📦 Ship it instead' : '🤝 Customer picks up') + '</button>' +
+          '<button type="button" data-ship-note-edit="' + o.id + '">📝 ' + (o.notes ? 'Edit shipping note' : 'Add shipping note') + '</button>' +
           (o.pickup ? '' : '<button type="button" data-open-ship-together="' + o.id + '">🔗 Ship together with…</button>') +
           (o.shipGroupId ? '<button type="button" data-unlink-ship-together="' + o.id + '">✂ Send separately (unlink)</button>' : '') +
           (o.pickup ? '' : '<button type="button" class="btn-copy-ship-address" data-order-id="' + o.id + '">📋 Copy address</button>') +
@@ -14828,7 +14886,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-11-15b';
+  var APP_VERSION = '2026-11-15d';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
