@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-11-15d" />
+<meta name="app-version" content="2026-11-17a" />
 <title>❄️ Sips by Evve</title>
 <style>
   :root {
@@ -7926,6 +7926,7 @@
         '<div class="oc-menu">' +
           ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button type="button" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button>' : '') +
           '<button type="button" data-edit-order="' + o.id + '">✏️ Edit</button>' +
+          '<button type="button" data-slip="' + o.id + '">🧾 Packing slip</button>' +
           '<button type="button" data-remind-order="' + o.id + '">🔔 Remind me</button>' +
           (o.status === 'queueing' && o.scheduledDate
             ? '<button type="button" data-slot-copy="' + o.id + '">📅 Copy slot message</button>' +
@@ -11325,6 +11326,19 @@
   // sender details saved once), and a finder that matches J&T's address-only list back to the
   // right customer by postcode/address.
   var packDaySkipIds = {};
+  // Skipped parcels (customer wants it sent later): remembered on the order, shown with a tag,
+  // and brought back by her — or by themselves on the "send after" day.
+  var pdSkipFor = null;
+  function shipSkipActive(o) {
+    var k = o && o.shipSkip;
+    return !!(k && !k.back && (!k.until || todayISO() < k.until));
+  }
+  function shipSkipTagHtml(o) {
+    var k = o && o.shipSkip;
+    if (!k) return '';
+    if (shipSkipActive(o)) return ' <span class="pill pill-amber" style="font-size:10px;">⏸ Skipped' + (k.until ? ' · send after ' + escapeHtml(shortDate(k.until)) : '') + '</span>';
+    return ' <span class="pill pill-gray" style="font-size:10px;">↩ Was skipped</span>';
+  }
   var editingSenderInfo = false;
   var editingAskTemplate = false;
   var packDayTrackQuery = '';
@@ -11356,7 +11370,7 @@
     return [s.name, s.phone, s.address].filter(Boolean).join('\n');
   }
   function packDayBookingQueue() {
-    return packDayParcels().filter(function (o) { return o.status === 'ready to ship' && !!o.shipTo && !packDaySkipIds[o.id]; });
+    return packDayParcels().filter(function (o) { return o.status === 'ready to ship' && !!o.shipTo && !shipSkipActive(o); });
   }
   function packDayTrackCandidates() {
     return onePerParcel(state.orders.filter(function (o) { return !o.pickup && (o.status === 'order shipment' || o.status === 'ready to ship') && !o.trackingNumber && !(o.parcels && o.parcels.length); }));
@@ -11426,6 +11440,431 @@
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('ship-note-input')) { e.preventDefault(); saveShipNote(e.target.getAttribute('data-order-id'), e.target.value); }
   });
+  // ================= EasyParcel bulk upload file =================
+  // Builds the "order" sheet of EasyParcel's Bulk (Single Pick Up) template — same 33 column
+  // titles, one row per parcel — as a real .xlsx made right here in the browser. She checks a
+  // table first (anything EasyParcel would reject is highlighted), then downloads. Downloading
+  // changes nothing; "I uploaded it" marks those parcels Booked in one go.
+  var EP_HEADERS = ['No.', 'Receiver Name *', 'Receiver Phone Number Country *', 'Receiver Phone Number *', 'Receiver Alt Phone Number Country', 'Receiver Alt Phone Number', 'Receiver Company', 'Receiver Email', 'Receiver Address *', 'Receiver Postcode *', 'Receiver City *', 'Receiver State *', 'Receiver Country *', 'Receiver address is residential address? (Yes/No)', 'Receiver Tax ID', 'Parcel Weight (kg) *', 'Length (cm) *', 'Width (cm) *', 'Height (cm) *', 'Parcel Currency *', 'Item Name *', 'Price Per Item *', 'Quantity *', 'HS Code', 'Reference / Remark', 'COD Currency', 'COD Amount', 'Receiver Consignee Type(B2B/B2C)', 'Receiver EORI / VAT Number', 'Item Country of Origin', 'Item Merchant SKU', 'Item Manufacturer Product ID', 'Item Standardised Product ID'];
+  var MY_STATES = ['Johor', 'Kedah', 'Kelantan', 'Melaka', 'Negeri Sembilan', 'Pahang', 'Perak', 'Perlis', 'Pulau Pinang', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu', 'Kuala Lumpur', 'Labuan', 'Putrajaya'];
+  function stateFromPostcode(pc) {
+    var n = Number(String(pc || '').replace(/\D/g, '').slice(0, 2));
+    if (!String(pc || '').trim() || isNaN(n)) return '';
+    if (n >= 1 && n <= 2) return 'Perlis';
+    if (n >= 5 && n <= 9) return 'Kedah';
+    if (n >= 10 && n <= 14) return 'Pulau Pinang';
+    if (n >= 15 && n <= 18) return 'Kelantan';
+    if (n >= 20 && n <= 24) return 'Terengganu';
+    if ((n >= 25 && n <= 28) || n === 39 || n === 49 || n === 69) return 'Pahang';
+    if (n >= 30 && n <= 36) return 'Perak';
+    if (n === 62) return 'Putrajaya';
+    if ((n >= 40 && n <= 48) || n === 63 || n === 64 || n === 68) return 'Selangor';
+    if (n >= 50 && n <= 60) return 'Kuala Lumpur';
+    if (n >= 70 && n <= 73) return 'Negeri Sembilan';
+    if (n >= 75 && n <= 78) return 'Melaka';
+    if (n >= 79 && n <= 86) return 'Johor';
+    if (n === 87) return 'Labuan';
+    if (n >= 88 && n <= 91) return 'Sabah';
+    if (n >= 93 && n <= 98) return 'Sarawak';
+    return '';
+  }
+  function epPlain(v) { return String(v || '').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim(); }
+  var EP_STATE_WORDS = MY_STATES.concat(['Penang', 'Malacca', 'N. Sembilan', 'N.Sembilan', 'WP Kuala Lumpur', 'W.P. Kuala Lumpur', 'Wilayah Persekutuan', 'KL', 'Malaysia']);
+  // City: the words right after the postcode in the address ("81750 Masai, Johor" -> Masai).
+  function cityFromAddress(addr, pc) {
+    var a = epPlain(String(addr || '').replace(/\n/g, ', '));
+    var i = pc ? a.indexOf(String(pc)) : -1;
+    if (i === -1) return '';
+    var after = a.slice(i + String(pc).length).replace(/^[\s,.-]+/, '');
+    var first = after.split(',')[0].trim();
+    EP_STATE_WORDS.forEach(function (w) { first = first.replace(new RegExp('\\b' + w.replace(/[.]/g, '\\.') + '\\b\\.?', 'ig'), ''); });
+    first = first.replace(/\s+/g, ' ').replace(/^[\s,.-]+|[\s,.-]+$/g, '');
+    return first.length >= 3 && first.length <= 35 ? first : '';
+  }
+  // Address column: postcode / city / state have their own columns, so they're taken out of the
+  // address text to keep it under EasyParcel's 70 characters where possible.
+  function epAddress(addr, pc, city, st) {
+    var a = epPlain(String(addr || '').replace(/\n/g, ', '));
+    [pc, city, st].concat(EP_STATE_WORDS).forEach(function (w) {
+      if (!w) return;
+      a = a.replace(new RegExp('(^|[\\s,])' + String(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[\\s,.])', 'ig'), '$1');
+    });
+    return a.replace(/\s*,\s*(,\s*)+/g, ', ').replace(/\s+/g, ' ').replace(/^[\s,.-]+|[\s,.-]+$/g, '');
+  }
+  function epPhone(v) {
+    var d = String(v || '').replace(/\D/g, '');
+    if (d.indexOf('60') === 0) d = d.slice(2);
+    return d.replace(/^0+/, '');
+  }
+  function epWeightFor(cups) { return cups <= 1 ? 0.5 : (cups <= 3 ? 1 : 1.5); }
+  function epRowFor(o) {
+    var mates = parcelMates(o);
+    var cups = mates.reduce(function (t, m) { return t + orderTumblerQty(m); }, 0);
+    var value = mates.reduce(function (t, m) { return t + orderGrossTotal(m); }, 0);
+    var st = o.shipState || stateFromPostcode(o.postcode);
+    var city = o.shipCity || cityFromAddress(o.shipTo, o.postcode);
+    var qty = Math.max(1, cups);
+    return { id: o.id, name: epPlain(o.recipientName || o.buyerName).replace(/[^A-Za-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(), phone: epPhone(o.recipientPhone || o.buyerWhatsapp),
+      address: epAddress(o.shipTo, o.postcode, city, st), postcode: String(o.postcode || '').trim(), city: city, state: st,
+      weight: epWeightFor(cups), qty: qty, price: Math.round((value / qty) * 100) / 100,
+      hs: isEastMalaysia(o) ? (state.epDefaultHsCode || '') : '', east: isEastMalaysia(o),
+      ref: epPlain([mates.map(function (m) { return m.orderNo; }).filter(Boolean).join(' '), o.buyerName].filter(Boolean).join(' - ')).slice(0, 200) };
+  }
+  function epProblems(r) {
+    var bad = {};
+    if (r.name.length < 3 || r.name.length > 35) bad.name = 'Name must be 3–35 letters/numbers';
+    if (!/^\d{7,20}$/.test(r.phone)) bad.phone = 'Mobile number, digits only (no +60 / leading 0)';
+    if (r.address.length < 3 || r.address.length > 70) bad.address = 'Address must be 3–70 characters (now ' + r.address.length + ')';
+    if (!/^\d{5}$/.test(r.postcode)) bad.postcode = '5-digit postcode';
+    if (r.city.length < 3 || r.city.length > 35) bad.city = 'City needed (3–35 characters)';
+    if (!r.state) bad.state = 'State needed';
+    if (!(Number(r.weight) > 0)) bad.weight = 'Weight needed';
+    if (r.east && !String(r.hs).trim()) bad.hs = 'HS Code is needed for East Malaysia';
+    return bad;
+  }
+  // ---- a tiny .xlsx writer (one sheet, stored zip — no library needed)
+  var epCrcTable = null;
+  function epCrc32(bytes) {
+    if (!epCrcTable) { epCrcTable = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); epCrcTable[n] = c >>> 0; } }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = epCrcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  function epZip(files) {
+    var enc = new TextEncoder(), parts = [], central = [], offset = 0;
+    function u16(v) { return [v & 255, (v >>> 8) & 255]; }
+    function u32(v) { return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255]; }
+    files.forEach(function (f) {
+      var name = enc.encode(f.name), data = enc.encode(f.text), crc = epCrc32(data);
+      var head = [0x50, 0x4B, 3, 4].concat(u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+      parts.push(new Uint8Array(head), name, data);
+      central.push({ name: name, crc: crc, size: data.length, offset: offset });
+      offset += head.length + name.length + data.length;
+    });
+    var cdStart = offset, cdSize = 0;
+    central.forEach(function (c) {
+      var rec = [0x50, 0x4B, 1, 2].concat(u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(c.crc), u32(c.size), u32(c.size), u16(c.name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(c.offset));
+      parts.push(new Uint8Array(rec), c.name);
+      cdSize += rec.length + c.name.length;
+    });
+    parts.push(new Uint8Array([0x50, 0x4B, 5, 6].concat(u16(0), u16(0), u16(central.length), u16(central.length), u32(cdSize), u32(cdStart), u16(0))));
+    return new Blob(parts, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+  function epXlsxBlob(rows) {
+    function x(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function col(i) { var s2 = ''; i++; while (i > 0) { var m = (i - 1) % 26; s2 = String.fromCharCode(65 + m) + s2; i = Math.floor((i - 1) / 26); } return s2; }
+    var sheetRows = rows.map(function (r, ri) {
+      return '<row r="' + (ri + 1) + '">' + r.map(function (v, ci) {
+        if (v === '' || v == null) return '';
+        var ref = col(ci) + (ri + 1);
+        return typeof v === 'number' ? '<c r="' + ref + '"><v>' + v + '</v></c>' : '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + x(v) + '</t></is></c>';
+      }).join('') + '</row>';
+    }).join('');
+    var H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    return epZip([
+      { name: '[Content_Types].xml', text: H + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>' },
+      { name: '_rels/.rels', text: H + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: 'xl/workbook.xml', text: H + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="order" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { name: 'xl/_rels/workbook.xml.rels', text: H + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>' },
+      { name: 'xl/worksheets/sheet1.xml', text: H + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + sheetRows + '</sheetData></worksheet>' }
+    ]);
+  }
+  function epSheetRows(list) {
+    return [EP_HEADERS].concat(list.map(function (r, i) {
+      return [String(i + 1), r.name, 'Malaysia +60', r.phone, '', '', '', '', r.address, r.postcode, r.city, r.state, 'Malaysia', '', '', Number(r.weight) || 0, 10, 10, 10, 'MYR', 'Gift', Number(r.price) || 0, Number(r.qty) || 1, r.hs || '', r.ref, '', '', '', '', '', '', '', ''];
+    }));
+  }
+  var epRows = null, epDownloadedIds = null;
+  function openEpBulk() {
+    epRows = packDayBookingQueue().map(epRowFor);
+    epDownloadedIds = null;
+    renderEpBulk();
+  }
+  function renderEpBulk() {
+    var old = document.getElementById('ep-bulk-overlay'); if (old) old.remove();
+    if (!epRows) return;
+    var nBad = 0;
+    var F = function (r, key, w, extra) {
+      var bad = epProblems(r)[key];
+      return '<input class="ep-f" data-id="' + r.id + '" data-k="' + key + '" value="' + escapeHtml(r[key]) + '" title="' + escapeHtml(bad || '') + '" style="width:' + w + 'px; font-size:12px; padding:4px 6px;' + (bad ? ' background:#fdf3dc; border-color:#EF9F27;' : '') + '"' + (extra || '') + '>';
+    };
+    var body = epRows.map(function (r, i) {
+      var probs = epProblems(r); if (Object.keys(probs).length) nBad++;
+      return '<tr><td style="padding:3px 4px;">' + (i + 1) + '</td><td>' + F(r, 'name', 130) + '</td><td>' + F(r, 'phone', 100) + '</td><td>' + F(r, 'address', 260) + '</td><td>' + F(r, 'postcode', 60) + '</td><td>' + F(r, 'city', 110) + '</td>' +
+        '<td><select class="ep-f" data-id="' + r.id + '" data-k="state" style="font-size:12px; padding:4px;' + (probs.state ? ' background:#fdf3dc;' : '') + '"><option value=""></option>' + MY_STATES.map(function (st) { return '<option' + (st === r.state ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></td>' +
+        '<td>' + F(r, 'weight', 50) + '</td><td>' + (r.east ? F(r, 'hs', 90) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="muted" style="font-size:11px; white-space:nowrap;">' + r.qty + ' × RM' + r.price + '</td></tr>' +
+        (Object.keys(probs).length ? '<tr><td></td><td colspan="9" style="font-size:11px; color:#854f0b; padding:0 4px 6px;">' + Object.keys(probs).map(function (k) { return escapeHtml(probs[k]); }).join(' · ') + '</td></tr>' : '');
+    }).join('');
+    var ov = document.createElement('div');
+    ov.id = 'ep-bulk-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9997; display:flex; align-items:center; justify-content:center; padding:12px;';
+    ov.innerHTML = '<div class="card" style="width:100%; max-width:1080px; margin:0; max-height:90vh; display:flex; flex-direction:column;">' +
+      '<div style="font-weight:600;">⬇ EasyParcel bulk file · ' + epRows.length + ' parcel' + (epRows.length === 1 ? '' : 's') + '</div>' +
+      '<div class="muted" style="font-size:12px; margin:2px 0 8px;">Every parcel that\'s ready to book (skipped ones are left out). Fix anything in yellow here — it only changes the file, plus City / State are remembered for next time. Item = Gift, box 10 × 10 × 10 cm.</div>' +
+      '<div style="overflow:auto; flex:1;"><table style="font-size:12px; border-collapse:collapse;"><thead><tr style="text-align:left;"><th></th><th>Name</th><th>Phone (+60)</th><th>Address</th><th>Postcode</th><th>City</th><th>State</th><th>kg</th><th>HS code</th><th>Value</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+      (nBad ? '<div class="sp-warn">' + nBad + ' parcel' + (nBad === 1 ? ' has' : 's have') + ' something EasyParcel would reject — the yellow boxes. You can still download.</div>' : '<div class="sp-ok">✓ Everything looks fine for EasyParcel.</div>') +
+      (epDownloadedIds ? '<div class="sp-ok" style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;"><span>File downloaded. Upload it at EasyParcel → Send Parcel → Bulk Upload. Nothing here has changed yet.</span><button type="button" class="btn btn-primary btn-small" id="btn-ep-mark-booked">✔ I uploaded it — mark these ' + epDownloadedIds.length + ' as Booked</button></div>' : '') +
+      '<div style="display:flex; gap:8px; margin-top:10px;"><button type="button" class="btn btn-primary btn-small" id="btn-ep-download">⬇ Download .xlsx</button><button type="button" class="btn btn-secondary btn-small" id="btn-ep-close">Close</button></div>' +
+    '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('change', function (e) {
+      if (!e.target.classList.contains('ep-f')) return;
+      var r = epRows.find(function (x) { return x.id === e.target.getAttribute('data-id'); });
+      if (!r) return;
+      r[e.target.getAttribute('data-k')] = e.target.value.trim();
+      renderEpBulk();
+    });
+    ov.addEventListener('click', function (e) {
+      if (e.target.id === 'btn-ep-close') { ov.remove(); epRows = null; return; }
+      if (e.target.id === 'btn-ep-download') {
+        // remember City / State (and the HS code) so they're filled in next time
+        epRows.forEach(function (r) {
+          var o = state.orders.find(function (x) { return x.id === r.id; });
+          if (o) parcelMates(o).forEach(function (m) { m.shipCity = r.city; m.shipState = r.state; });
+          if (r.east && r.hs) state.epDefaultHsCode = r.hs;
+        });
+        save({ keepStamp: false });
+        var blob = epXlsxBlob(epSheetRows(epRows));
+        window.__lastEpBlob = blob;
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'easyparcel-bulk-' + todayISO() + '.xlsx';
+        document.body.appendChild(a); a.click(); a.remove();
+        epDownloadedIds = epRows.map(function (r) { return r.id; });
+        renderEpBulk();
+        return;
+      }
+      if (e.target.id === 'btn-ep-mark-booked' && epDownloadedIds) {
+        var ids = epDownloadedIds.slice(), changed = [];
+        ids.forEach(function (id) {
+          var o = state.orders.find(function (x) { return x.id === id; });
+          if (o) parcelMates(o).forEach(function (m) { if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1 && m.status !== 'order shipment') { changed.push({ m: m, was: m.status }); changeOrderStatusCore(m, 'order shipment'); } });
+        });
+        ov.remove(); epRows = null; epDownloadedIds = null;
+        save(); renderAll();
+        showUndoToast(ids.length + ' parcel' + (ids.length === 1 ? '' : 's') + ' marked Booked — enter the tracking numbers below', function () {
+          changed.forEach(function (c) { changeOrderStatusCore(c.m, c.was); });
+          save(); renderAll();
+        });
+      }
+    });
+  }
+  document.addEventListener('click', function (e) { if (e.target.id === 'btn-ep-bulk') openEpBulk(); });
+
+  // ================= 🧾 Packing slip =================
+  // A receipt-style card for one parcel (orders linked with Ship together share one slip): each
+  // cup with its pattern / lid / sticker code / extras and price, then every extra sticker and
+  // straw listed once more at the bottom so none is forgotten while packing. On screen, printable
+  // on A6, copyable as text for WhatsApp, or saved as a picture.
+  function slipData(order) {
+    var mates = parcelMates(order);
+    var d = { orderNos: mates.map(function (m) { return m.orderNo; }).filter(Boolean), date: order.date, buyer: order.buyerName || '', handle: order.buyerHandle || '',
+      zone: isEastMalaysia(order) ? 'East Malaysia' : (order.pickup ? 'Pick-up' : shippingZoneLabel(order.shippingZone)), paid: mates.every(orderFullyPaid),
+      cups: [], others: [], extras: [], shipping: 0, discount: 0, total: 0 };
+    mates.forEach(function (m) {
+      var cur = null;
+      (m.items || []).forEach(function (i) {
+        var p = state.products.find(function (x) { return x.id === i.productId; });
+        var type = p ? p.type : '';
+        var qty = Number(i.qty) || 1, amt = qty * (Number(i.unitPrice) || 0);
+        var nm = (type === 'Stickers' && p && p.sku) ? p.sku : cleanItemName(i.productName);
+        var q = qty > 1 ? qty + ' × ' : '';
+        if (type === 'Tumbler') {
+          var pat = i.pattern && tumblerPatternInfo(i.pattern) ? tumblerPatternInfo(i.pattern).label : '';
+          cur = { title: q + nm, tags: [], extras: [], price: amt, hasSticker: false };
+          if (pat) cur.tags.push({ t: pat, k: 1 });
+          if (i.lid) cur.tags.push({ t: i.lid + ' lid', k: 2 });
+          d.cups.push(cur);
+        } else if (type === 'Stickers' && cur && !cur.hasSticker) {
+          cur.hasSticker = true; cur.tags.push({ t: 'Sticker ' + q + nm, k: 3 }); cur.price += amt;
+          if (qty > 1) d.extras.push((qty - 1) + ' × extra sticker · ' + nm);
+        } else if (cur) {
+          var isSt = type === 'Stickers';
+          cur.extras.push({ text: (isSt ? 'Extra sticker ' : '') + q + nm, amt: amt }); cur.price += amt;
+          if (isSt) d.extras.push(q + 'Extra sticker · ' + nm); else if (/straw/i.test(nm)) d.extras.push(q + nm);
+        } else {
+          d.others.push({ text: q + nm, amt: amt });
+          if (type === 'Stickers') d.extras.push(q + 'Sticker · ' + nm); else if (/straw/i.test(nm)) d.extras.push(q + nm);
+        }
+      });
+      (m.addOns || []).forEach(function (a) {
+        var ap = state.products.find(function (x) { return x.id === a.productId; });
+        var an = (ap && ap.type === 'Stickers' && ap.sku) ? ap.sku : cleanItemName(a.productName);
+        var aq = Number(a.qty) > 1 ? a.qty + ' × ' : '';
+        var isSt = !!(ap && ap.type === 'Stickers');
+        var row = { text: (isSt ? 'Extra sticker ' : '') + aq + an + (a.paid ? '' : ' (not paid yet)'), amt: addOnAmount(a) };
+        var last = d.cups[d.cups.length - 1];
+        if (last) { last.extras.push(row); last.price += row.amt; } else d.others.push(row);
+        if (isSt) d.extras.push(aq + 'Extra sticker · ' + an); else if (/straw/i.test(an)) d.extras.push(aq + an);
+      });
+      d.shipping += Number(m.shippingFee) || 0;
+      d.discount += Number(m.discount) || 0;
+      d.total += orderGrossTotal(m);
+    });
+    return d;
+  }
+  function slipMoney(v) { return 'RM' + (Math.round(v * 100) % 100 === 0 ? String(Math.round(v)) : (Math.round(v * 100) / 100).toFixed(2)); }
+  function slipText(d) {
+    var L = ['❄️ Sips by Evve — your order ✨'];
+    if (d.orderNos.length) L.push('Order no: ' + d.orderNos.join(', '));
+    L.push((d.buyer || '') + (d.handle ? ' · ' + d.handle : ''));
+    L.push('');
+    d.cups.forEach(function (c, i) {
+      L.push('🥤 ' + (d.cups.length > 1 ? 'Cup ' + (i + 1) + ': ' : '') + c.title + ' — ' + slipMoney(c.price));
+      c.tags.forEach(function (t) { L.push('   • ' + t.t); });
+      c.extras.forEach(function (x) { L.push('   + ' + x.text + (x.amt ? ' · ' + slipMoney(x.amt) : '')); });
+    });
+    d.others.forEach(function (x) { L.push('• ' + x.text + (x.amt ? ' — ' + slipMoney(x.amt) : '')); });
+    if (d.extras.length) { L.push(''); L.push('✨ Extras: ' + d.extras.join(', ')); }
+    L.push('');
+    if (d.shipping) L.push('Shipping: ' + slipMoney(d.shipping));
+    if (d.discount) L.push('Discount: −' + slipMoney(d.discount));
+    L.push('Total: ' + slipMoney(d.total) + (d.paid ? ' (paid ✓)' : ''));
+    L.push('');
+    L.push('Please check everything is right 💕');
+    return L.join('\n');
+  }
+  var SLIP_TAG = { 1: 'background:#EEEDFE; color:#3C3489;', 2: 'background:#E1F5EE; color:#085041;', 3: 'background:#FAEEDA; color:#633806;' };
+  function slipHtml(d) {
+    var e = escapeHtml;
+    return '<div id="packing-slip" style="background:#FBEAF0; border-radius:18px; padding:16px; color:#4B1528; font-size:13px; width:100%; max-width:340px; box-sizing:border-box; margin:0 auto;">' +
+      '<div style="text-align:center; background:#72243E; color:#FBEAF0; border-radius:12px; padding:8px 10px; font-weight:600;">❄️ Sips by Evve' +
+        '<div style="font-size:11px; font-weight:400;">' + (d.orderNos.length ? 'Order #' + e(d.orderNos.join(', #')) + ' · ' : '') + e(formatDate(d.date)) + '</div></div>' +
+      '<div style="text-align:center; margin-top:8px;"><strong>' + e(d.buyer) + '</strong>' + (d.handle ? ' · ' + e(d.handle) : '') + '<br><span style="font-size:11px;">' + e(d.zone) + ' · ' + (d.paid ? 'Paid ✓' : 'Not fully paid') + '</span></div>' +
+      d.cups.map(function (c) {
+        return '<div style="background:#fff; border-radius:12px; padding:10px 12px; margin-top:10px;">' +
+          '<div style="display:flex; justify-content:space-between; gap:8px; font-weight:600;"><span>☐ 🥤 ' + e(c.title) + '</span><span style="white-space:nowrap;">' + slipMoney(c.price) + '</span></div>' +
+          c.tags.map(function (t) { return '<span style="display:inline-block; font-size:11px; padding:2px 8px; border-radius:10px; margin:4px 4px 0 0; ' + SLIP_TAG[t.k] + '">' + e(t.t) + '</span>'; }).join('') +
+          (c.extras.length ? '<div style="font-size:12px; margin-top:6px;">' + c.extras.map(function (x) { return '+ ' + e(x.text) + (x.amt ? ' · ' + slipMoney(x.amt) : ''); }).join('<br>') + '</div>' : '') +
+        '</div>';
+      }).join('') +
+      (d.others.length ? '<div style="background:#fff; border-radius:12px; padding:10px 12px; margin-top:10px;">' + d.others.map(function (x) { return '<div style="display:flex; justify-content:space-between; gap:8px;"><span>☐ ' + e(x.text) + '</span><span>' + (x.amt ? slipMoney(x.amt) : '') + '</span></div>'; }).join('') + '</div>' : '') +
+      (d.extras.length ? '<div style="background:#FAEEDA; color:#412402; border-radius:12px; padding:10px 12px; margin-top:10px;"><strong>✨ Don\'t forget the extras</strong><div style="margin-top:4px;">' + d.extras.map(function (x) { return '☐ ' + e(x); }).join('<br>') + '</div></div>' : '') +
+      '<div style="margin-top:12px; padding-top:10px; border-top:2px dashed #D4537E;">' +
+        (d.shipping ? '<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Shipping</span><span>' + slipMoney(d.shipping) + '</span></div>' : '') +
+        (d.discount ? '<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Discount</span><span>−' + slipMoney(d.discount) + '</span></div>' : '') +
+        '<div style="display:flex; justify-content:space-between; font-weight:600; font-size:15px;"><span>Total</span><span>' + slipMoney(d.total) + '</span></div></div>' +
+      '<div style="text-align:center; font-size:11px; margin-top:8px;">Thank you 💕</div>' +
+    '</div>';
+  }
+  // The same slip drawn as a picture (for sending to the customer).
+  function slipCanvas(d) {
+    var W = 680, pad = 32, S = 2;
+    var c = document.createElement('canvas');
+    var ctx = c.getContext && c.getContext('2d');
+    if (!ctx) return null;
+    var F = function (px, bold) { return (bold ? '600 ' : '') + px + 'px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'; };
+    function rr(g, x, y, w, h, r, fill) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fillStyle = fill; g.fill(); }
+    function wrap(g, text, maxW) { var words = String(text).split(' '), lines = [], cur = ''; words.forEach(function (w) { var t = cur ? cur + ' ' + w : w; if (g.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }); if (cur) lines.push(cur); return lines; }
+    // two passes: measure, then draw
+    function paint(g, draw) {
+      var y = pad;
+      var text = function (t, x, yy, font, color, align) { if (!draw) return; g.font = font; g.fillStyle = color; g.textAlign = align || 'left'; g.fillText(t, x, yy); };
+      if (draw) rr(g, pad, y, W - pad * 2, 84, 22, '#72243E');
+      text('❄️ Sips by Evve', W / 2, y + 36, F(26, true), '#FBEAF0', 'center');
+      text((d.orderNos.length ? 'Order #' + d.orderNos.join(', #') + ' · ' : '') + formatDate(d.date), W / 2, y + 66, F(18), '#FBEAF0', 'center');
+      y += 84 + 34;
+      text(d.buyer + (d.handle ? ' · ' + d.handle : ''), W / 2, y, F(24, true), '#4B1528', 'center'); y += 28;
+      text(d.zone + ' · ' + (d.paid ? 'Paid ✓' : 'Not fully paid'), W / 2, y, F(18), '#4B1528', 'center'); y += 24;
+      var boxW = W - pad * 2, inX = pad + 22, inW = boxW - 44;
+      function block(lines, fill, color) { // lines: [{t, font, right}]
+        var h = 22; g.font = F(20);
+        var laid = [];
+        lines.forEach(function (ln) { g.font = ln.font; var ws = wrap(g, ln.t, inW - (ln.right ? 110 : 0)); ws.forEach(function (w, wi) { laid.push({ t: w, font: ln.font, right: wi === 0 ? ln.right : '', gap: ln.gap || 0 }); }); });
+        laid.forEach(function (ln) { h += 30 + ln.gap; });
+        h += 10;
+        if (draw) rr(g, pad, y, boxW, h, 22, fill);
+        var yy = y + 22;
+        laid.forEach(function (ln) { yy += ln.gap + 26; text(ln.t, inX, yy, ln.font, color); if (ln.right) text(ln.right, pad + boxW - 22, yy, F(20, true), color, 'right'); yy += 4; });
+        y += h + 16;
+      }
+      d.cups.forEach(function (cup) {
+        var ls = [{ t: '☐ 🥤 ' + cup.title, font: F(21, true), right: slipMoney(cup.price) }];
+        if (cup.tags.length) ls.push({ t: cup.tags.map(function (t) { return t.t; }).join('  ·  '), font: F(19) });
+        cup.extras.forEach(function (x) { ls.push({ t: '+ ' + x.text + (x.amt ? ' · ' + slipMoney(x.amt) : ''), font: F(19) }); });
+        block(ls, '#FFFFFF', '#4B1528');
+      });
+      if (d.others.length) block(d.others.map(function (x) { return { t: '☐ ' + x.text, font: F(20), right: x.amt ? slipMoney(x.amt) : '' }; }), '#FFFFFF', '#4B1528');
+      if (d.extras.length) block([{ t: '✨ Don\'t forget the extras', font: F(20, true) }].concat(d.extras.map(function (x) { return { t: '☐ ' + x, font: F(20) }; })), '#FAEEDA', '#412402');
+      y += 6;
+      if (draw) { g.strokeStyle = '#D4537E'; g.lineWidth = 3; g.setLineDash([10, 8]); g.beginPath(); g.moveTo(pad, y); g.lineTo(W - pad, y); g.stroke(); g.setLineDash([]); }
+      y += 34;
+      if (d.shipping) { text('Shipping', pad, y, F(19), '#4B1528'); text(slipMoney(d.shipping), W - pad, y, F(19), '#4B1528', 'right'); y += 28; }
+      if (d.discount) { text('Discount', pad, y, F(19), '#4B1528'); text('−' + slipMoney(d.discount), W - pad, y, F(19), '#4B1528', 'right'); y += 28; }
+      text('Total', pad, y, F(26, true), '#4B1528'); text(slipMoney(d.total), W - pad, y, F(26, true), '#4B1528', 'right'); y += 40;
+      text('Thank you 💕', W / 2, y, F(18), '#4B1528', 'center'); y += pad;
+      return y;
+    }
+    c.width = W; c.height = 10;
+    var H = paint(ctx, false);
+    c.width = W * S / 2; c.height = H * S / 2;
+    ctx = c.getContext('2d');
+    ctx.scale(S / 2, S / 2);
+    rr(ctx, 0, 0, W, H, 36, '#FBEAF0');
+    paint(ctx, true);
+    return c;
+  }
+  var slipFor = null;
+  function openPackingSlip(orderId) {
+    var o = state.orders.find(function (x) { return x.id === orderId; });
+    if (!o) return;
+    slipFor = orderId;
+    var d = slipData(o);
+    var old = document.getElementById('slip-overlay'); if (old) old.remove();
+    if (!document.getElementById('slip-print-style')) {
+      var stEl = document.createElement('style');
+      stEl.id = 'slip-print-style';
+      stEl.textContent = '@media print { body.slip-printing > *:not(#slip-overlay) { display: none !important; } body.slip-printing #slip-overlay { position: static !important; background: none !important; padding: 0 !important; display: block !important; } body.slip-printing .slip-actions { display: none !important; } body.slip-printing #slip-box { box-shadow: none !important; padding: 0 !important; max-height: none !important; overflow: visible !important; } body.slip-printing #packing-slip { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @page { size: A6; margin: 5mm; } }';
+      document.head.appendChild(stEl);
+    }
+    var ov = document.createElement('div');
+    ov.id = 'slip-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:9997; display:flex; align-items:center; justify-content:center; padding:12px;';
+    ov.innerHTML = '<div id="slip-box" style="background:#fff; border-radius:16px; padding:14px; width:100%; max-width:380px; max-height:92vh; overflow:auto;">' +
+      slipHtml(d) +
+      '<div class="slip-actions" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; justify-content:center;">' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-slip-copy">📋 Copy text</button>' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-slip-picture">🖼 Save picture</button>' +
+        '<button type="button" class="btn btn-secondary btn-small" id="btn-slip-print">🖨 Print (A6)</button>' +
+        '<button type="button" class="btn btn-primary btn-small" id="btn-slip-close">Close</button>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.id === 'btn-slip-close') { ov.remove(); slipFor = null; return; }
+      if (e.target.id === 'btn-slip-copy') { var tx = slipText(d); window.__lastCopiedText = tx; copyTextWithToast(tx, 'Copied — paste it to the customer on WhatsApp'); return; }
+      if (e.target.id === 'btn-slip-print') {
+        document.body.classList.add('slip-printing');
+        var done = function () { document.body.classList.remove('slip-printing'); window.removeEventListener('afterprint', done); };
+        window.addEventListener('afterprint', done);
+        window.print();
+        setTimeout(done, 60000);
+        return;
+      }
+      if (e.target.id === 'btn-slip-picture') {
+        var cv = slipCanvas(d);
+        if (!cv || !cv.toBlob) { alert('This browser can\'t make the picture — use Copy text instead.'); return; }
+        cv.toBlob(function (blob) {
+          if (!blob) return;
+          var fname = 'sips-order-' + (d.orderNos[0] || (d.buyer || 'slip').replace(/[^A-Za-z0-9]+/g, '-')) + '.png';
+          var file = (window.File ? new File([blob], fname, { type: 'image/png' }) : null);
+          // Phone: the share sheet (straight to WhatsApp). Computer: a normal download.
+          if (file && navigator.canShare && navigator.canShare({ files: [file] }) && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) { navigator.share({ files: [file] }).catch(function () {}); return; }
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = fname;
+          document.body.appendChild(a); a.click(); a.remove();
+          showCopiedToast('Picture saved to Downloads');
+        }, 'image/png');
+      }
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var sb2 = e.target.closest ? e.target.closest('[data-slip]') : null;
+    if (!sb2) return;
+    closeOrderMenus();
+    openPackingSlip(sb2.getAttribute('data-slip'));
+  });
+
   var pdCombineFor = null;
   function packDayTrackResultsHtml() {
     var q = packDayTrackQuery.trim().toLowerCase();
@@ -11469,10 +11908,14 @@
         '<div class="pd-row-top">' +
           '<div style="min-width:0;"><div style="font-weight:600;">' + (idx + 1) + '. ' + escapeHtml(o.buyerName || 'Unknown') + (parcelMates(o).length > 1 ? ' <span class="pill pill-blue" style="font-size:10px;">🔗 ' + parcelMates(o).length + ' orders, 1 parcel</span>' : '') +
             (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁</span>' : '') +
-            (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') + '</div>' +
+            (o.status === 'uv curing' ? ' <span class="pill pill-amber" style="font-size:10px;">🔆 curing</span>' : '') +
+            (o.status !== 'order shipment' ? shipSkipTagHtml(o) : '') +
+            (shipSkipActive(o) && o.status !== 'order shipment' ? ' <button type="button" class="btn-text" data-pd-unskip="' + o.id + '" style="font-size:12px;">Bring back now</button>' : '') + '</div>' +
             '<div class="muted" style="font-size:12px;">' + (paid ? 'Paid' : '<span style="color:var(--red); font-weight:600;">Balance ' + money(unpaidAmountFor(o)) + ' not paid</span>') + (o.shipTo ? ' · ' + escapeHtml(shortPlace(o)) : '') + ' ' + eastMalaysiaTagHtml(o) + '</div></div>' +
           '<div class="pd-row-steps">' + step(!!o.shipTo, 'Address') + step(booked || hasTracking, 'Booked') + step(hasTracking, 'Tracking') +
+            '<button type="button" class="btn-text" data-slip="' + o.id + '" title="Packing slip" style="font-size:13px; white-space:nowrap;">🧾 Slip</button>' +
             '<div class="oc-more"><button type="button" class="oc-more-btn" data-pd-more="' + o.id + '" aria-label="More">⋯</button><div class="oc-menu">' +
+              '<button type="button" data-slip="' + o.id + '">🧾 Packing slip</button>' +
               '<button type="button" data-ship-note-edit="' + o.id + '">📝 ' + (o.notes ? 'Edit shipping note' : 'Add shipping note') + '</button>' +
               (shipTogetherCandidates(o).length ? '<button type="button" data-pd-combine="' + o.id + '">🔗 Combine with another order…</button>' : '') +
               (parcelMates(o).length > 1 ? parcelMates(o).map(function (m) { return '<button type="button" data-pd-separate="' + m.id + '">✂ Send ' + escapeHtml(cleanItemName((m.items[0] || {}).productName || 'order')) + ' separately</button>'; }).join('') : '') +
@@ -11517,12 +11960,25 @@
     var cur = bookQ[0];
     var receiverHtml = cur
       ? '<div style="display:flex; justify-content:space-between; align-items:center;"><div class="pd-title">Receiver · ' + (totalToBook - bookQ.length + 1) + ' of ' + totalToBook + '</div><span class="muted" style="font-size:13px;">' + escapeHtml(cur.buyerName || '') + '</span></div>' +
+        '<div class="muted" style="font-size:12px; margin-top:4px;">🥤 ' + escapeHtml(parcelContentsText(cur)) + shipSkipTagHtml(cur) + '</div>' +
         '<div class="pd-block">' + escapeHtml(receiverBlock(cur)) + '</div>' +
-        '<button type="button" class="btn btn-secondary pd-wide" data-pd-copy-receiver="' + cur.id + '">Copy receiver (name + phone + address)</button>' +
+        '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+          (cur.postcode ? '<button type="button" class="btn btn-secondary" data-pd-copy-postcode="' + cur.id + '" style="margin:0;">Copy postcode · ' + escapeHtml(cur.postcode) + '</button>' : '') +
+          '<button type="button" class="btn btn-secondary pd-wide" data-pd-copy-receiver="' + cur.id + '" style="flex:1; margin:0;">Copy receiver (name + phone + address)</button>' +
+        '</div>' +
         '<div style="display:flex; gap:8px; margin-top:8px;">' +
           '<button type="button" class="btn btn-primary pd-wide" data-pd-booked="' + cur.id + '" style="flex:1; margin:0;">✔ Booked, next</button>' +
-          '<button type="button" class="btn btn-secondary" data-pd-skip="' + cur.id + '">Skip</button>' +
-        '</div>'
+          '<button type="button" class="btn btn-secondary" data-pd-skip-open="' + cur.id + '">⏸ Skip…</button>' +
+        '</div>' +
+        (pdSkipFor === cur.id
+          ? '<div style="margin-top:8px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">' +
+              '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><button type="button" class="btn btn-secondary btn-small" data-pd-skip="' + cur.id + '">Skip for now</button>' +
+              '<span class="muted">or send after</span><input type="date" id="pd-skip-date" min="' + todayISO() + '" style="width:auto;">' +
+              '<button type="button" class="btn btn-secondary btn-small" data-pd-skip-until="' + cur.id + '">Skip until then</button>' +
+              '<button type="button" class="btn-text" data-pd-skip-open="" style="font-size:12px;">Cancel</button></div>' +
+              '<div class="muted" style="font-size:12px; margin-top:4px;">It stays in the list above with a ⏸ tag — bring it back there any time.</div></div>'
+          : '') +
+        (bookQ.length ? '<div style="margin-top:10px; text-align:right;"><button type="button" class="btn-text" id="btn-ep-bulk" style="font-size:13px;">⬇ EasyParcel bulk file (' + bookQ.length + ' parcel' + (bookQ.length === 1 ? '' : 's') + ')</button></div>' : '')
       : '<div class="pd-title">Receiver</div><div class="muted" style="font-size:14px; margin-top:6px;">' + (totalToBook ? 'All done for now 🎉' : 'Nothing ready to book yet.') + '</div>';
     if (waitingAddr) receiverHtml += '<div class="muted" style="font-size:12px; margin-top:6px;">' + waitingAddr + ' parcel' + (waitingAddr === 1 ? '' : 's') + ' still waiting for an address.</div>';
 
@@ -11586,8 +12042,30 @@
       if (bo) { parcelMates(bo).forEach(function (m) { if (PRE_SHIP_STATUSES.indexOf(m.status) !== -1) changeOrderStatusCore(m, 'order shipment'); }); save(); renderAll(); }
       return;
     }
-    var skipId = t.getAttribute && t.getAttribute('data-pd-skip');
-    if (skipId) { packDaySkipIds[skipId] = true; renderShipping(); return; }
+    if (t.hasAttribute && t.hasAttribute('data-pd-skip-open')) { pdSkipFor = t.getAttribute('data-pd-skip-open') || null; renderShipping(); return; }
+    var pcId = t.getAttribute && t.getAttribute('data-pd-copy-postcode');
+    if (pcId) { var pco = state.orders.find(function (o) { return o.id === pcId; }); if (pco) copyTextWithToast(String(pco.postcode || ''), 'Postcode copied'); return; }
+    var skipId = t.getAttribute && (t.getAttribute('data-pd-skip') || t.getAttribute('data-pd-skip-until'));
+    if (skipId) {
+      var until = '';
+      if (t.getAttribute('data-pd-skip-until')) {
+        until = (document.getElementById('pd-skip-date') || {}).value || '';
+        if (!until) { alert('Pick the date first.'); return; }
+      }
+      var so = state.orders.find(function (o) { return o.id === skipId; });
+      if (so) parcelMates(so).forEach(function (m) { m.shipSkip = { until: until, at: todayISO() }; });
+      pdSkipFor = null;
+      save(); renderShipping();
+      showCopiedToast(until ? 'Skipped until ' + shortDate(until) : 'Skipped for now');
+      return;
+    }
+    var unskipId = t.getAttribute && t.getAttribute('data-pd-unskip');
+    if (unskipId) {
+      var uo = state.orders.find(function (o) { return o.id === unskipId; });
+      if (uo) parcelMates(uo).forEach(function (m) { if (m.shipSkip) m.shipSkip.back = true; });
+      save(); renderShipping();
+      return;
+    }
     var saveTrkId = t.getAttribute && t.getAttribute('data-pd-save-tracking');
     if (saveTrkId) {
       var to = state.orders.find(function (o) { return o.id === saveTrkId; });
@@ -11745,6 +12223,7 @@
         '<button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button>' +
         '<div class="oc-menu">' +
           '<button type="button" data-toggle-pickup="' + o.id + '">' + (o.pickup ? '📦 Ship it instead' : '🤝 Customer picks up') + '</button>' +
+          '<button type="button" data-slip="' + o.id + '">🧾 Packing slip</button>' +
           '<button type="button" data-ship-note-edit="' + o.id + '">📝 ' + (o.notes ? 'Edit shipping note' : 'Add shipping note') + '</button>' +
           (o.pickup ? '' : '<button type="button" data-open-ship-together="' + o.id + '">🔗 Ship together with…</button>') +
           (o.shipGroupId ? '<button type="button" data-unlink-ship-together="' + o.id + '">✂ Send separately (unlink)</button>' : '') +
@@ -14886,7 +15365,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-11-15d';
+  var APP_VERSION = '2026-11-17a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
