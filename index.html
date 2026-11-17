@@ -7,8 +7,16 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-11-17a" />
+<meta name="app-version" content="2026-11-17c" />
 <title>❄️ Sips by Evve</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/png" href="favicon-64.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<meta name="theme-color" content="#f4ece4" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Sips by Evve" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <style>
   :root {
     --blue: #2563eb;
@@ -11657,9 +11665,15 @@
   // cup with its pattern / lid / sticker code / extras and price, then every extra sticker and
   // straw listed once more at the bottom so none is forgotten while packing. On screen, printable
   // on A6, copyable as text for WhatsApp, or saved as a picture.
+  // After the name: her WhatsApp — a username gets an @ in front, a number stays as it is.
+  function slipContact(o) {
+    var w = String(o.buyerWhatsapp || o.recipientPhone || '').trim();
+    if (!w) return '';
+    return (/[A-Za-z]/.test(w) && w.charAt(0) !== '@') ? '@' + w : w;
+  }
   function slipData(order) {
     var mates = parcelMates(order);
-    var d = { orderNos: mates.map(function (m) { return m.orderNo; }).filter(Boolean), date: order.date, buyer: order.buyerName || '', handle: order.buyerHandle || '',
+    var d = { orderNos: mates.map(function (m) { return m.orderNo; }).filter(Boolean), date: order.date, buyer: order.buyerName || '', handle: slipContact(order),
       zone: isEastMalaysia(order) ? 'East Malaysia' : (order.pickup ? 'Pick-up' : shippingZoneLabel(order.shippingZone)), paid: mates.every(orderFullyPaid),
       cups: [], others: [], extras: [], shipping: 0, discount: 0, total: 0 };
     mates.forEach(function (m) {
@@ -15365,7 +15379,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-11-17a';
+  var APP_VERSION = '2026-11-17c';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
@@ -16446,5 +16460,12 @@
 })();
 </script>
 
+<script>
+  // Install-as-an-app helper (sw.js next to this file). Only on the real website — never breaks
+  // the app if the file isn't there.
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+  }
+</script>
 </body>
 </html>
