@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-11-20a" />
+<meta name="app-version" content="2026-11-20b" />
 <title>❄️ Sips by Evve</title>
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/png" href="favicon-64.png" />
@@ -1718,6 +1718,20 @@
   // order with "Discount: CODE (−RM10)" takes that amount off her credit, like "Apply credit".
   var CAT_URL = 'https://heeatmscxouwevoonpti.supabase.co';
   var CAT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlZWF0bXNjeG91d2V2b29ucHRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MzgxMDEsImV4cCI6MjEwNTExNDEwMX0.kOl03t_7qAhM91uft_AVRducgmmWkxYTRGZCIPdqYOw';
+  // Message types: each code gets a type, and the message to send her comes from that type.
+  var DEFAULT_DC_TYPES = [
+    { id: 'cracked', name: 'Cracked cup', template: "Hihi Kakak {buyerName}!\nSorry about the cracked cup 🙏 thank you for being so understanding 💛\nHere's {amount} off your next order: {code}\nJust key it in the \"Discount code\" box when you order ya!\nhttps://sipsbyevve.github.io" },
+    { id: 'pickup', name: 'Pick up', template: "Hihi Kakak {buyerName}!\nThank you for picking up your order 🙏 here's {amount} off your next order 💕\nYour discount code: {code}\nJust key it in the \"Discount code\" box when you order ya!\nhttps://sipsbyevve.github.io" },
+    { id: 'general', name: 'General', template: "Hihi Kakak {buyerName}!\nHere's {amount} off your next order 💕\nYour discount code: {code}\nJust key it in the \"Discount code\" box when you order ya!\nhttps://sipsbyevve.github.io" }
+  ];
+  function dcTypes() { return (Array.isArray(state.dcTypes) && state.dcTypes.length) ? state.dcTypes : DEFAULT_DC_TYPES; }
+  function dcTypeById(id) { return dcTypes().find(function (t) { return t.id === id; }) || dcTypes().find(function (t) { return t.id === 'general'; }) || dcTypes()[0]; }
+  function dcGuessType(note) { var n = String(note || ''); if (/crack|broken|pecah|retak/i.test(n)) return 'cracked'; if (/pick ?up|self ?collect|ambil/i.test(n)) return 'pickup'; return 'general'; }
+  function dcMoney(v) { v = Number(v) || 0; return 'RM' + (Math.round(v * 100) % 100 === 0 ? String(Math.round(v)) : v.toFixed(2)); }
+  function dcMessage(d) {
+    var t = dcTypeById(d.type);
+    return String(t ? t.template : '').split('{buyerName}').join(d.customerName || '').split('{code}').join(d.code).split('{amount}').join(dcMoney(d.amount));
+  }
   var catSbClient = null;
   function catSb() {
     if (catSbClient) return catSbClient;
@@ -1773,7 +1787,9 @@
       return '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; padding:3px 0;">' +
         '<strong style="font-family:monospace;">' + escapeHtml(d.code) + '</strong><span>' + money(d.amount) + '</span>' +
         '<span class="pill ' + pill + '" style="font-size:10px;">' + escapeHtml(st) + (s && s.status === 'used' && s.used_order_no ? ' · ' + escapeHtml(s.used_order_no) + (s.used_amount != null ? ' · ' + money(s.used_amount) : '') : '') + '</span>' +
-        '<button type="button" class="btn-text" data-dc-copy="' + escapeHtml(d.code) + '" style="font-size:12px;">Copy</button>' +
+        '<span class="muted" style="font-size:11px;">' + escapeHtml(dcTypeById(d.type).name) + '</span>' +
+        '<button type="button" class="btn-text" data-dc-copy="' + escapeHtml(d.code) + '" style="font-size:12px;">Copy code</button>' +
+        (st !== 'used' && st !== 'void' ? '<button type="button" class="btn-text" data-dc-msg="' + escapeHtml(d.code) + '" style="font-size:12px;">💬 Copy message</button>' : '') +
         (st === 'active' ? '<button type="button" class="btn-text danger" data-dc-void="' + escapeHtml(d.code) + '" style="font-size:12px;">Void</button>' : '') +
       '</div>';
     }).join('') + '</div>';
@@ -1785,6 +1801,7 @@
     var cust = dcCustomerFor(opts.wa, opts.name);
     var name = opts.name || cust.name, handle = opts.handle || cust.handle;
     var auto = dcGenerate(name, handle);
+    var curType = opts.type || dcGuessType(opts.note);
     var ov = document.createElement('div');
     ov.id = 'dc-overlay';
     ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9998; display:flex; align-items:center; justify-content:center; padding:16px;';
@@ -1794,10 +1811,16 @@
         '<div class="muted" style="font-size:12px; margin:2px 0 10px;">She types it in the catalogue and it comes off her total. It\'s part of her credit here.</div>' +
         (done
           ? '<div class="sp-ok" style="font-size:14px;">✓ <strong style="font-family:monospace; font-size:16px;">' + escapeHtml(done) + '</strong> · ' + money(Number(document.getElementById('dc-amount') ? document.getElementById('dc-amount').value : opts.amount)) + '</div>' +
-            '<div style="display:flex; gap:8px; margin-top:10px;"><button type="button" class="btn btn-primary btn-small" id="btn-dc-copy-done">📋 Copy code</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-close">Close</button></div>'
+            '<div style="white-space:pre-wrap; font-size:13px; background:var(--bg); border-radius:8px; padding:8px 10px; margin-top:8px;">' + escapeHtml(dcMessage(lastEntry || { code: done, amount: opts.amount, customerName: name, type: curType })) + '</div>' +
+            '<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="btn-dc-copy-msg">💬 Copy message</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-copy-done">📋 Copy code</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-close">Close</button></div>'
           : '<label class="field-label">Code</label><input id="dc-code" value="' + escapeHtml(auto) + '" autocomplete="off" style="width:100%; font-family:monospace; text-transform:uppercase;">' +
             '<label class="field-label" style="margin-top:8px;">Amount (RM)</label><input id="dc-amount" type="number" min="0.01" step="0.01" value="' + (Number(opts.amount) || '') + '" style="width:140px;">' +
-            '<label class="field-label" style="margin-top:8px;">Reason <span class="muted">(saved with the code)</span></label><input id="dc-note" value="' + escapeHtml(opts.note || '') + '" placeholder="e.g. cup cracked" style="width:100%;">' +
+            '<label class="field-label" style="margin-top:8px;">Type <span class="muted">(picks the message you send her)</span></label>' +
+            '<select id="dc-type" style="width:100%;">' + dcTypes().map(function (t) { return '<option value="' + escapeHtml(t.id) + '"' + (t.id === curType ? ' selected' : '') + '>' + escapeHtml(t.name) + '</option>'; }).join('') + '<option value="__new">+ Add type…</option></select>' +
+            '<div id="dc-newtype" style="display:none; margin-top:6px;"><input id="dc-newtype-name" placeholder="Type name, e.g. Late delivery" style="width:100%; margin-bottom:6px;">' +
+              '<textarea id="dc-newtype-tpl" rows="5" style="width:100%; font-size:13px;">' + escapeHtml(dcTypeById('general').template) + '</textarea>' +
+              '<div class="muted" style="font-size:11px;">Use {buyerName}, {code} and {amount}.</div></div>' +
+            '<label class="field-label" style="margin-top:8px;">Notes <span class="muted">(only for you)</span></label><input id="dc-note" value="' + escapeHtml(opts.note || '') + '" placeholder="e.g. order 1103K01, crack at the bottom" style="width:100%;">' +
             (signedIn ? '<div class="muted" style="font-size:12px; margin-top:8px;">Catalogue account: ' + escapeHtml(signedIn) + '</div>'
               : '<div style="margin-top:10px; padding:8px 10px; background:var(--bg); border-radius:8px;"><div style="font-size:12px; margin-bottom:6px;">Sign in with your <strong>catalogue</strong> account (once — it\'s remembered):</div>' +
                 '<input id="dc-email" type="email" placeholder="Catalogue email" autocomplete="username" style="width:100%; margin-bottom:6px;"><input id="dc-pass" type="password" placeholder="Catalogue password" autocomplete="current-password" style="width:100%;"></div>') +
@@ -1805,14 +1828,20 @@
             '<div style="display:flex; gap:8px;"><button type="button" class="btn btn-primary btn-small" id="btn-dc-save">' + (signedIn ? 'Make code' : 'Sign in & make code') + '</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-close">Not now</button></div>') +
       '</div>';
     }
-    var lastSaved = null;
+    var lastSaved = null, lastEntry = null;
     document.body.appendChild(ov);
+    ov.addEventListener('change', function (e) {
+      if (e.target.id !== 'dc-type') return;
+      document.getElementById('dc-newtype').style.display = e.target.value === '__new' ? '' : 'none';
+      if (e.target.value !== '__new') curType = e.target.value;
+    });
     if (!catSb()) { render(null, 'Can\'t reach the catalogue right now (no internet?). Her credit is saved — make the code later from Customers.'); }
     else catCheckSignedIn().then(function (em) { render(em, ''); });
     render(null, 'Checking…');
     ov.addEventListener('click', function (e) {
       if (e.target === ov || e.target.id === 'btn-dc-close') { ov.remove(); return; }
       if (e.target.id === 'btn-dc-copy-done' && lastSaved) { copyTextWithToast(lastSaved, 'Code copied — send it to her'); return; }
+      if (e.target.id === 'btn-dc-copy-msg' && lastEntry) { var mtx = dcMessage(lastEntry); window.__lastCopiedText = mtx; copyTextWithToast(mtx, 'Message copied — paste it to her on WhatsApp'); return; }
       if (e.target.id !== 'btn-dc-save') return;
       var c = catSb(); if (!c) return;
       var typed = document.getElementById('dc-code').value;
@@ -1823,6 +1852,15 @@
       var msgEl = document.getElementById('dc-msg');
       if (!dcValid(code)) { msgEl.textContent = 'Code must be 6–20 letters/numbers (A–Z, 0–9).'; return; }
       if (!(amt > 0)) { msgEl.textContent = 'Enter the amount.'; return; }
+      var typeSel = document.getElementById('dc-type');
+      if (typeSel && typeSel.value === '__new') {
+        var tn = document.getElementById('dc-newtype-name').value.trim(), tt = document.getElementById('dc-newtype-tpl').value;
+        if (!tn) { msgEl.textContent = 'Give the new type a name.'; return; }
+        if (!Array.isArray(state.dcTypes) || !state.dcTypes.length) state.dcTypes = DEFAULT_DC_TYPES.map(function (x) { return Object.assign({}, x); });
+        var nt = { id: 't_' + uid(), name: tn, template: tt };
+        state.dcTypes.push(nt);
+        curType = nt.id;
+      } else if (typeSel) curType = typeSel.value;
       e.target.disabled = true; msgEl.style.color = 'var(--muted)'; msgEl.textContent = 'Saving…';
       var signIn = catUserEmail ? Promise.resolve(true) : c.auth.signInWithPassword({ email: (document.getElementById('dc-email') || {}).value || '', password: (document.getElementById('dc-pass') || {}).value || '' }).then(function (r) {
         if (r.error) throw new Error('Catalogue sign-in failed: ' + r.error.message);
@@ -1840,7 +1878,8 @@
       };
       signIn.then(function () { return attempt(code, 0); }).then(function (saved) {
         if (!state.discountCodes) state.discountCodes = [];
-        state.discountCodes.push({ id: saved, code: saved, amount: amt, customerKey: cust.key, customerName: name || '', handle: handle || '', createdAt: todayISO() });
+        lastEntry = { id: saved, code: saved, amount: amt, customerKey: cust.key, customerName: name || '', handle: handle || '', type: curType, createdAt: todayISO() };
+        state.discountCodes.push(lastEntry);
         dcStatusCache[saved] = { code: saved, status: 'active' };
         save();
         lastSaved = saved;
@@ -1853,6 +1892,28 @@
         if (catUserEmail && document.getElementById('dc-email')) render(catUserEmail, err.message);
       });
     });
+  }
+  var dcTypesOpen = false;
+  function dcTypesEditorHtml() {
+    if (!dcTypesOpen) return '<div style="margin:0 0 10px;"><button type="button" class="btn-text" id="btn-dc-types-open" style="font-size:13px;">✏️ Discount code messages (' + dcTypes().length + ' types)</button></div>';
+    return '<div class="card" style="margin-bottom:10px;"><div style="font-weight:600; margin-bottom:4px;">✏️ Discount code messages</div>' +
+      '<div class="muted" style="font-size:12px; margin-bottom:8px;">Use {buyerName}, {code} and {amount}.</div>' +
+      dcTypes().map(function (t) {
+        return '<div style="padding:8px 0; border-top:1px solid var(--border);"><div style="display:flex; gap:8px; align-items:center;"><input class="dct-name" data-id="' + escapeHtml(t.id) + '" value="' + escapeHtml(t.name) + '" style="flex:1;">' +
+          (t.id === 'general' ? '' : '<button type="button" class="btn-text danger" data-dc-type-del="' + escapeHtml(t.id) + '" style="font-size:12px;">Remove</button>') + '</div>' +
+          '<textarea class="dct-tpl" data-id="' + escapeHtml(t.id) + '" rows="5" style="width:100%; font-size:13px; margin-top:6px;">' + escapeHtml(t.template) + '</textarea></div>';
+      }).join('') +
+      '<div style="display:flex; gap:8px; margin-top:8px;"><button type="button" class="btn btn-secondary btn-small" id="btn-dc-types-add">+ Add type</button><span style="flex:1;"></span><button type="button" class="btn btn-primary btn-small" id="btn-dc-types-save">Save</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-types-open">Close</button></div></div>';
+  }
+  function dcTypesSave(addOne, removeId) {
+    var list = Array.from(document.querySelectorAll('.dct-name')).map(function (n) {
+      var tpl = document.querySelector('.dct-tpl[data-id="' + n.getAttribute('data-id') + '"]');
+      return { id: n.getAttribute('data-id'), name: n.value.trim() || 'Untitled', template: tpl ? tpl.value : '' };
+    }).filter(function (t) { return t.id !== removeId; });
+    if (addOne) list.push({ id: 't_' + uid(), name: 'New type', template: dcTypeById('general').template });
+    state.dcTypes = list;
+    save(); renderCustomers();
+    if (!addOne) showCopiedToast('Messages saved');
   }
   function dcVoid(code) {
     var c = catSb(); if (!c) { alert('Can\'t reach the catalogue right now.'); return; }
@@ -1889,6 +1950,13 @@
   document.addEventListener('click', function (e) {
     var cp = e.target.closest ? e.target.closest('[data-dc-copy]') : null;
     if (cp) { copyTextWithToast(cp.getAttribute('data-dc-copy'), 'Code copied'); return; }
+    var cm = e.target.closest ? e.target.closest('[data-dc-msg]') : null;
+    if (cm) { var dd = (state.discountCodes || []).find(function (x) { return x.code === cm.getAttribute('data-dc-msg'); }); if (dd) { var mt = dcMessage(dd); window.__lastCopiedText = mt; copyTextWithToast(mt, 'Message copied'); } return; }
+    if (e.target.id === 'btn-dc-types-open') { dcTypesOpen = !dcTypesOpen; renderCustomers(); return; }
+    if (e.target.id === 'btn-dc-types-add') { dcTypesSave(true); return; }
+    if (e.target.id === 'btn-dc-types-save') { dcTypesSave(false); return; }
+    var dl = e.target.getAttribute && e.target.getAttribute('data-dc-type-del');
+    if (dl) { if (confirm('Remove this type? Codes that used it will use General.')) { dcTypesSave(false, dl); } return; }
     var vd = e.target.closest ? e.target.closest('[data-dc-void]') : null;
     if (vd) { dcVoid(vd.getAttribute('data-dc-void')); return; }
     var mk = e.target.closest ? e.target.closest('[data-dc-make]') : null;
@@ -7655,6 +7723,7 @@
       content.innerHTML = searchBar + '<div class="empty">No customers match this search.</div>';
       return;
     }
+    searchBar = dcTypesEditorHtml() + searchBar;
     content.innerHTML = searchBar + filtered.map(function (c) {
       var expanded = expandedCustomerKey === c.key;
       return '<div class="card" style="margin-bottom:8px;">' +
@@ -15687,7 +15756,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-11-20a';
+  var APP_VERSION = '2026-11-20b';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
