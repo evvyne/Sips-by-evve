@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-11-17c" />
+<meta name="app-version" content="2026-11-20a" />
 <title>❄️ Sips by Evve</title>
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/png" href="favicon-64.png" />
@@ -1708,6 +1708,195 @@
     if (!norm || !amount) return;
     state.customerCredits.push({ id: uid(), key: norm, rawIdentifier: waRaw, amount: Number(amount), reason: reason || '', date: todayISO(), sourceOrderId: sourceOrderId || null });
   }
+
+  // ================= 🎟 Discount codes (shared with the catalogue) =================
+  // Codes live in the catalogue's Supabase table credit_codes (made and secured on the catalogue
+  // side). This app only: adds a new code (signed in with HER catalogue account, which she types in
+  // herself), reads codes' status, voids an unused one, and puts a used code back to active when
+  // the order it was used on is cancelled. Nothing else in the catalogue is read or written.
+  // Here a code is part of the customer's credit: giving credit can make a code for it; a pasted
+  // order with "Discount: CODE (−RM10)" takes that amount off her credit, like "Apply credit".
+  var CAT_URL = 'https://heeatmscxouwevoonpti.supabase.co';
+  var CAT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlZWF0bXNjeG91d2V2b29ucHRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1MzgxMDEsImV4cCI6MjEwNTExNDEwMX0.kOl03t_7qAhM91uft_AVRducgmmWkxYTRGZCIPdqYOw';
+  var catSbClient = null;
+  function catSb() {
+    if (catSbClient) return catSbClient;
+    var lib = (typeof window !== 'undefined' && window.supabase && window.supabase.createClient) ? window.supabase : null;
+    if (!lib) return null;
+    catSbClient = lib.createClient(CAT_URL, CAT_KEY, { auth: { storageKey: 'sips-catalogue-auth', persistSession: true, autoRefreshToken: true } });
+    return catSbClient;
+  }
+  var catUserEmail = null;
+  function catCheckSignedIn() {
+    var c = catSb();
+    if (!c) return Promise.resolve(null);
+    return c.auth.getSession().then(function (r) {
+      var u = r && r.data && r.data.session && r.data.session.user;
+      catUserEmail = u ? (u.email || 'signed in') : null;
+      return catUserEmail;
+    }).catch(function () { return null; });
+  }
+  var DC_RAND = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // A–Z and 2–9 without O, I, 0, 1
+  function dcClean(v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function dcValid(v) { return /^[A-Z0-9]{6,20}$/.test(v); }
+  function dcNamePart(name, handle) {
+    var n = String(name || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 8);
+    if (n.length >= 2) return n;
+    var h = String(handle || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+    return h.length >= 2 ? h : 'EVVE';
+  }
+  function dcGenerate(name, handle) {
+    var r = function (set) { return set.charAt(Math.floor(Math.random() * set.length)); };
+    return dcNamePart(name, handle) + r('23456789') + r(DC_RAND) + r(DC_RAND) + r(DC_RAND);
+  }
+  function dcCustomerFor(waRaw, fallbackName) {
+    var key = normalizeIdentifier(waRaw);
+    var c = key ? customerAggregates().find(function (x) { return normalizeIdentifier(x.whatsapp) === key; }) : null;
+    return { key: key, wa: waRaw || '', name: (c && c.name) || fallbackName || '', handle: (c && c.handle) || '' };
+  }
+  function dcCodesFor(key) { return (state.discountCodes || []).filter(function (d) { return d.customerKey === key; }); }
+  var dcStatusCache = {}; // code -> { status, used_order_no, used_amount }
+  function dcRefreshStatuses(codes) {
+    var c = catSb();
+    if (!c || !codes.length) return Promise.resolve();
+    return c.from('credit_codes').select('code,status,used_order_no,used_amount,used_at').in('code', codes).then(function (r) {
+      (r.data || []).forEach(function (row) { dcStatusCache[row.code] = row; });
+    }).catch(function () {});
+  }
+  function dcListHtml(c) {
+    var list = dcCodesFor(normalizeIdentifier(c.whatsapp));
+    if (!list.length) return '';
+    return '<div style="margin:6px 0 8px;"><div class="muted" style="font-size:12px; margin-bottom:2px;">🎟 Discount codes</div>' + list.map(function (d) {
+      var s = dcStatusCache[d.code];
+      var st = s ? s.status : '…';
+      var pill = st === 'active' ? 'pill-green' : st === 'used' ? 'pill-blue' : st === 'void' ? 'pill-gray' : 'pill-gray';
+      return '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; padding:3px 0;">' +
+        '<strong style="font-family:monospace;">' + escapeHtml(d.code) + '</strong><span>' + money(d.amount) + '</span>' +
+        '<span class="pill ' + pill + '" style="font-size:10px;">' + escapeHtml(st) + (s && s.status === 'used' && s.used_order_no ? ' · ' + escapeHtml(s.used_order_no) + (s.used_amount != null ? ' · ' + money(s.used_amount) : '') : '') + '</span>' +
+        '<button type="button" class="btn-text" data-dc-copy="' + escapeHtml(d.code) + '" style="font-size:12px;">Copy</button>' +
+        (st === 'active' ? '<button type="button" class="btn-text danger" data-dc-void="' + escapeHtml(d.code) + '" style="font-size:12px;">Void</button>' : '') +
+      '</div>';
+    }).join('') + '</div>';
+  }
+  // The "make a code" window, shown right after giving credit (or from the customer card).
+  function openDiscountCodeDialog(opts) {
+    // opts: { wa, name, handle, amount, note }
+    var old = document.getElementById('dc-overlay'); if (old) old.remove();
+    var cust = dcCustomerFor(opts.wa, opts.name);
+    var name = opts.name || cust.name, handle = opts.handle || cust.handle;
+    var auto = dcGenerate(name, handle);
+    var ov = document.createElement('div');
+    ov.id = 'dc-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9998; display:flex; align-items:center; justify-content:center; padding:16px;';
+    function render(signedIn, msg, done) {
+      ov.innerHTML = '<div class="card" style="width:100%; max-width:420px; margin:0;">' +
+        '<div style="font-weight:600;">🎟 Discount code for ' + escapeHtml(name || 'her') + '</div>' +
+        '<div class="muted" style="font-size:12px; margin:2px 0 10px;">She types it in the catalogue and it comes off her total. It\'s part of her credit here.</div>' +
+        (done
+          ? '<div class="sp-ok" style="font-size:14px;">✓ <strong style="font-family:monospace; font-size:16px;">' + escapeHtml(done) + '</strong> · ' + money(Number(document.getElementById('dc-amount') ? document.getElementById('dc-amount').value : opts.amount)) + '</div>' +
+            '<div style="display:flex; gap:8px; margin-top:10px;"><button type="button" class="btn btn-primary btn-small" id="btn-dc-copy-done">📋 Copy code</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-close">Close</button></div>'
+          : '<label class="field-label">Code</label><input id="dc-code" value="' + escapeHtml(auto) + '" autocomplete="off" style="width:100%; font-family:monospace; text-transform:uppercase;">' +
+            '<label class="field-label" style="margin-top:8px;">Amount (RM)</label><input id="dc-amount" type="number" min="0.01" step="0.01" value="' + (Number(opts.amount) || '') + '" style="width:140px;">' +
+            '<label class="field-label" style="margin-top:8px;">Reason <span class="muted">(saved with the code)</span></label><input id="dc-note" value="' + escapeHtml(opts.note || '') + '" placeholder="e.g. cup cracked" style="width:100%;">' +
+            (signedIn ? '<div class="muted" style="font-size:12px; margin-top:8px;">Catalogue account: ' + escapeHtml(signedIn) + '</div>'
+              : '<div style="margin-top:10px; padding:8px 10px; background:var(--bg); border-radius:8px;"><div style="font-size:12px; margin-bottom:6px;">Sign in with your <strong>catalogue</strong> account (once — it\'s remembered):</div>' +
+                '<input id="dc-email" type="email" placeholder="Catalogue email" autocomplete="username" style="width:100%; margin-bottom:6px;"><input id="dc-pass" type="password" placeholder="Catalogue password" autocomplete="current-password" style="width:100%;"></div>') +
+            '<div id="dc-msg" style="font-size:12px; min-height:16px; margin-top:6px; color:var(--red);">' + (msg ? escapeHtml(msg) : '') + '</div>' +
+            '<div style="display:flex; gap:8px;"><button type="button" class="btn btn-primary btn-small" id="btn-dc-save">' + (signedIn ? 'Make code' : 'Sign in & make code') + '</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-close">Not now</button></div>') +
+      '</div>';
+    }
+    var lastSaved = null;
+    document.body.appendChild(ov);
+    if (!catSb()) { render(null, 'Can\'t reach the catalogue right now (no internet?). Her credit is saved — make the code later from Customers.'); }
+    else catCheckSignedIn().then(function (em) { render(em, ''); });
+    render(null, 'Checking…');
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.id === 'btn-dc-close') { ov.remove(); return; }
+      if (e.target.id === 'btn-dc-copy-done' && lastSaved) { copyTextWithToast(lastSaved, 'Code copied — send it to her'); return; }
+      if (e.target.id !== 'btn-dc-save') return;
+      var c = catSb(); if (!c) return;
+      var typed = document.getElementById('dc-code').value;
+      var code = dcClean(typed);
+      var edited = code !== auto;
+      var amt = Math.round((Number(document.getElementById('dc-amount').value) || 0) * 100) / 100;
+      opts.note = (document.getElementById('dc-note') || {}).value != null ? document.getElementById('dc-note').value.trim() : (opts.note || '');
+      var msgEl = document.getElementById('dc-msg');
+      if (!dcValid(code)) { msgEl.textContent = 'Code must be 6–20 letters/numbers (A–Z, 0–9).'; return; }
+      if (!(amt > 0)) { msgEl.textContent = 'Enter the amount.'; return; }
+      e.target.disabled = true; msgEl.style.color = 'var(--muted)'; msgEl.textContent = 'Saving…';
+      var signIn = catUserEmail ? Promise.resolve(true) : c.auth.signInWithPassword({ email: (document.getElementById('dc-email') || {}).value || '', password: (document.getElementById('dc-pass') || {}).value || '' }).then(function (r) {
+        if (r.error) throw new Error('Catalogue sign-in failed: ' + r.error.message);
+        catUserEmail = (r.data && r.data.user && r.data.user.email) || 'signed in';
+        return true;
+      });
+      var attempt = function (cd, tries) {
+        return c.from('credit_codes').insert({ code: cd, amount: amt, customer_name: name || null, tiktok_handle: handle || null, note: opts.note || null, status: 'active' }).then(function (r) {
+          if (!r.error) return cd;
+          var dup = r.error.code === '23505' || /duplicate|unique/i.test(r.error.message || '');
+          if (dup && !edited && tries < 6) { var again = dcGenerate(name, handle); auto = again; return attempt(again, tries + 1); }
+          if (dup) throw new Error('That code is already used — please change it.');
+          throw new Error('Couldn\'t save the code: ' + (r.error.message || 'error'));
+        });
+      };
+      signIn.then(function () { return attempt(code, 0); }).then(function (saved) {
+        if (!state.discountCodes) state.discountCodes = [];
+        state.discountCodes.push({ id: saved, code: saved, amount: amt, customerKey: cust.key, customerName: name || '', handle: handle || '', createdAt: todayISO() });
+        dcStatusCache[saved] = { code: saved, status: 'active' };
+        save();
+        lastSaved = saved;
+        render(catUserEmail, '', saved);
+        if (document.getElementById('page-customers').classList.contains('active')) renderCustomers();
+      }).catch(function (err) {
+        e.target.disabled = false;
+        msgEl.style.color = 'var(--red)';
+        msgEl.textContent = err.message || String(err);
+        if (catUserEmail && document.getElementById('dc-email')) render(catUserEmail, err.message);
+      });
+    });
+  }
+  function dcVoid(code) {
+    var c = catSb(); if (!c) { alert('Can\'t reach the catalogue right now.'); return; }
+    if (!confirm('Void ' + code + '? The catalogue will stop accepting it. Her credit here stays the same.')) return;
+    catCheckSignedIn().then(function (em) {
+      if (!em) { alert('Sign in to the catalogue first (make a code once, it asks you to sign in).'); return; }
+      return c.from('credit_codes').update({ status: 'void' }).eq('code', code).eq('status', 'active').select('code,status').then(function (r) {
+        if (r.error) { alert('Couldn\'t void it: ' + r.error.message); return; }
+        if (!r.data || !r.data.length) { alert(code + ' isn\'t active any more (already used or voided) — nothing changed.'); }
+        else showCopiedToast(code + ' voided');
+        return dcRefreshStatuses([code]).then(function () { renderCustomers(); });
+      });
+    });
+  }
+  // Order cancelled: give the code back, only if it's the code used on THIS order.
+  function dcReturnForCancelledOrder(o) {
+    var c = catSb();
+    if (!c || !o.discountCode) return;
+    catCheckSignedIn().then(function (em) {
+      if (!em) { alert('Her credit is back here, but ' + o.discountCode + ' couldn\'t be reopened — sign in to the catalogue (Customers → make a code) and make her a new code.'); return; }
+      return c.from('credit_codes').select('code,status,used_order_no').eq('code', o.discountCode).then(function (r) {
+        var row = r.data && r.data[0];
+        if (!row || row.status !== 'used' || String(row.used_order_no || '') !== String(o.orderNo || '')) {
+          alert(o.discountCode + ' wasn\'t reopened: in the catalogue it is ' + (row ? row.status + (row.used_order_no ? ' on order ' + row.used_order_no : '') : 'not found') + ', not used on order ' + (o.orderNo || '(no order no)') + '. Her credit here is back; make a new code if she needs one.');
+          return;
+        }
+        return c.from('credit_codes').update({ status: 'active', used_at: null, used_order_no: null, used_amount: null }).eq('code', o.discountCode).eq('status', 'used').eq('used_order_no', o.orderNo).select('code').then(function (u) {
+          if (u.error || !u.data || !u.data.length) alert('Couldn\'t reopen ' + o.discountCode + (u.error ? ': ' + u.error.message : '') + '. Her credit here is back.');
+          else { dcStatusCache[o.discountCode] = { code: o.discountCode, status: 'active' }; showCopiedToast(o.discountCode + ' is usable again'); }
+        });
+      });
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var cp = e.target.closest ? e.target.closest('[data-dc-copy]') : null;
+    if (cp) { copyTextWithToast(cp.getAttribute('data-dc-copy'), 'Code copied'); return; }
+    var vd = e.target.closest ? e.target.closest('[data-dc-void]') : null;
+    if (vd) { dcVoid(vd.getAttribute('data-dc-void')); return; }
+    var mk = e.target.closest ? e.target.closest('[data-dc-make]') : null;
+    if (mk) {
+      var cc = customerAggregates().find(function (x) { return x.key === mk.getAttribute('data-dc-make'); });
+      if (cc) openDiscountCodeDialog({ wa: cc.whatsapp, name: cc.name, handle: cc.handle, amount: Math.max(0, creditBalanceForKey(cc.whatsapp)) });
+    }
+  });
 
   // ---------- Navigation ----------
   document.querySelectorAll('nav button').forEach(function (btn) {
@@ -5665,6 +5854,7 @@
     document.getElementById('of-order-no').value = '';
     document.getElementById('of-smart-paste').value = '';
     document.getElementById('of-smart-paste-result').innerHTML = '';
+    spDiscount = null;
     document.getElementById('of-smart-paste-wrap').open = false;
     var repeatWrap = document.getElementById('of-repeat-customer-wrap');
     if (repeatWrap) repeatWrap.innerHTML = '';
@@ -5928,6 +6118,8 @@
       if ((m = l.match(/^Name on tumbler:\s*(.+)$/i))) { if (m[1].trim().charAt(0) !== '(') cur.nameOn = m[1].trim(); return; }
       if ((m = l.match(/^Delivery:\s*(.+)$/i))) { res.delivery = m[1].trim(); return; }
       if ((m = l.match(/^Total:\s*RM\s*([\d.,]+)/i))) { res.total = Number(m[1].replace(/,/g, '')); return; }
+      if ((m = l.match(/^(?:Discount|Credit):\s*([A-Za-z0-9]{6,20})\s*\(\s*[\u2212\-–]\s*RM\s*([\d.,]+)\s*\)/i))) { res.discount = { code: m[1].toUpperCase(), amount: Number(m[2].replace(/,/g, '')) }; return; }
+      if ((m = l.match(/^To pay:\s*RM\s*([\d.,]+)/i))) { res.toPay = Number(m[1].replace(/,/g, '')); return; }
       if ((m = l.match(/^TikTok handle:\s*(.*)$/i))) { res.tiktok = m[1].trim(); return; }
       if ((m = l.match(/^Name:\s*(.*)$/i))) { res.name = m[1].trim(); return; }
     });
@@ -6013,6 +6205,7 @@
     renderDraftItems();
     renderFormReminderPills();
     var itemsTotal = draftItems.reduce(function (t, l) { return t + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0); }, 0);
+    // Total in the message is before the discount code; "To pay" is after it.
     var formTotal = itemsTotal + (Number(document.getElementById('of-shipping').value) || 0) - (Number(document.getElementById('of-discount').value) || 0);
     var html = '';
     if (parsed.total != null) {
@@ -6047,11 +6240,30 @@
       html += '<div class="sp-warn">New customer — add her WhatsApp yourself.</div>';
     }
     renderRepeatCustomerBanner();
+    // Discount code: taken off her credit when the order is saved (like "Apply credit").
+    spDiscount = null;
+    if (parsed.discount && parsed.discount.amount > 0) {
+      var dEntry = (state.discountCodes || []).find(function (d) { return d.code === parsed.discount.code; });
+      var dKey = dEntry ? dEntry.customerKey : normalizeIdentifier(document.getElementById('of-buyer-whatsapp').value);
+      var dsc = document.getElementById('of-discount');
+      dsc.value = Math.round(((Number(dsc.value) || 0) + parsed.discount.amount) * 100) / 100;
+      updateDraftTotal();
+      var payNow = formTotal - parsed.discount.amount;
+      if (dKey) {
+        spDiscount = { code: parsed.discount.code, amount: parsed.discount.amount, key: dKey };
+        var bal = creditBalanceForKey(dKey);
+        html += '<div class="sp-ok">🎟 Discount code <strong>' + escapeHtml(parsed.discount.code) + '</strong> −' + money(parsed.discount.amount) + (dEntry ? ' (' + escapeHtml(dEntry.customerName || 'her') + '\'s credit)' : '') +
+          ' · To pay ' + money(payNow) + (parsed.toPay != null && Math.abs(parsed.toPay - payNow) >= 0.005 ? ' <span style="color:var(--red);">— message says ' + money(parsed.toPay) + '</span>' : ' ✓') +
+          '<br><span style="font-size:11px;">Taken off her credit when you save' + (bal < parsed.discount.amount - 0.005 ? ' — note: her credit here is only ' + money(bal) : '') + '.</span></div>';
+      } else {
+        html += '<div class="sp-warn">🎟 Discount code <strong>' + escapeHtml(parsed.discount.code) + '</strong> −' + money(parsed.discount.amount) + ' is on the order, but it wasn\'t made here and there\'s no WhatsApp to know whose credit it is. Add her WhatsApp and paste again, or take it off her credit yourself in Customers.</div>';
+      }
+    }
     box.innerHTML = html || '<div class="sp-ok">✓ Filled in. Check everything, then press Save order.</div>';
     document.getElementById('of-smart-paste-wrap').open = false;
   }
   document.getElementById('btn-smart-paste-fill').addEventListener('click', fillFormFromCatalogueOrder);
-  var spCustomer = null, spPasted = null;
+  var spCustomer = null, spPasted = null, spDiscount = null;
   function fillSavedCustomer(o) {
     document.getElementById('of-buyer-name').value = o.buyerName || '';
     document.getElementById('of-buyer-handle').value = o.buyerHandle || '';
@@ -6609,6 +6821,12 @@
     // pendingCreditConsumption above. Records WHICH order actually used the credit (previously
     // always saved as null) so the Customers tab can show "used on order X" instead of just a
     // bare negative amount with no way to tell which sale it went towards.
+    if (spDiscount && savedOrder && !savedOrder.discountCode) {
+      addCustomerCredit(spDiscount.key, -spDiscount.amount, 'Discount code ' + spDiscount.code, savedOrder.id);
+      savedOrder.discountCode = spDiscount.code;
+      savedOrder.discountCodeAmount = spDiscount.amount;
+      spDiscount = null;
+    }
     if (pendingCreditConsumption && pendingCreditConsumption.key === normalizeIdentifier(buyerWhatsapp)) {
       addCustomerCredit(buyerWhatsapp, -pendingCreditConsumption.amount, 'Applied to new order', savedOrder ? savedOrder.id : null);
       pendingCreditConsumption = null;
@@ -6703,6 +6921,66 @@
     if (e.target.id !== 'btn-pf-add-lid') return;
     var rows = document.getElementById('pf-lids-rows');
     if (rows) rows.insertAdjacentHTML('beforeend', lidRowHtml({ name: '', stock: '' }));
+  });
+
+  // ---------- 💸 Refund / compensate after delivery: money back (counted against cash + profit)
+  // or credit for her next order. Kept on the order with the reason.
+  function openRefundForm(orderId) {
+    var o = state.orders.find(function (x) { return x.id === orderId; });
+    if (!o) return;
+    var old = document.getElementById('refund-overlay'); if (old) old.remove();
+    var ov = document.createElement('div');
+    ov.id = 'refund-overlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9997; display:flex; align-items:center; justify-content:center; padding:16px;';
+    var prev = (o.refunds || []).map(function (r) { return '<div class="muted" style="font-size:12px;">' + escapeHtml(formatDate(r.date)) + ' · ' + (r.kind === 'credit' ? 'credit ' : 'refunded ') + money(r.amount) + (r.reason ? ' — ' + escapeHtml(r.reason) : '') + '</div>'; }).join('');
+    ov.innerHTML = '<div class="card" style="width:100%; max-width:420px; margin:0;">' +
+      '<div style="font-weight:600;">💸 Refund / compensate · ' + escapeHtml(o.buyerName || '') + '</div>' +
+      '<div class="muted" style="font-size:12px; margin:2px 0 10px;">Order total ' + money(orderTotal(o)) + (Number(o.refundAmount) ? ' · already refunded ' + money(o.refundAmount) : '') + '</div>' + prev +
+      '<label class="field-label" style="margin-top:6px;">Amount (RM)</label><input id="rf-amount" type="number" min="0" step="0.01" style="width:100%;">' +
+      '<label class="field-label" style="margin-top:8px;">Reason</label><input id="rf-reason" placeholder="e.g. cup cracked in delivery" style="width:100%;">' +
+      '<label class="field-label" style="margin-top:8px;">How</label>' +
+      '<label class="checkbox-row" style="font-size:13px;"><input type="radio" name="rf-kind" value="refund" checked> Money back to her (counts against cash and profit)</label>' +
+      '<label class="checkbox-row" style="font-size:13px;"><input type="radio" name="rf-kind" value="credit"' + (o.buyerWhatsapp ? '' : ' disabled') + '> Credit for her next order' + (o.buyerWhatsapp ? '' : ' <span class="muted">(needs her WhatsApp)</span>') + '</label>' +
+      '<div id="rf-error" style="color:var(--red); font-size:12px; min-height:16px; margin-top:6px;"></div>' +
+      '<div style="display:flex; gap:8px;"><button type="button" class="btn btn-primary btn-small" id="btn-rf-save">Save</button><button type="button" class="btn btn-secondary btn-small" id="btn-rf-cancel">Cancel</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.id === 'btn-rf-cancel') { ov.remove(); return; }
+      if (e.target.id !== 'btn-rf-save') return;
+      var amt = Math.round((Number(document.getElementById('rf-amount').value) || 0) * 100) / 100;
+      var reason = document.getElementById('rf-reason').value.trim();
+      var kind = ov.querySelector('input[name="rf-kind"]:checked').value;
+      if (!(amt > 0)) { document.getElementById('rf-error').textContent = 'Enter the amount.'; return; }
+      if (!o.refunds) o.refunds = [];
+      o.refunds.push({ id: uid(), amount: amt, reason: reason, kind: kind, date: todayISO() });
+      if (kind === 'credit') addCustomerCredit(o.buyerWhatsapp, amt, 'Compensation' + (reason ? ' — ' + reason : ''), o.id);
+      else o.refundAmount = Math.round(((Number(o.refundAmount) || 0) + amt) * 100) / 100;
+      ov.remove();
+      save(); renderAll();
+      showCopiedToast(kind === 'credit' ? money(amt) + ' credit given' : money(amt) + ' refund recorded');
+      if (kind === 'credit') openDiscountCodeDialog({ wa: o.buyerWhatsapp, name: o.buyerName, handle: o.buyerHandle, amount: amt, note: reason });
+    });
+  }
+  // "Send replacement" from the Orders page: opens the same form as in Shipping.
+  function openReplacementFor(orderId) {
+    var o = state.orders.find(function (x) { return x.id === orderId; });
+    if (!o) return;
+    activatePage('shipping');
+    if (o.status === 'delivered') showDeliveredHistory = true;
+    shippingSearchText = '';
+    editingReplacementOrderId = orderId;
+    replacementDraftItems[orderId] = [{ type: '', theme: '', productId: '', qty: 1 }];
+    renderAll();
+    setTimeout(function () {
+      var f = document.querySelector('[data-save-replacement="' + orderId + '"]');
+      if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+  }
+  document.addEventListener('click', function (e) {
+    var rf = e.target.closest ? e.target.closest('[data-refund-order]') : null;
+    if (rf) { closeOrderMenus(); openRefundForm(rf.getAttribute('data-refund-order')); return; }
+    var rp = e.target.closest ? e.target.closest('[data-rep-from-orders]') : null;
+    if (rp) { closeOrderMenus(); openReplacementFor(rp.getAttribute('data-rep-from-orders')); }
   });
 
   function restoreStock(order) {
@@ -6810,6 +7088,18 @@
       order.depositForfeited = confirm(money(depositOf(order)) + ' deposit from ' + (order.buyerName || 'this customer') + ' — deposits are not refunded.\n\nOK = keep it as income (the items go back into stock).\nCancel = I refunded it.');
     }
     if (wasCancelled && !willBeCancelled) delete order.depositForfeited;
+    if (wasCancelled && !willBeCancelled && order.discountCode && order.discountCodeReturned) {
+      alert('Note: ' + order.discountCode + ' was given back to ' + (order.buyerName || 'her') + ' when this order was cancelled. The ' + money(order.discountCodeAmount) + ' discount is still on this order — remove it in Edit, or take it off her credit again in Customers.');
+    }
+    if (!wasCancelled && willBeCancelled && order.discountCode && !order.discountCodeReturned) {
+      var dcLedger = (state.customerCredits || []).find(function (cr) { return cr.sourceOrderId === order.id && Number(cr.amount) < 0 && /^Discount code /.test(cr.reason || ''); });
+      if (confirm(order.discountCode + ' (' + money(order.discountCodeAmount) + ') was used on this order.\n\nGive it back to ' + (order.buyerName || 'her') + '? Her credit goes back up and the code works again.')) {
+        if (dcLedger) addCustomerCredit(dcLedger.key, Number(order.discountCodeAmount) || 0, 'Order cancelled — ' + order.discountCode + ' given back', order.id);
+        order.discountCodeReturned = true;
+        var dcOrder = order;
+        setTimeout(function () { dcReturnForCancelledOrder(dcOrder); }, 0);
+      }
+    }
     if (!wasCancelled && willBeCancelled) restoreStock(order);
     else if (wasCancelled && !willBeCancelled) deductStock(order);
     if (!order.parcelBagDeducted && (newStatus === 'shipped' || newStatus === 'delivered')) {
@@ -7315,11 +7605,20 @@
       '</div>' +
     '</div>';
   }
+  var dcFetchedFor = {};
   function customerDetailHtml(c) {
+    var dcKey = normalizeIdentifier(c.whatsapp);
+    var dcList = dcKey ? dcCodesFor(dcKey) : [];
+    if (dcList.length && !dcFetchedFor[dcKey]) {
+      dcFetchedFor[dcKey] = true;
+      setTimeout(function () { dcRefreshStatuses(dcList.map(function (d) { return d.code; })).then(function () { renderCustomers(); }); }, 0);
+    }
     return '<div style="border-top:0.5px solid var(--border,#e5e5e5); margin-top:8px; padding-top:8px;">' +
       (c.creditBalance ? '<div style="margin-bottom:8px; display:flex; align-items:center; gap:10px;"><span class="pill pill-green">Credit ' + money(c.creditBalance) + '</span>' +
         '<button type="button" class="btn-text danger" data-cancel-cust-credit="' + escapeHtml(c.key) + '" style="font-size:12px;">Cancel credit</button></div>' : '') +
-      '<div style="margin-bottom:8px;"><button type="button" class="btn-text" data-toggle-cust-credit="' + c.key + '">🎁 Give credit</button></div>' +
+      '<div style="margin-bottom:8px; display:flex; gap:14px; flex-wrap:wrap;"><button type="button" class="btn-text" data-toggle-cust-credit="' + c.key + '">🎁 Give credit</button>' +
+        (c.whatsapp && c.creditBalance > 0 ? '<button type="button" class="btn-text" data-dc-make="' + escapeHtml(c.key) + '">🎟 Make discount code</button>' : '') + '</div>' +
+      dcListHtml(c) +
       (showGiveCreditForCustomerKey === c.key ? giveCreditToCustomerFormHtml(c) : '') +
       customerCreditLedgerHtml(c) +
       c.orders.map(function (o) {
@@ -7477,6 +7776,7 @@
       save();
       showGiveCreditForCustomerKey = null;
       renderCustomers();
+      openDiscountCodeDialog({ wa: custWhatsapp, amount: custGcAmount, note: custGcReason });
       return;
     }
     if (e.target.id === 'btn-customers-search-go') {
@@ -7935,6 +8235,8 @@
           ((!o.shipTo && ['shipped', 'delivered', 'cancelled'].indexOf(o.status) === -1) ? '<button type="button" data-ask-address="' + o.id + '" title="Copy a message asking for their shipping details">📋 Ask address</button>' : '') +
           '<button type="button" data-edit-order="' + o.id + '">✏️ Edit</button>' +
           '<button type="button" data-slip="' + o.id + '">🧾 Packing slip</button>' +
+          (['uv curing', 'ready to ship', 'order shipment', 'shipped', 'delivered'].indexOf(o.status) !== -1 && !o.scam ? '<button type="button" data-rep-from-orders="' + o.id + '">🔁 Send replacement</button>' : '') +
+          (o.status !== 'cancelled' && !o.scam && orderTotal(o) > 0 ? '<button type="button" data-refund-order="' + o.id + '">💸 Refund / compensate</button>' : '') +
           '<button type="button" data-remind-order="' + o.id + '">🔔 Remind me</button>' +
           (o.status === 'queueing' && o.scheduledDate
             ? '<button type="button" data-slot-copy="' + o.id + '">📅 Copy slot message</button>' +
@@ -7956,7 +8258,9 @@
         (o.buyerHandle ? ' <span class="oc-sub">(' + escapeHtml(o.buyerHandle) + ')</span>' : '') +
         (o.buyerWhatsapp ? ' <span class="oc-sub">· ' + escapeHtml(o.buyerWhatsapp) + '</span>' : '') +
         (o.isReplacement ? ' <span class="pill pill-amber" style="font-size:10px;">🔁 Replacement</span>' : '') +
-        (o.orderNo ? ' <span class="oc-sub">#' + escapeHtml(o.orderNo) + '</span>' : '');
+        (o.orderNo ? ' <span class="oc-sub">#' + escapeHtml(o.orderNo) + '</span>' : '') +
+        (Number(o.refundAmount) > 0 ? ' <span class="pill pill-purple" style="font-size:10px;">💸 refunded ' + money(o.refundAmount) + '</span>' : '') +
+        ((o.refunds || []).some(function (r) { return r.kind === 'credit'; }) ? ' <span class="pill pill-green" style="font-size:10px;">🎁 credit ' + money((o.refunds || []).filter(function (r) { return r.kind === 'credit'; }).reduce(function (t, r) { return t + r.amount; }, 0)) + '</span>' : '');
       var totalHtml;
       if (o.scam) totalHtml = '<s style="color:var(--muted); font-weight:400;">' + money(orderGrossTotal(o)) + '</s><span class="oc-extra" style="color:var(--red);">never paid</span>';
       else if (o.isReplacement && total <= 0) totalHtml = '<span style="font-weight:500; color:var(--muted);">Free replacement</span>';
@@ -7983,7 +8287,7 @@
         rows = '<tr class="order-card oc-compact">' + chkTd +
           '<td class="oc-buyer"><span style="font-weight:600;">' + (escapeHtml(o.buyerName) || '—') + '</span>' + (o.isReplacement ? ' <span class="oc-sub">🔁</span>' : '') +
             ' <button class="btn-text oc-sub" data-toggle-order="' + o.id + '" style="font-weight:400; padding:0;">· ' + (itemLines.length ? itemLines.join(' · ') : 'No items') + '</button></td>' +
-          '<td class="oc-date">' + doneWhen + '</td>' +
+          '<td class="oc-date">' + doneWhen + (Number(o.refundAmount) > 0 ? ' <span class="pill pill-purple" style="font-size:10px;">💸 refunded ' + money(o.refundAmount) + '</span>' : '') + '</td>' +
           '<td class="oc-total">' + (o.scam ? '<span class="pill pill-red">⚠ Scam</span> <s style="font-weight:400; color:var(--muted);">' + money(orderGrossTotal(o)) + '</s>' : ((o.isReplacement && total <= 0) ? '<span style="font-weight:400; color:var(--muted);">Free</span>' : money(total))) + '</td>' +
           '<td class="oc-actions">' + menuHtml + '</td>' +
           '</tr>';
@@ -11260,6 +11564,8 @@
             '<div style="display:flex; align-items:center; gap:8px;"><span class="pill pill-green">' + (o.pickup ? 'Picked up' : 'Delivered') + '</span>' +
               '<div class="oc-more"><button type="button" class="oc-more-btn" data-order-more="' + o.id + '" aria-label="More">⋯</button><div class="oc-menu">' +
                 '<button type="button" data-toggle-pickup="' + o.id + '">' + (o.pickup ? '📦 It was shipped, not picked up' : '🤝 It was a pick-up') + '</button>' +
+                '<button type="button" data-toggle-replacement="' + o.id + '">🔁 Send replacement</button>' +
+                (orderTotal(o) > 0 ? '<button type="button" data-refund-order="' + o.id + '">💸 Refund / compensate</button>' : '') +
               '</div></div></div>' +
           '</div>' +
           orderReplacementsHtml(o) +
@@ -12508,6 +12814,7 @@
       showGiveCreditForm = false;
       giveCreditSelectedLabel = '';
       renderShipping();
+      openDiscountCodeDialog({ wa: gcIdentifier, amount: gcAmount, note: gcReason });
       return;
     }
     var gcSuggestEl = e.target.closest ? e.target.closest('[data-gc-suggest]') : null;
@@ -12897,7 +13204,7 @@
               }).join('') +
             '</div></div>'
         : '';
-      var isDayOffForPoster = editIsBlocked || (state.weeklyBreakDays || []).indexOf(new Date(calEditingDate + 'T00:00:00').getDay()) !== -1;
+      var isDayOffForPoster = (editIsBlocked || (state.weeklyBreakDays || []).indexOf(new Date(calEditingDate + 'T00:00:00').getDay()) !== -1) && !posterSlotsFor(calEditingDate).length;
       editPanelHtml = '<div class="order-edit-grid" style="margin-top:14px;">' +
           '<div style="grid-column: 1 / -1; font-weight:600; font-size:13px;">Editing ' + escapeHtml(formatDateLong(calEditingDate)) + '</div>' +
           ordersListHtml +
@@ -12969,7 +13276,8 @@
     return d ? d.slice(-4) : '';
   }
   function posterSlotsFor(dateStr) {
-    var list = state.orders.filter(function (o) { return o.status === 'queueing' && !o.immediate && o.scheduledDate === dateStr; })
+    // Everything booked for that day — made ones included, so the poster stays complete after making.
+    var list = state.orders.filter(function (o) { return o.status !== 'cancelled' && !o.immediate && (o.scheduledDate === dateStr || (!o.scheduledDate && o.madeOn === dateStr)); })
       .sort(function (a, b) { return String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')); });
     var slots = [];
     list.forEach(function (o) {
@@ -15379,7 +15687,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-11-17c';
+  var APP_VERSION = '2026-11-20a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
