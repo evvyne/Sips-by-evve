@@ -7,7 +7,7 @@
      of this number against a fresh fetch of this same file, so a stale homescreen/cached tab can
      tell it's out of date and prompt a reload instead of silently running old logic against data
      shaped by newer code. -->
-<meta name="app-version" content="2026-11-20b" />
+<meta name="app-version" content="2026-11-21a" />
 <title>❄️ Sips by Evve</title>
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/png" href="favicon-64.png" />
@@ -1813,7 +1813,8 @@
           ? '<div class="sp-ok" style="font-size:14px;">✓ <strong style="font-family:monospace; font-size:16px;">' + escapeHtml(done) + '</strong> · ' + money(Number(document.getElementById('dc-amount') ? document.getElementById('dc-amount').value : opts.amount)) + '</div>' +
             '<div style="white-space:pre-wrap; font-size:13px; background:var(--bg); border-radius:8px; padding:8px 10px; margin-top:8px;">' + escapeHtml(dcMessage(lastEntry || { code: done, amount: opts.amount, customerName: name, type: curType })) + '</div>' +
             '<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="btn-dc-copy-msg">💬 Copy message</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-copy-done">📋 Copy code</button><button type="button" class="btn btn-secondary btn-small" id="btn-dc-close">Close</button></div>'
-          : '<label class="field-label">Code</label><input id="dc-code" value="' + escapeHtml(auto) + '" autocomplete="off" style="width:100%; font-family:monospace; text-transform:uppercase;">' +
+          : '<label class="field-label">Her name <span class="muted">(used in the code and the message)</span></label><input id="dc-name" value="' + escapeHtml(name || '') + '" placeholder="e.g. Maya" style="width:100%;">' +
+            '<label class="field-label" style="margin-top:8px;">Code</label><input id="dc-code" value="' + escapeHtml(auto) + '" autocomplete="off" style="width:100%; font-family:monospace; text-transform:uppercase;">' +
             '<label class="field-label" style="margin-top:8px;">Amount (RM)</label><input id="dc-amount" type="number" min="0.01" step="0.01" value="' + (Number(opts.amount) || '') + '" style="width:140px;">' +
             '<label class="field-label" style="margin-top:8px;">Type <span class="muted">(picks the message you send her)</span></label>' +
             '<select id="dc-type" style="width:100%;">' + dcTypes().map(function (t) { return '<option value="' + escapeHtml(t.id) + '"' + (t.id === curType ? ' selected' : '') + '>' + escapeHtml(t.name) + '</option>'; }).join('') + '<option value="__new">+ Add type…</option></select>' +
@@ -1830,6 +1831,12 @@
     }
     var lastSaved = null, lastEntry = null;
     document.body.appendChild(ov);
+    ov.addEventListener('input', function (e) {
+      if (e.target.id !== 'dc-name') return;
+      var ci = document.getElementById('dc-code');
+      name = e.target.value.trim();
+      if (ci && dcClean(ci.value) === auto) { auto = dcGenerate(name, handle); ci.value = auto; }
+    });
     ov.addEventListener('change', function (e) {
       if (e.target.id !== 'dc-type') return;
       document.getElementById('dc-newtype').style.display = e.target.value === '__new' ? '' : 'none';
@@ -7723,7 +7730,15 @@
       content.innerHTML = searchBar + '<div class="empty">No customers match this search.</div>';
       return;
     }
-    searchBar = dcTypesEditorHtml() + searchBar;
+    var known = {};
+    all.forEach(function (c) { var k = normalizeIdentifier(c.whatsapp); if (k) known[k] = true; });
+    var loose = (state.discountCodes || []).filter(function (d) { return !known[d.customerKey]; });
+    if (loose.length) {
+      var lk = loose.map(function (d) { return d.code; }).filter(function (cd) { return !dcStatusCache[cd]; });
+      if (lk.length && !dcFetchedFor.__loose) { dcFetchedFor.__loose = true; setTimeout(function () { dcRefreshStatuses(lk).then(function () { renderCustomers(); }); }, 0); }
+    }
+    searchBar = dcTypesEditorHtml() + (loose.length ? '<div class="card" style="margin-bottom:10px;"><div style="font-weight:600; font-size:14px;">🎟 Codes for people who haven\'t ordered yet</div>' +
+      loose.map(function (d) { return '<div style="font-size:13px; margin-top:6px;"><strong>' + escapeHtml(d.customerName || '(no name)') + '</strong> <span class="muted">· WhatsApp ' + escapeHtml(d.customerKey) + '</span>' + dcListHtml({ whatsapp: d.customerKey }).replace('<div class="muted" style="font-size:12px; margin-bottom:2px;">🎟 Discount codes</div>', '') + '</div>'; }).filter(function (h, i, a) { return a.indexOf(h) === i; }).join('') + '</div>' : '') + searchBar;
     content.innerHTML = searchBar + filtered.map(function (c) {
       var expanded = expandedCustomerKey === c.key;
       return '<div class="card" style="margin-bottom:8px;">' +
@@ -15756,7 +15771,7 @@
   function withoutStamp(s) { var c = Object.assign({}, s || {}); delete c.updatedAt; delete c.cloudWriters; return c; }
   // Which device + app version last wrote the cloud copy (newest first, last 20). Lets us see
   // exactly which phone/computer an unexpected change came from.
-  var APP_VERSION = '2026-11-20b';
+  var APP_VERSION = '2026-11-21a';
   function deviceLabel() {
     var ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     var dev = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
